@@ -33,30 +33,82 @@ class DockerService {
 
     // Detect project type and generate appropriate Dockerfile
     detectProjectType(projectDir) {
+        // Check root directory first
         if (fs.existsSync(path.join(projectDir, 'package.json'))) {
-            return 'node';
+            const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf-8'));
+            if (pkg.dependencies?.next || pkg.devDependencies?.next) {
+                return { type: 'nextjs', subdir: null };
+            }
+            return { type: 'node', subdir: null };
         }
+
+        // Check immediate subdirectories for package.json (monorepo pattern)
+        const subdirs = fs.readdirSync(projectDir, { withFileTypes: true })
+            .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules');
+        for (const dir of subdirs) {
+            const pkgPath = path.join(projectDir, dir.name, 'package.json');
+            if (fs.existsSync(pkgPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                if (pkg.dependencies?.next || pkg.devDependencies?.next) {
+                    return { type: 'nextjs', subdir: dir.name };
+                }
+                return { type: 'node', subdir: dir.name };
+            }
+        }
+
         if (fs.existsSync(path.join(projectDir, 'requirements.txt')) ||
             fs.existsSync(path.join(projectDir, 'manage.py'))) {
-            return 'python';
+            return { type: 'python', subdir: null };
         }
         if (fs.existsSync(path.join(projectDir, 'index.html')) ||
             fs.existsSync(path.join(projectDir, 'index.htm'))) {
-            return 'static';
+            return { type: 'static', subdir: null };
         }
-        return 'static'; // Default to static
+        return { type: 'static', subdir: null };
     }
 
     generateDockerfile(project, projectDir) {
-        const type = this.detectProjectType(projectDir);
+        const detected = this.detectProjectType(projectDir);
         const port = project.port || 3000;
+        const { type, subdir } = detected;
+        const copyFrom = subdir ? `${subdir}/` : '.';
+
+        if (type === 'nextjs') {
+            // Multi-stage Next.js build
+            return `FROM node:20-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache openssl openssl-dev
+COPY ${copyFrom}package*.json ./
+RUN npm install --legacy-peer-deps
+COPY ${copyFrom} ./
+RUN npx prisma generate 2>/dev/null || true
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV TURBOPACK=0
+RUN npx next build
+RUN mkdir -p public prisma
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+RUN apk add --no-cache openssl
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=${port}
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/prisma ./prisma
+RUN npx prisma generate 2>/dev/null || true
+EXPOSE ${port}
+CMD sh -c "npx prisma db push --skip-generate 2>/dev/null || true; npx next start -p ${port}"
+`;
+        }
 
         if (type === 'node') {
-            return `FROM node:24-alpine
+            const workdirCopy = subdir ? `COPY ${subdir}/package*.json ./\nRUN ${project.build_command || 'npm install'}\nCOPY ${subdir}/ .` : `COPY package*.json ./\nRUN ${project.build_command || 'npm install'}\nCOPY . .`;
+            return `FROM node:20-alpine
 WORKDIR /app
-COPY package*.json ./
-RUN ${project.build_command || 'npm install'}
-COPY . .
+${workdirCopy}
 EXPOSE ${port}
 CMD ${JSON.stringify((project.start_command || 'npm start').split(' '))}
 `;
@@ -64,7 +116,7 @@ CMD ${JSON.stringify((project.start_command || 'npm start').split(' '))}
 
         // Static site - serve with nginx
         return `FROM nginx:alpine
-COPY . /usr/share/nginx/html
+COPY ${copyFrom} /usr/share/nginx/html
 RUN echo 'server { listen ${port}; location / { root /usr/share/nginx/html; index index.html; try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE ${port}
 `;

@@ -29,7 +29,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/projects - Create a new project
 router.post('/', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy } = req.body;
 
         if (!name || !github_url) {
             return res.status(400).json({ error: 'name and github_url are required' });
@@ -50,9 +50,9 @@ router.post('/', async (req, res) => {
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
         const project = await db.queryOne(
-            `INSERT INTO projects (name, github_url, branch, build_command, start_command, port, subdomain, env_vars)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, JSON.stringify(env_vars || {})]
+            `INSERT INTO projects (name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, JSON.stringify(env_vars || {}), auto_deploy !== false]
         );
 
         res.status(201).json(project);
@@ -67,7 +67,7 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy } = req.body;
         const project = await db.queryOne(
             `UPDATE projects SET
         name = COALESCE($1, name),
@@ -78,9 +78,10 @@ router.put('/:id', async (req, res) => {
         port = COALESCE($6, port),
         subdomain = COALESCE($7, subdomain),
         env_vars = COALESCE($8, env_vars),
+        auto_deploy = COALESCE($9, auto_deploy),
         updated_at = NOW()
-       WHERE id = $9 RETURNING *`,
-            [name, github_url, branch, build_command, start_command, port, subdomain, env_vars ? JSON.stringify(env_vars) : null, req.params.id]
+       WHERE id = $10 RETURNING *`,
+            [name, github_url, branch, build_command, start_command, port, subdomain, env_vars ? JSON.stringify(env_vars) : null, auto_deploy !== undefined ? auto_deploy : null, req.params.id]
         );
         if (!project) return res.status(404).json({ error: 'Project not found' });
         res.json(project);

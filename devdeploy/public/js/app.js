@@ -34,6 +34,9 @@ function renderProjects(projects) {
         const localUrl = `http://${serverHost}:${p.port}`;
         const siteUrl = p.tunnel_url || localUrl;
         const urlLabel = p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`;
+        const autoDeployBadge = p.auto_deploy !== false
+            ? `<span class="badge" style="background:rgba(63,185,80,0.15);color:#3fb950;font-size:11px;padding:2px 8px;cursor:pointer;" onclick="event.stopPropagation(); toggleAutoDeploy(${p.id}, false)" title="클릭하여 수동으로 변경">🔄 자동</span>`
+            : `<span class="badge" style="background:rgba(139,148,158,0.15);color:#8b949e;font-size:11px;padding:2px 8px;cursor:pointer;" onclick="event.stopPropagation(); toggleAutoDeploy(${p.id}, true)" title="클릭하여 자동으로 변경">✋ 수동</span>`;
         return `
     <div class="project-card" onclick="openProject(${p.id})">
       <div class="project-status ${p.status}"></div>
@@ -47,11 +50,13 @@ function renderProjects(projects) {
           <span>📂 ${extractRepoName(p.github_url)}</span>
           <span>🔀 ${p.branch}</span>
           <span class="badge badge-${p.status}">${statusLabel(p.status)}</span>
+          ${autoDeployBadge}
         </div>
       </div>
       <div class="project-actions">
         ${p.status === 'running'
                 ? `<a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank" onclick="event.stopPropagation()">🌐 열기</a>
+               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); deployProject(${p.id})" title="재배포">🔄 재배포</button>
                <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹ 중지</button>`
                 : `<button class="btn btn-sm btn-success" onclick="event.stopPropagation(); deployProject(${p.id})">▶ 배포</button>`
             }
@@ -84,11 +89,13 @@ async function createProject() {
         return;
     }
 
+    const auto_deploy = document.getElementById('input-autodeploy')?.checked ?? true;
+
     try {
         const res = await fetch(`${API}/projects`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, github_url, branch, build_command, start_command, port, subdomain })
+            body: JSON.stringify({ name, github_url, branch, build_command, start_command, port, subdomain, auto_deploy })
         });
 
         if (!res.ok) {
@@ -339,16 +346,20 @@ function renderProjectDetail() {
         <span>${new Date(p.created_at).toLocaleDateString('ko-KR')}</span>
       </div>
     </div>
-    <div style="margin-top:24px; display:flex; gap:8px;">
+    <div style="margin-top:24px; display:flex; gap:8px; align-items:center;">
       ${p.status === 'running'
             ? `<button class="btn btn-ghost" onclick="stopProject(${p.id}); closeDetailModal();">⏹ 중지</button>`
             : `<button class="btn btn-success" onclick="deployProject(${p.id}); closeDetailModal();">▶ 배포</button>`
         }
       <button class="btn btn-primary" onclick="deployProject(${p.id}); closeDetailModal();">🔄 재배포</button>
+      <span style="margin-left:auto; font-size:13px; color:var(--text-secondary);">
+        ${p.auto_deploy !== false ? '🔄 자동 배포 활성' : '✋ 수동 배포'}
+      </span>
     </div>
   `;
 
     // Settings
+    const webhookUrl = `${window.location.origin}/api/webhooks/github`;
     document.getElementById('settings-content').innerHTML = `
     <div class="form-group">
       <label>프로젝트 이름</label>
@@ -369,6 +380,27 @@ function renderProjectDetail() {
     <div class="form-group">
       <label>시작 명령어</label>
       <input type="text" id="set-start" value="${escapeHtml(p.start_command || '')}">
+    </div>
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <label style="font-size:15px;font-weight:600;">🔄 배포 모드</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+        <label class="toggle-switch">
+          <input type="checkbox" id="set-autodeploy" ${p.auto_deploy !== false ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+        <span id="autodeploy-label" style="font-size:14px;color:var(--text-secondary);">
+          ${p.auto_deploy !== false ? '자동 배포: GitHub push 시 자동으로 재배포됩니다' : '수동 배포: 직접 배포 버튼을 눌러야 합니다'}
+        </span>
+      </div>
+    </div>
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <label style="font-size:15px;font-weight:600;">🔗 GitHub Webhook URL</label>
+      <div class="form-hint">GitHub 레포 → Settings → Webhooks → Add webhook 에 아래 URL을 등록하세요</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <input type="text" value="${webhookUrl}" readonly style="flex:1;background:var(--surface);cursor:text;" id="webhook-url-input">
+        <button class="btn btn-sm btn-ghost" onclick="copyWebhookUrl()" title="복사">📋 복사</button>
+      </div>
+      <div class="form-hint" style="margin-top:4px;">Content type: <code>application/json</code> | Secret: <code>devdeploy-secret</code></div>
     </div>
     <button class="btn btn-primary" onclick="saveSettings()">설정 저장</button>
   `;
@@ -431,6 +463,7 @@ async function saveEnvVars() {
 
 async function saveSettings() {
     try {
+        const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
         await fetch(`${API}/projects/${currentProject.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -440,13 +473,36 @@ async function saveSettings() {
                 branch: document.getElementById('set-branch').value,
                 build_command: document.getElementById('set-build').value,
                 start_command: document.getElementById('set-start').value,
+                auto_deploy,
             })
         });
+        currentProject.auto_deploy = auto_deploy;
         toast('설정이 저장되었습니다!', 'success');
         loadProjects();
     } catch (error) {
         toast('저장 실패', 'error');
     }
+}
+
+async function toggleAutoDeploy(id, enable) {
+    try {
+        await fetch(`${API}/projects/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_deploy: enable })
+        });
+        toast(enable ? '자동 배포가 활성화되었습니다' : '수동 배포로 전환되었습니다', 'success');
+        loadProjects();
+    } catch (error) {
+        toast('변경 실패', 'error');
+    }
+}
+
+function copyWebhookUrl() {
+    const input = document.getElementById('webhook-url-input');
+    input.select();
+    navigator.clipboard.writeText(input.value);
+    toast('Webhook URL이 복사되었습니다!', 'success');
 }
 
 // ============ LOGS & DEPLOYMENTS ============
