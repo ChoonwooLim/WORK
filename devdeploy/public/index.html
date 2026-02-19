@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DevDeploy - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <a href="/" class="header-logo">
+      <span class="icon">🚀</span>
+      <span>DevDeploy</span>
+    </a>
+    <div class="header-actions">
+      <button class="btn btn-primary" onclick="openNewProjectModal()">+ New Project</button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main" id="app">
+    <!-- Stats -->
+    <div class="stats" id="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">전체 프로젝트</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--success)" id="stat-running">0</div>
+        <div class="stat-label">실행 중</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--danger)" id="stat-stopped">0</div>
+        <div class="stat-label">중지됨</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--warning)" id="stat-building">0</div>
+        <div class="stat-label">빌드 중</div>
+      </div>
+    </div>
+
+    <!-- Project List -->
+    <div class="page-title">
+      <h2>📦 프로젝트</h2>
+    </div>
+    <div class="project-list" id="project-list">
+      <div class="empty-state">
+        <div class="icon">📦</div>
+        <h3>프로젝트가 없습니다</h3>
+        <p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- New Project Modal -->
+  <div class="modal-overlay" id="new-project-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🆕 새 프로젝트</h2>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>프로젝트 이름 *</label>
+          <input type="text" id="input-name" placeholder="my-awesome-app">
+        </div>
+        <div class="form-group">
+          <label>GitHub URL *</label>
+          <input type="text" id="input-github" placeholder="https://github.com/user/repo">
+        </div>
+        <div class="form-group">
+          <label>Branch</label>
+          <input type="text" id="input-branch" placeholder="main" value="main">
+        </div>
+        <div class="form-group">
+          <label>빌드 명령어</label>
+          <input type="text" id="input-build" placeholder="npm install && npm run build" value="npm install">
+        </div>
+        <div class="form-group">
+          <label>시작 명령어</label>
+          <input type="text" id="input-start" placeholder="npm start" value="npm start">
+        </div>
+        <div class="form-group">
+          <label>포트</label>
+          <input type="number" id="input-port" placeholder="자동 할당">
+          <div class="form-hint">비우면 자동으로 할당됩니다</div>
+        </div>
+        <div class="form-group">
+          <label>서브도메인</label>
+          <input type="text" id="input-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
+          <div class="form-hint">{서브도메인}.localhost 로 접속됩니다</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="createProject()">프로젝트 생성</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project Detail Modal -->
+  <div class="modal-overlay" id="detail-modal">
+    <div class="modal" style="width: 700px;">
+      <div class="modal-header">
+        <h2 id="detail-title">프로젝트</h2>
+        <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-tabs">
+          <div class="detail-tab active" onclick="switchTab('overview')">개요</div>
+          <div class="detail-tab" onclick="switchTab('logs')">로그</div>
+          <div class="detail-tab" onclick="switchTab('deployments')">배포 이력</div>
+          <div class="detail-tab" onclick="switchTab('env')">환경변수</div>
+          <div class="detail-tab" onclick="switchTab('settings')">설정</div>
+        </div>
+
+        <!-- Overview Tab -->
+        <div class="tab-content active" id="tab-overview">
+          <div id="overview-content"></div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div class="tab-content" id="tab-logs">
+          <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:14px;color:var(--text-secondary)">컨테이너 로그</span>
+            <button class="btn btn-sm btn-ghost" onclick="refreshLogs()">🔄 새로고침</button>
+          </div>
+          <div class="log-viewer" id="log-content">로딩 중...</div>
+        </div>
+
+        <!-- Deployments Tab -->
+        <div class="tab-content" id="tab-deployments">
+          <div id="deployments-content">로딩 중...</div>
+        </div>
+
+        <!-- Env Tab -->
+        <div class="tab-content" id="tab-env">
+          <div id="env-content"></div>
+          <button class="btn btn-sm btn-ghost" onclick="addEnvRow()" style="margin-top:12px;">+ 변수 추가</button>
+          <div style="margin-top:16px;">
+            <button class="btn btn-primary" onclick="saveEnvVars()">환경변수 저장</button>
+          </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div class="tab-content" id="tab-settings">
+          <div id="settings-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
