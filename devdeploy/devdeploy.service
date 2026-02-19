@@ -1,0 +1,18 @@
+[Unit]
+Description=DevDeploy Dashboard Server
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=stevenlim
+Environment=PATH=/home/stevenlim/.nvm/versions/node/v24.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WorkingDirectory=/home/stevenlim/WORK/devdeploy
+ExecStart=/home/stevenlim/.nvm/versions/node/v24.13.1/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=StevenHub Dashboard Tunnel (localtunnel)
+After=network.target devdeploy.service
+Wants=devdeploy.service
+
+[Service]
+Type=simple
+User=stevenlim
+Environment=PATH=/home/stevenlim/.nvm/versions/node/v24.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/stevenlim/.nvm/versions/node/v24.13.1/bin/lt --port 4000 --subdomain stevenhub
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
