@@ -31,7 +31,9 @@ function renderProjects(projects) {
     }
 
     list.innerHTML = projects.map(p => {
-        const siteUrl = `http://${serverHost}:${p.port}`;
+        const localUrl = `http://${serverHost}:${p.port}`;
+        const siteUrl = p.tunnel_url || localUrl;
+        const urlLabel = p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`;
         return `
     <div class="project-card" onclick="openProject(${p.id})">
       <div class="project-status ${p.status}"></div>
@@ -39,8 +41,8 @@ function renderProjects(projects) {
         <div class="project-name">${escapeHtml(p.name)}</div>
         <div class="project-meta">
           ${p.status === 'running'
-                ? `<a href="${siteUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none;font-weight:600;">🌐 ${siteUrl}</a>`
-                : `<span style="color:var(--text-muted)">🌐 ${siteUrl}</span>`
+                ? `<a href="${siteUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none;font-weight:600;">🌐 ${urlLabel}</a>`
+                : `<span style="color:var(--text-muted)">🌐 ${urlLabel}</span>`
             }
           <span>📂 ${extractRepoName(p.github_url)}</span>
           <span>🔀 ${p.branch}</span>
@@ -104,36 +106,161 @@ async function createProject() {
 
 async function deployProject(id) {
     try {
+        // Close detail modal if open
+        closeDetailModal();
+
+        // Open deploy monitoring modal
+        openDeployModal(id);
+
+        // Trigger deployment
         await fetch(`${API}/projects/${id}/deploy`, { method: 'POST' });
-        toast('배포가 시작되었습니다! 🚀', 'info');
-        // Poll for completion
-        pollDeployStatus(id);
     } catch (error) {
-        toast('배포 실패: ' + error.message, 'error');
+        toast('배포 요청 실패: ' + error.message, 'error');
     }
 }
 
-function pollDeployStatus(id) {
-    let attempts = 0;
-    const poll = setInterval(async () => {
-        attempts++;
-        try {
-            const res = await fetch(`${API}/projects/${id}`);
-            const p = await res.json();
-            loadProjects();
-            if (p.status === 'running') {
-                clearInterval(poll);
-                const url = `http://${serverHost}:${p.port}`;
-                toast(`✅ 배포 완료! 사이트: ${url}`, 'success');
-            } else if (p.status === 'failed') {
-                clearInterval(poll);
-                toast('❌ 배포 실패. 로그를 확인하세요.', 'error');
-            } else if (attempts > 60) {
-                clearInterval(poll);
-                toast('⏰ 배포 시간 초과', 'error');
+let activeEventSource = null;
+
+function openDeployModal(projectId) {
+    const modal = document.getElementById('deploy-modal');
+    modal.classList.add('active');
+
+    // Reset UI
+    document.getElementById('deploy-modal-title').textContent = '🚀 배포 진행 중...';
+    document.getElementById('deploy-progress-fill').style.width = '0%';
+    document.getElementById('deploy-progress-fill').className = 'deploy-progress-fill';
+    document.getElementById('deploy-progress-label').textContent = '배포를 시작합니다...';
+    document.getElementById('deploy-log-viewer').textContent = '';
+    document.getElementById('deploy-log-viewer').classList.remove('collapsed');
+
+    // Build step checklist
+    const defaultSteps = [
+        { id: 'clone', label: '📥 소스 코드 가져오기' },
+        { id: 'build', label: '🔨 Docker 이미지 빌드' },
+        { id: 'container', label: '🚀 컨테이너 시작' },
+        { id: 'nginx', label: '🌐 프록시 설정' },
+        { id: 'tunnel', label: '🔗 외부 접속 터널 생성' },
+        { id: 'done', label: '✅ 배포 완료' },
+    ];
+    document.getElementById('deploy-steps').innerHTML = defaultSteps.map(s => `
+        <div class="deploy-step" id="step-${s.id}">
+          <div class="deploy-step-icon">●</div>
+          <div class="deploy-step-label">${s.label}</div>
+          <div class="deploy-step-status"></div>
+        </div>
+    `).join('');
+
+    // Connect SSE
+    if (activeEventSource) {
+        activeEventSource.close();
+    }
+
+    const es = new EventSource(`${API}/deploy-stream/${projectId}`);
+    activeEventSource = es;
+
+    let completedSteps = [];
+
+    es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'connected') return;
+
+        // Update progress bar
+        document.getElementById('deploy-progress-fill').style.width = data.progress + '%';
+        document.getElementById('deploy-progress-label').textContent = data.message;
+
+        // Update step states
+        const currentStepId = data.stepId;
+
+        // Mark previous steps as completed
+        if (!completedSteps.includes(currentStepId)) {
+            defaultSteps.forEach(s => {
+                const el = document.getElementById(`step-${s.id}`);
+                if (!el) return;
+                if (completedSteps.includes(s.id)) {
+                    el.className = 'deploy-step completed';
+                    el.querySelector('.deploy-step-icon').textContent = '✓';
+                }
+            });
+        }
+
+        const currentEl = document.getElementById(`step-${currentStepId}`);
+        if (currentEl) {
+            if (data.status === 'success') {
+                // All steps completed
+                currentEl.className = 'deploy-step completed';
+                currentEl.querySelector('.deploy-step-icon').textContent = '✓';
+                document.getElementById('deploy-progress-fill').classList.add('done');
+                document.getElementById('deploy-modal-title').textContent = '✅ 배포 완료!';
+
+                // Add success result
+                const logViewer = document.getElementById('deploy-log-viewer');
+                logViewer.textContent += '\n✅ 배포가 성공적으로 완료되었습니다!\n';
+
+                es.close();
+                activeEventSource = null;
+                loadProjects();
+            } else if (data.status === 'failed') {
+                currentEl.className = 'deploy-step failed';
+                currentEl.querySelector('.deploy-step-icon').textContent = '✕';
+                document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
+                document.getElementById('deploy-progress-fill').classList.add('done');
+                document.getElementById('deploy-modal-title').textContent = '❌ 배포 실패';
+
+                es.close();
+                activeEventSource = null;
+                loadProjects();
+            } else {
+                // Running - mark as active
+                currentEl.className = 'deploy-step active';
+                currentEl.querySelector('.deploy-step-icon').textContent = '◉';
             }
-        } catch (e) { /* ignore */ }
-    }, 3000);
+        }
+
+        // Track completed steps
+        if (data.status === 'running' && !completedSteps.includes(currentStepId)) {
+            // Mark all steps before this one as completed
+            for (const s of defaultSteps) {
+                if (s.id === currentStepId) break;
+                if (!completedSteps.includes(s.id)) {
+                    completedSteps.push(s.id);
+                    const el = document.getElementById(`step-${s.id}`);
+                    if (el) {
+                        el.className = 'deploy-step completed';
+                        el.querySelector('.deploy-step-icon').textContent = '✓';
+                    }
+                }
+            }
+        }
+
+        // Append to log viewer
+        const logViewer = document.getElementById('deploy-log-viewer');
+        const timestamp = new Date(data.timestamp).toLocaleTimeString('ko-KR');
+        logViewer.textContent += `[${timestamp}] ${data.message}\n`;
+        logViewer.scrollTop = logViewer.scrollHeight;
+    };
+
+    es.onerror = () => {
+        // SSE disconnected - may happen after deploy completes
+        setTimeout(() => {
+            if (activeEventSource === es) {
+                es.close();
+                activeEventSource = null;
+            }
+        }, 3000);
+    };
+}
+
+function closeDeployModal() {
+    document.getElementById('deploy-modal').classList.remove('active');
+    if (activeEventSource) {
+        activeEventSource.close();
+        activeEventSource = null;
+    }
+    loadProjects();
+}
+
+function toggleDeployLog() {
+    document.getElementById('deploy-log-viewer').classList.toggle('collapsed');
 }
 
 async function stopProject(id) {
@@ -176,12 +303,14 @@ function renderProjectDetail() {
     document.getElementById('detail-title').textContent = `📦 ${p.name}`;
 
     // Overview
-    const siteUrl = `http://${serverHost}:${p.port}`;
+    const localUrl = `http://${serverHost}:${p.port}`;
+    const siteUrl = p.tunnel_url || localUrl;
+    const urlLabel = p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`;
     document.getElementById('overview-content').innerHTML = `
     ${p.status === 'running' ? `
     <div style="background:linear-gradient(135deg,rgba(63,185,80,0.15),rgba(88,166,255,0.1));border:1px solid var(--success);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;text-align:center;">
       <div style="font-size:13px;color:var(--success);margin-bottom:8px;font-weight:600;">🟢 사이트 실행 중</div>
-      <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:20px;font-weight:700;text-decoration:none;">${siteUrl}</a>
+      <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:20px;font-weight:700;text-decoration:none;">${urlLabel}</a>
       <div style="margin-top:12px;"><a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">🌐 사이트 열기</a></div>
     </div>` : ''}
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">

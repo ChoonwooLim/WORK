@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS projects (
     env_vars JSONB DEFAULT '{}',
     status VARCHAR(20) DEFAULT 'stopped',
     container_id VARCHAR(100),
+    tunnel_url VARCHAR(500),
+    auto_deploy BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

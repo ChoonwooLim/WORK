@@ -24,6 +24,42 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', uptime: process.uptime() });
 });
 
+// SSE - Real-time deploy progress stream
+const deployer = require('./services/deployer');
+app.get('/api/deploy-stream/:projectId', (req, res) => {
+    const projectId = parseInt(req.params.projectId);
+
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+    });
+
+    // Send initial connection event
+    res.write(`data: ${JSON.stringify({ type: 'connected', projectId })}\n\n`);
+
+    // Listen for deploy progress events
+    const onProgress = (data) => {
+        if (data.projectId === projectId) {
+            res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+    };
+
+    deployer.on('deploy-progress', onProgress);
+
+    // Heartbeat every 15s
+    const heartbeat = setInterval(() => {
+        res.write(`: heartbeat\n\n`);
+    }, 15000);
+
+    // Cleanup on disconnect
+    req.on('close', () => {
+        deployer.removeListener('deploy-progress', onProgress);
+        clearInterval(heartbeat);
+    });
+});
+
 // Server info - returns public IP for external URL display
 app.get('/api/server-info', async (req, res) => {
     try {

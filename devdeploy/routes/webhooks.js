@@ -46,9 +46,14 @@ router.post('/github', async (req, res) => {
             return res.json({ message: 'No matching projects found' });
         }
 
-        // Deploy each matching project
+        // Deploy each matching project (if auto_deploy is enabled)
         const results = [];
         for (const project of projects) {
+            if (project.auto_deploy === false) {
+                console.log(`⏭️ Skipping auto-deploy for ${project.name} (auto_deploy disabled)`);
+                results.push({ project: project.name, status: 'skipped' });
+                continue;
+            }
             console.log(`🚀 Auto-deploying: ${project.name} (commit: ${commitHash?.substring(0, 7)})`);
             deployer.deploy(project, commitHash, commitMessage).catch(err => {
                 console.error(`Deploy error for ${project.name}:`, err);
