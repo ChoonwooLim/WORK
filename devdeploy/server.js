@@ -88,7 +88,7 @@ async function start() {
         await db.query(schema);
         console.log('✅ Database schema initialized');
 
-        app.listen(PORT, () => {
+        app.listen(PORT, async () => {
             console.log(`
 ╔══════════════════════════════════════╗
 ║   🚀 DevDeploy Server Running       ║
@@ -97,6 +97,27 @@ async function start() {
 ║   Webhook: POST /api/webhooks/github ║
 ╚══════════════════════════════════════╝
 `);
+            // Auto-recover tunnels for running projects
+            try {
+                const tunnelService = require('./services/tunnel');
+                const result = await db.query("SELECT * FROM projects WHERE status = 'running'");
+                const runningProjects = result.rows || [];
+                for (const project of runningProjects) {
+                    console.log(`🔗 Recovering tunnel for ${project.name} (port ${project.port})...`);
+                    const url = await tunnelService.startTunnel(project);
+                    if (url) {
+                        await db.query('UPDATE projects SET tunnel_url = $1 WHERE id = $2', [url, project.id]);
+                        console.log(`✅ Tunnel recovered: ${url}`);
+                    } else {
+                        console.log(`⚠️ Failed to recover tunnel for ${project.name}`);
+                    }
+                }
+                if (runningProjects.length > 0) {
+                    console.log(`🔗 Recovered tunnels for ${runningProjects.length} project(s)`);
+                }
+            } catch (e) {
+                console.error('⚠️ Tunnel recovery failed:', e.message);
+            }
         });
     } catch (error) {
         console.error('❌ Failed to start:', error.message);

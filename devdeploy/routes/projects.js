@@ -35,7 +35,18 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'name and github_url are required' });
         }
 
-        const projectSubdomain = subdomain || name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        // Generate a valid subdomain: use provided subdomain, or sanitize the name,
+        // or fall back to the GitHub repo name if the name produces no ASCII characters
+        let projectSubdomain = subdomain;
+        if (!projectSubdomain) {
+            let sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+            if (!sanitized) {
+                // Name had no ASCII chars (e.g. Korean) — extract repo name from GitHub URL
+                const repoMatch = github_url.match(/\/([^\/]+?)(\.git)?$/);
+                sanitized = repoMatch ? repoMatch[1].toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : `project-${Date.now()}`;
+            }
+            projectSubdomain = sanitized;
+        }
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
         const project = await db.queryOne(

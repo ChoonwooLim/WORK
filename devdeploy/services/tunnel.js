@@ -1,76 +1,106 @@
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const { exec, spawn } = require('child_process');
 
-const TUNNEL_PROCS = {}; // subdomain -> { proc, url }
+const TUNNEL_PROCS = {}; // subdomain -> { proc, url, project, retryTimer }
+const CLOUDFLARED_PATH = '/tmp/cloudflared';
 
 class TunnelService {
     // Start a tunnel for a project and return the public URL
     async startTunnel(project) {
         // Stop existing tunnel for this project
-        this.stopTunnel(project.subdomain);
-
-        const subdomain = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const key = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        this.stopTunnel(key);
 
         return new Promise((resolve) => {
-            const proc = exec(
-                `lt --port ${project.port} --subdomain ${subdomain}`,
-                { stdio: 'pipe' }
-            );
-
-            TUNNEL_PROCS[project.subdomain] = { proc, url: null };
-
-            let output = '';
-            proc.stdout.on('data', (data) => {
-                output += data.toString();
-                // localtunnel outputs: "your url is: https://xxx.loca.lt"
-                const match = output.match(/your url is: (https?:\/\/[^\s]+)/);
-                if (match && !TUNNEL_PROCS[project.subdomain].url) {
-                    const url = match[1].trim();
-                    TUNNEL_PROCS[project.subdomain].url = url;
-                    console.log(`🌐 Tunnel created for ${project.name}: ${url}`);
-                    resolve(url);
-                }
-            });
-
-            proc.stderr.on('data', (data) => {
-                console.log(`Tunnel stderr: ${data}`);
-            });
-
-            proc.on('error', (err) => {
-                console.log(`Tunnel error: ${err.message}`);
-                resolve(null);
-            });
-
-            proc.on('exit', (code) => {
-                if (code && code !== 0) {
-                    console.log(`Tunnel exited with code ${code}`);
-                }
-            });
-
-            // Timeout after 15 seconds
-            setTimeout(() => {
-                if (!TUNNEL_PROCS[project.subdomain]?.url) {
-                    resolve(null);
-                }
-            }, 15000);
+            this._launchTunnel(project, key, resolve);
         });
     }
 
-    // Stop a tunnel for a project
-    stopTunnel(subdomain) {
-        const tunnel = TUNNEL_PROCS[subdomain];
-        if (tunnel && tunnel.proc) {
-            try {
-                tunnel.proc.kill();
-            } catch (e) { /* already dead */ }
-            delete TUNNEL_PROCS[subdomain];
+    // Internal: launch (or re-launch) a cloudflared tunnel process
+    _launchTunnel(project, key, initialResolve) {
+        const port = project.port;
+        const proc = spawn(CLOUDFLARED_PATH, [
+            'tunnel', '--url', `http://localhost:${port}`, '--no-autoupdate'
+        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+        const entry = { proc, url: null, project, key };
+        TUNNEL_PROCS[key] = entry;
+
+        let resolved = false;
+        let output = '';
+
+        const handleOutput = (data) => {
+            output += data.toString();
+            // cloudflared outputs the URL to stderr like:
+            // "... | https://xxx-xxx-xxx.trycloudflare.com"
+            const match = output.match(/(https:\/\/[^\s]+\.trycloudflare\.com)/);
+            if (match && !entry.url) {
+                const url = match[1].trim();
+                entry.url = url;
+                console.log(`🌐 Cloudflare tunnel created for ${project.name}: ${url}`);
+                if (initialResolve && !resolved) {
+                    resolved = true;
+                    initialResolve(url);
+                }
+            }
+        };
+
+        proc.stdout.on('data', handleOutput);
+        proc.stderr.on('data', handleOutput);
+
+        proc.on('error', (err) => {
+            console.log(`Tunnel error [${project.name}]: ${err.message}`);
+            if (initialResolve && !resolved) {
+                resolved = true;
+                initialResolve(null);
+            }
+        });
+
+        proc.on('exit', (code) => {
+            console.log(`⚠️ Tunnel for ${project.name} exited (code ${code}). Auto-restarting in 5s...`);
+            // Auto-restart after 5 seconds
+            const retryTimer = setTimeout(() => {
+                if (TUNNEL_PROCS[key] && TUNNEL_PROCS[key].proc === proc) {
+                    console.log(`🔄 Restarting tunnel for ${project.name}...`);
+                    TUNNEL_PROCS[key].url = null;
+                    this._launchTunnel(project, key, null);
+                }
+            }, 5000);
+            if (TUNNEL_PROCS[key]) {
+                TUNNEL_PROCS[key].retryTimer = retryTimer;
+            }
+        });
+
+        // Timeout for initial resolve only
+        if (initialResolve) {
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    initialResolve(entry.url || null);
+                }
+            }, 20000);
+        }
+    }
+
+    // Stop a tunnel for a project (no auto-restart)
+    stopTunnel(key) {
+        const tunnel = TUNNEL_PROCS[key];
+        if (tunnel) {
+            // Clear retry timer to prevent auto-restart
+            if (tunnel.retryTimer) {
+                clearTimeout(tunnel.retryTimer);
+            }
+            if (tunnel.proc) {
+                try {
+                    tunnel.proc.kill('SIGTERM');
+                } catch (e) { /* already dead */ }
+            }
+            delete TUNNEL_PROCS[key];
         }
     }
 
     // Get tunnel URL for a project
-    getTunnelUrl(subdomain) {
-        return TUNNEL_PROCS[subdomain]?.url || null;
+    getTunnelUrl(key) {
+        return TUNNEL_PROCS[key]?.url || null;
     }
 }
 
