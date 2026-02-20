@@ -11,13 +11,20 @@ const PORT = process.env.PORT || 4000;
 // Middleware
 app.use(cors());
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const authMiddleware = require('./middleware/auth');
+
 // API Routes
-app.use('/api/projects', require('./routes/projects'));
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/projects', authMiddleware, require('./routes/projects'));
 app.use('/api/webhooks', require('./routes/webhooks'));
-app.use('/api/deployments', require('./routes/deployments'));
+app.use('/api/deployments', authMiddleware, require('./routes/deployments'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -26,7 +33,7 @@ app.get('/api/health', (req, res) => {
 
 // SSE - Real-time deploy progress stream
 const deployer = require('./services/deployer');
-app.get('/api/deploy-stream/:projectId', (req, res) => {
+app.get('/api/deploy-stream/:projectId', authMiddleware, (req, res) => {
     const projectId = parseInt(req.params.projectId);
 
     res.writeHead(200, {
@@ -100,9 +107,32 @@ async function start() {
             // Auto-recover tunnels for running projects
             try {
                 const tunnelService = require('./services/tunnel');
+                const dockerService = require('./services/docker');
                 const result = await db.query("SELECT * FROM projects WHERE status = 'running'");
                 const runningProjects = result.rows || [];
                 for (const project of runningProjects) {
+                    // Check and restart container if needed
+                    const containerName = `devdeploy-${project.subdomain}`;
+                    const containerStatus = await dockerService.getContainerStatus(containerName);
+                    if (containerStatus !== 'running') {
+                        console.log(`🔄 Restarting container for ${project.name} (was: ${containerStatus})...`);
+                        try {
+                            const containerId = await dockerService.startContainer(project);
+                            await db.query('UPDATE projects SET container_id = $1 WHERE id = $2', [containerId, project.id]);
+                            console.log(`✅ Container restarted: ${containerName}`);
+                        } catch (e) {
+                            console.log(`❌ Failed to restart container for ${project.name}: ${e.message}`);
+                            continue;
+                        }
+                    } else {
+                        // Update restart policy for existing running containers
+                        try {
+                            const { execSync } = require('child_process');
+                            execSync(`docker update --restart unless-stopped ${containerName} 2>/dev/null`, { stdio: 'pipe' });
+                        } catch (e) { /* ignore */ }
+                    }
+
+                    // Recover tunnel
                     console.log(`🔗 Recovering tunnel for ${project.name} (port ${project.port})...`);
                     const url = await tunnelService.startTunnel(project);
                     if (url) {
@@ -113,10 +143,10 @@ async function start() {
                     }
                 }
                 if (runningProjects.length > 0) {
-                    console.log(`🔗 Recovered tunnels for ${runningProjects.length} project(s)`);
+                    console.log(`🔗 Recovered ${runningProjects.length} project(s)`);
                 }
             } catch (e) {
-                console.error('⚠️ Tunnel recovery failed:', e.message);
+                console.error('⚠️ Project recovery failed:', e.message);
             }
         });
     } catch (error) {

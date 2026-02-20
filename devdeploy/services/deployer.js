@@ -22,6 +22,7 @@ class Deployer extends EventEmitter {
     constructor() {
         super();
         this.setMaxListeners(50);
+        this.activeDeployments = new Set();
     }
 
     // Emit a deploy progress event
@@ -41,6 +42,12 @@ class Deployer extends EventEmitter {
 
     // Full deploy pipeline
     async deploy(project, commitHash = null, commitMessage = null) {
+        if (this.activeDeployments.has(project.id)) {
+            console.log(`⚠️ Deployment already in progress for ${project.name}`);
+            return { success: false, error: 'Deployment already in progress' };
+        }
+        this.activeDeployments.add(project.id);
+
         const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
         let deploymentId;
         let logs = '';
@@ -125,6 +132,10 @@ class Deployer extends EventEmitter {
 
             this.emitProgress(project.id, 'done', `배포 실패: ${error.message}`, 'failed');
             return { success: false, logs, error: error.message };
+        } finally {
+            this.activeDeployments.delete(project.id);
+            // Run Docker image prune in background to prevent disk space exhaustion
+            dockerService.pruneImages().catch(() => { });
         }
     }
 
@@ -133,14 +144,14 @@ class Deployer extends EventEmitter {
         return new Promise((resolve, reject) => {
             if (fs.existsSync(path.join(projectDir, '.git'))) {
                 // Pull latest
-                exec(`cd ${projectDir} && git fetch origin && git reset --hard origin/${project.branch}`, (error, stdout, stderr) => {
+                exec(`cd ${projectDir} && git fetch origin && git reset --hard origin/${project.branch}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                     if (error) reject(new Error(`Git pull failed: ${stderr}`));
                     else resolve(`Git pull:\n${stdout}${stderr}`);
                 });
             } else {
                 // Clone
                 fs.mkdirSync(projectDir, { recursive: true });
-                exec(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, (error, stdout, stderr) => {
+                exec(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                     if (error) reject(new Error(`Git clone failed: ${stderr}`));
                     else resolve(`Git clone:\n${stdout}${stderr}`);
                 });

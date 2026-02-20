@@ -58,6 +58,25 @@
     </div>
   </main>
 
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="login-modal" style="z-index:9999; background:var(--background)">
+    <div class="modal" style="width: 400px; margin-top: 20vh;">
+      <div class="modal-header">
+        <h2>🔒 관리자 로그인</h2>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>비밀번호</label>
+          <input type="password" id="input-password" placeholder="기본 비밀번호: admin"
+            onkeypress="if(event.key==='Enter') login()">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="login()" style="width: 100%;">로그인</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New Project Modal -->
   <div class="modal-overlay" id="new-project-modal">
     <div class="modal">

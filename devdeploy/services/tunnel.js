@@ -1,14 +1,39 @@
-const { exec, spawn } = require('child_process');
+const { exec, execSync, spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
 const TUNNEL_PROCS = {}; // subdomain -> { proc, url, project, retryTimer }
-const CLOUDFLARED_PATH = '/tmp/cloudflared';
+const CLOUDFLARED_DIR = path.join(__dirname, '..', 'bin');
+const CLOUDFLARED_PATH = path.join(CLOUDFLARED_DIR, 'cloudflared');
 
 class TunnelService {
+    // Ensure cloudflared binary exists, download if missing
+    async ensureCloudflared() {
+        if (fs.existsSync(CLOUDFLARED_PATH)) return;
+
+        console.log('📥 Downloading cloudflared binary...');
+        fs.mkdirSync(CLOUDFLARED_DIR, { recursive: true });
+
+        try {
+            execSync(
+                `curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ${CLOUDFLARED_PATH} && chmod +x ${CLOUDFLARED_PATH}`,
+                { stdio: 'pipe', timeout: 60000 }
+            );
+            console.log('✅ cloudflared downloaded successfully');
+        } catch (e) {
+            console.error('❌ Failed to download cloudflared:', e.message);
+            throw new Error('cloudflared download failed');
+        }
+    }
+
     // Start a tunnel for a project and return the public URL
     async startTunnel(project) {
         // Stop existing tunnel for this project
         const key = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
         this.stopTunnel(key);
+
+        // Ensure cloudflared binary is available
+        await this.ensureCloudflared();
 
         return new Promise((resolve) => {
             this._launchTunnel(project, key, resolve);

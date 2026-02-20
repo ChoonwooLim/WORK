@@ -14,8 +14,9 @@ router.post('/github', async (req, res) => {
 
         // Verify signature if secret is set
         if (WEBHOOK_SECRET && signature) {
+            if (!req.rawBody) return res.status(400).json({ error: 'Raw body required for signature verification' });
             const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
-            const digest = 'sha256=' + hmac.update(JSON.stringify(req.body)).digest('hex');
+            const digest = 'sha256=' + hmac.update(req.rawBody).digest('hex');
             if (signature !== digest) {
                 return res.status(401).json({ error: 'Invalid signature' });
             }

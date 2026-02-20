@@ -21,7 +21,7 @@ class DockerService {
         fs.writeFileSync(dockerfilePath, dockerfile);
 
         return new Promise((resolve, reject) => {
-            exec(`docker build -t ${imageName} ${projectDir}`, (error, stdout, stderr) => {
+            exec(`docker build -t ${imageName} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Build failed: ${stderr}`));
                 } else {
@@ -138,9 +138,22 @@ EXPOSE ${port}
             .map(([k, v]) => `-e ${k}="${v}"`)
             .join(' ');
 
+        // Auto-mount persistent volumes if UPLOAD_DIR is defined
+        let volumeFlags = '';
+        if (envVars.UPLOAD_DIR) {
+            const uploadPath = envVars.UPLOAD_DIR;
+            // Ensure host directory exists (attempt to create it if it doesn't, ignoring errors if permissions fail)
+            try {
+                if (!fs.existsSync(uploadPath)) {
+                    execSync(`mkdir -p ${uploadPath}`);
+                }
+            } catch (e) { /* ignore */ }
+            volumeFlags = `-v ${uploadPath}:${uploadPath}`;
+        }
+
         return new Promise((resolve, reject) => {
-            const cmd = `docker run -d --name ${containerName} --network infrastructure_dev-network ${envFlags} -p ${port}:${port} ${imageName}`;
-            exec(cmd, (error, stdout, stderr) => {
+            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network infrastructure_dev-network ${volumeFlags} ${envFlags} -p ${port}:${port} ${imageName}`;
+            exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Start failed: ${stderr}`));
                 } else {
@@ -185,6 +198,16 @@ EXPOSE ${port}
             execSync(`docker rmi devdeploy-${subdomain} 2>/dev/null`, { stdio: 'pipe' });
         } catch (e) {
             // Image doesn't exist
+        }
+    }
+
+    // Prune dangling images to free up space
+    async pruneImages() {
+        try {
+            execSync('docker image prune -f', { stdio: 'ignore' });
+            console.log('🧹 Cleaned up unused Docker images');
+        } catch (e) {
+            // ignore
         }
     }
 }

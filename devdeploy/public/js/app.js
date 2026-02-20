@@ -4,6 +4,47 @@ const API = '/api';
 let currentProject = null;
 let serverHost = 'localhost'; // Will be updated with public IP
 
+const getToken = () => localStorage.getItem('devdeploy_token');
+const setToken = (t) => localStorage.setItem('devdeploy_token', t);
+
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+    let [resource, config] = args;
+    if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth/login' && resource !== '/api/health' && resource !== '/api/server-info' && !resource.startsWith('/api/webhooks')) {
+        config = config || {};
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = `Bearer ${getToken() || ''}`;
+    }
+    const response = await originalFetch(resource, config);
+    if (response.status === 401) {
+        document.getElementById('login-modal').classList.add('active');
+        document.getElementById('input-password').focus();
+    }
+    return response;
+};
+
+async function login() {
+    const password = document.getElementById('input-password').value;
+    try {
+        const res = await originalFetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        if (!res.ok) {
+            toast('비밀번호가 틀렸습니다.', 'error');
+            return;
+        }
+        const data = await res.json();
+        setToken(data.token);
+        document.getElementById('login-modal').classList.remove('active');
+        document.getElementById('input-password').value = '';
+        init(); // reload data
+    } catch (e) {
+        toast('로그인 실패', 'error');
+    }
+}
+
 // ============ PROJECT LIST ============
 
 async function loadProjects() {
@@ -162,7 +203,7 @@ function openDeployModal(projectId) {
         activeEventSource.close();
     }
 
-    const es = new EventSource(`${API}/deploy-stream/${projectId}`);
+    const es = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
     activeEventSource = es;
 
     let completedSteps = [];
