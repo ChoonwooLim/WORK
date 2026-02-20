@@ -92,17 +92,23 @@ class Deployer extends EventEmitter {
             logs += 'nginx reloaded.\n';
             this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
 
-            // Step 5: Create tunnel for external access
-            this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 중...');
-            let tunnelUrl = null;
-            logs += '\nCreating tunnel for external access...\n';
-            tunnelUrl = await tunnelService.startTunnel(project);
+            // Step 5: Reuse existing tunnel or create new one
+            const tunnelKey = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            let tunnelUrl = tunnelService.getTunnelUrl(tunnelKey);
             if (tunnelUrl) {
-                logs += `🌐 Tunnel URL: ${tunnelUrl}\n`;
-                this.emitProgress(project.id, 'tunnel', `터널 생성 완료: ${tunnelUrl}`);
+                logs += `\n🌐 Reusing existing tunnel: ${tunnelUrl}\n`;
+                this.emitProgress(project.id, 'tunnel', `기존 터널 유지: ${tunnelUrl}`);
             } else {
-                logs += '⚠️ Tunnel creation skipped or failed\n';
-                this.emitProgress(project.id, 'tunnel', '터널 생성 건너뜀');
+                this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 중...');
+                logs += '\nCreating tunnel for external access...\n';
+                tunnelUrl = await tunnelService.startTunnel(project);
+                if (tunnelUrl) {
+                    logs += `🌐 Tunnel URL: ${tunnelUrl}\n`;
+                    this.emitProgress(project.id, 'tunnel', `터널 생성 완료: ${tunnelUrl}`);
+                } else {
+                    logs += '⚠️ Tunnel creation skipped or failed\n';
+                    this.emitProgress(project.id, 'tunnel', '터널 생성 건너뜀');
+                }
             }
 
             // Step 6: Update DB
