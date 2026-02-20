@@ -114,50 +114,47 @@ async function loadProjects() {
 }
 
 function renderProjects(projects) {
-    const makeCard = (p) => {
-        const localUrl = `http://${serverHost}:${p.port}`;
-        const siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || localUrl);
-        const urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
-        const autoDeployBadge = p.auto_deploy !== false
-            ? `<span class="badge" style="background:rgba(63,185,80,0.15);color:#3fb950;font-size:11px;padding:2px 8px;">🔄 자동</span>`
-            : `<span class="badge" style="background:rgba(139,148,158,0.15);color:#8b949e;font-size:11px;padding:2px 8px;">✋ 수동</span>`;
-        return `
-    <div class="project-card" onclick="openProject(${p.id})">
-      <div class="project-status ${p.status}"></div>
-      <div class="project-info">
-        <div class="project-name">${escapeHtml(p.name)}</div>
-        <div class="project-meta">
-          ${p.status === 'running'
-                ? `<a href="${siteUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none;font-weight:600;">🌐 ${urlLabel}</a>`
-                : `<span style="color:var(--text-muted)">🌐 ${urlLabel}</span>`}
-          <span>📂 ${extractRepoName(p.github_url)}</span>
-          <span>🔀 ${p.branch}</span>
-          <span class="badge badge-${p.status}">${statusLabel(p.status)}</span>
-          ${autoDeployBadge}
-        </div>
-      </div>
-      <div class="project-actions">
-        ${p.status === 'running'
-                ? `<a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank" onclick="event.stopPropagation()">🌐 열기</a>
-               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); deployProject(${p.id})">🔄</button>
-               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹</button>`
-                : `<button class="btn btn-sm btn-success" onclick="event.stopPropagation(); deployProject(${p.id})">▶ 배포</button>`}
-        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteProject(${p.id})">🗑</button>
-      </div>
-    </div>`;
-    };
-
-    // Full project list page
+    // ===== Projects Page: Premium Selector Grid =====
     const list = document.getElementById('project-list');
     if (projects.length === 0) {
         list.innerHTML = `<div class="empty-state"><div class="icon">📦</div><h3>프로젝트가 없습니다</h3><p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p></div>`;
     } else {
-        list.innerHTML = projects.map(makeCard).join('');
+        list.innerHTML = `<div class="selector-grid">${projects.map(p => {
+            const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+            const statusGlow = p.status === 'running' ? `box-shadow: 0 0 20px ${statusColors.running}22, inset 0 1px 0 rgba(255,255,255,0.05);` : '';
+            const updatedAt = p.updated_at ? timeAgo(p.updated_at) : timeAgo(p.created_at);
+            return `
+        <div class="selector-card" onclick="openProject(${p.id})" style="${statusGlow}">
+          <div class="selector-card-top">
+            <div class="selector-status-dot" style="background:${statusColors[p.status] || '#484f58'};${p.status === 'running' ? `box-shadow:0 0 8px ${statusColors.running};` : ''}"></div>
+            <span class="selector-status-label">${statusLabel(p.status)}</span>
+          </div>
+          <div class="selector-card-name">${escapeHtml(p.name)}</div>
+          <div class="selector-card-repo">${extractRepoName(p.github_url)}</div>
+          <div class="selector-card-footer">
+            <span>${p.branch}</span>
+            <span>${updatedAt}</span>
+          </div>
+        </div>`;
+        }).join('')}</div>`;
     }
 
-    // Dashboard recent projects
+    // ===== Dashboard: Compact Status Cards =====
     const dashList = document.getElementById('dashboard-project-list');
-    if (dashList) dashList.innerHTML = projects.map(makeCard).join('');
+    if (dashList) {
+        dashList.innerHTML = projects.map(p => {
+            const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+            return `
+        <div class="dash-project-row" onclick="openProject(${p.id})">
+          <div class="selector-status-dot" style="background:${statusColors[p.status] || '#484f58'};${p.status === 'running' ? `box-shadow:0 0 6px ${statusColors.running};` : ''}"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:15px;margin-bottom:2px;">${escapeHtml(p.name)}</div>
+            <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${extractRepoName(p.github_url)} · ${p.branch}</div>
+          </div>
+          <span class="badge badge-${p.status}" style="font-size:11px;">${statusLabel(p.status)}</span>
+        </div>`;
+        }).join('');
+    }
 }
 
 function updateStats(projects) {
