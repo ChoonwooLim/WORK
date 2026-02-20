@@ -1,5 +1,5 @@
 [Unit]
-Description=stevenhub.loca.lt Dashboard Tunnel
+Description=iiff.loca.lt Project Tunnel
 After=network.target devdeploy.service
 Wants=devdeploy.service
 
@@ -8,7 +8,7 @@ Type=simple
 User=stevenlim
 Environment=PATH=/home/stevenlim/.nvm/versions/node/v24.13.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WorkingDirectory=/home/stevenlim/WORK/devdeploy
-ExecStart=/home/stevenlim/.nvm/versions/node/v24.13.1/bin/npx -y localtunnel --port 4000 --subdomain stevenhub --local-host 127.0.0.1
+ExecStart=/home/stevenlim/.nvm/versions/node/v24.13.1/bin/npx -y localtunnel --port 3473 --subdomain iiff --local-host 127.0.0.1
 Restart=always
 RestartSec=5
 StandardOutput=journal
