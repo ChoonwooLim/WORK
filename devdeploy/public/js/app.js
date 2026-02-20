@@ -1,8 +1,9 @@
-// DevDeploy Dashboard - Frontend JavaScript
+// DevDeploy Dashboard - Frontend JavaScript (Sidebar Layout)
 
 const API = '/api';
 let currentProject = null;
-let serverHost = 'localhost'; // Will be updated with public IP
+let serverHost = 'localhost';
+let currentPage = 'dashboard';
 
 const getToken = () => localStorage.getItem('devdeploy_token');
 const setToken = (t) => localStorage.setItem('devdeploy_token', t);
@@ -31,18 +32,72 @@ async function login() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password })
         });
-        if (!res.ok) {
-            toast('비밀번호가 틀렸습니다.', 'error');
-            return;
-        }
+        if (!res.ok) { toast('비밀번호가 틀렸습니다.', 'error'); return; }
         const data = await res.json();
         setToken(data.token);
         document.getElementById('login-modal').classList.remove('active');
         document.getElementById('input-password').value = '';
-        init(); // reload data
-    } catch (e) {
-        toast('로그인 실패', 'error');
+        init();
+    } catch (e) { toast('로그인 실패', 'error'); }
+}
+
+// ============ NAVIGATION ============
+
+function navigateTo(page) {
+    currentPage = page;
+
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+    // Deactivate all nav items
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+    // Show target page
+    const pageEl = document.getElementById(`page-${page}`);
+    if (pageEl) pageEl.classList.add('active');
+
+    // Activate nav item
+    const navEl = document.getElementById(`nav-${page}`);
+    if (navEl) navEl.classList.add('active');
+
+    // Update topbar title
+    const titles = {
+        'dashboard': '📊 대시보드',
+        'projects': '📦 프로젝트',
+        'project-overview': `📋 ${currentProject?.name || ''} — 개요`,
+        'project-logs': `📄 ${currentProject?.name || ''} — 로그`,
+        'project-deployments': `🔄 ${currentProject?.name || ''} — 배포 이력`,
+        'project-env': `🔧 ${currentProject?.name || ''} — 환경변수`,
+        'project-console': `🖥 ${currentProject?.name || ''} — 콘솔`,
+        'project-settings': `⚙️ ${currentProject?.name || ''} — 설정`,
+    };
+    document.getElementById('topbar-title').textContent = titles[page] || '';
+
+    // Update topbar actions
+    const actions = document.getElementById('topbar-actions');
+    if (page.startsWith('project-') && currentProject) {
+        const siteUrl = currentProject.custom_domain ? `http://${currentProject.custom_domain}` : (currentProject.tunnel_url || `http://${serverHost}:${currentProject.port}`);
+        actions.innerHTML = `
+            ${currentProject.status === 'running' ? `<a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank">🌐 열기</a>` : ''}
+            <button class="btn btn-sm btn-ghost" onclick="deployProject(${currentProject.id})">🔄 재배포</button>
+            ${currentProject.status === 'running' ? `<button class="btn btn-sm btn-ghost" onclick="stopProject(${currentProject.id})">⏹ 중지</button>` : ''}
+        `;
+    } else {
+        actions.innerHTML = '';
     }
+
+    // Show/hide project sub-nav
+    const showProjectNav = page.startsWith('project-');
+    document.getElementById('nav-project-section').style.display = showProjectNav ? 'block' : 'none';
+    document.getElementById('nav-project-items').style.display = showProjectNav ? 'block' : 'none';
+
+    // Load page data
+    if (page === 'project-overview') renderProjectOverview();
+    if (page === 'project-logs') refreshLogs();
+    if (page === 'project-deployments') loadDeployments();
+    if (page === 'project-env') renderEnvVars();
+    if (page === 'project-settings') renderSettings();
+    if (page === 'project-console') document.getElementById('console-input')?.focus();
 }
 
 // ============ PROJECT LIST ============
@@ -59,25 +114,13 @@ async function loadProjects() {
 }
 
 function renderProjects(projects) {
-    const list = document.getElementById('project-list');
-
-    if (projects.length === 0) {
-        list.innerHTML = `
-      <div class="empty-state">
-        <div class="icon">📦</div>
-        <h3>프로젝트가 없습니다</h3>
-        <p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p>
-      </div>`;
-        return;
-    }
-
-    list.innerHTML = projects.map(p => {
+    const makeCard = (p) => {
         const localUrl = `http://${serverHost}:${p.port}`;
-        const siteUrl = p.tunnel_url || localUrl;
-        const urlLabel = p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`;
+        const siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || localUrl);
+        const urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
         const autoDeployBadge = p.auto_deploy !== false
-            ? `<span class="badge" style="background:rgba(63,185,80,0.15);color:#3fb950;font-size:11px;padding:2px 8px;cursor:pointer;" onclick="event.stopPropagation(); toggleAutoDeploy(${p.id}, false)" title="클릭하여 수동으로 변경">🔄 자동</span>`
-            : `<span class="badge" style="background:rgba(139,148,158,0.15);color:#8b949e;font-size:11px;padding:2px 8px;cursor:pointer;" onclick="event.stopPropagation(); toggleAutoDeploy(${p.id}, true)" title="클릭하여 자동으로 변경">✋ 수동</span>`;
+            ? `<span class="badge" style="background:rgba(63,185,80,0.15);color:#3fb950;font-size:11px;padding:2px 8px;">🔄 자동</span>`
+            : `<span class="badge" style="background:rgba(139,148,158,0.15);color:#8b949e;font-size:11px;padding:2px 8px;">✋ 수동</span>`;
         return `
     <div class="project-card" onclick="openProject(${p.id})">
       <div class="project-status ${p.status}"></div>
@@ -86,8 +129,7 @@ function renderProjects(projects) {
         <div class="project-meta">
           ${p.status === 'running'
                 ? `<a href="${siteUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none;font-weight:600;">🌐 ${urlLabel}</a>`
-                : `<span style="color:var(--text-muted)">🌐 ${urlLabel}</span>`
-            }
+                : `<span style="color:var(--text-muted)">🌐 ${urlLabel}</span>`}
           <span>📂 ${extractRepoName(p.github_url)}</span>
           <span>🔀 ${p.branch}</span>
           <span class="badge badge-${p.status}">${statusLabel(p.status)}</span>
@@ -97,14 +139,25 @@ function renderProjects(projects) {
       <div class="project-actions">
         ${p.status === 'running'
                 ? `<a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank" onclick="event.stopPropagation()">🌐 열기</a>
-               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); deployProject(${p.id})" title="재배포">🔄 재배포</button>
-               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹ 중지</button>`
-                : `<button class="btn btn-sm btn-success" onclick="event.stopPropagation(); deployProject(${p.id})">▶ 배포</button>`
-            }
+               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); deployProject(${p.id})">🔄</button>
+               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹</button>`
+                : `<button class="btn btn-sm btn-success" onclick="event.stopPropagation(); deployProject(${p.id})">▶ 배포</button>`}
         <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteProject(${p.id})">🗑</button>
       </div>
     </div>`;
-    }).join('');
+    };
+
+    // Full project list page
+    const list = document.getElementById('project-list');
+    if (projects.length === 0) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">📦</div><h3>프로젝트가 없습니다</h3><p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p></div>`;
+    } else {
+        list.innerHTML = projects.map(makeCard).join('');
+    }
+
+    // Dashboard recent projects
+    const dashList = document.getElementById('dashboard-project-list');
+    if (dashList) dashList.innerHTML = projects.map(makeCard).join('');
 }
 
 function updateStats(projects) {
@@ -114,253 +167,38 @@ function updateStats(projects) {
     document.getElementById('stat-building').textContent = projects.filter(p => p.status === 'building').length;
 }
 
-// ============ PROJECT ACTIONS ============
-
-async function createProject() {
-    const name = document.getElementById('input-name').value.trim();
-    const github_url = document.getElementById('input-github').value.trim();
-    const branch = document.getElementById('input-branch').value.trim() || 'main';
-    const build_command = document.getElementById('input-build').value.trim();
-    const start_command = document.getElementById('input-start').value.trim();
-    const port = document.getElementById('input-port').value ? parseInt(document.getElementById('input-port').value) : null;
-    const subdomain = document.getElementById('input-subdomain').value.trim() || null;
-
-    if (!name || !github_url) {
-        toast('프로젝트 이름과 GitHub URL은 필수입니다.', 'error');
-        return;
-    }
-
-    const auto_deploy = document.getElementById('input-autodeploy')?.checked ?? true;
-
-    try {
-        const res = await fetch(`${API}/projects`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, github_url, branch, build_command, start_command, port, subdomain, auto_deploy })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error);
-        }
-
-        toast('프로젝트가 생성되었습니다!', 'success');
-        closeModal();
-        loadProjects();
-    } catch (error) {
-        toast(error.message, 'error');
-    }
-}
-
-async function deployProject(id) {
-    try {
-        // Close detail modal if open
-        closeDetailModal();
-
-        // Open deploy monitoring modal
-        openDeployModal(id);
-
-        // Trigger deployment
-        await fetch(`${API}/projects/${id}/deploy`, { method: 'POST' });
-    } catch (error) {
-        toast('배포 요청 실패: ' + error.message, 'error');
-    }
-}
-
-let activeEventSource = null;
-
-function openDeployModal(projectId) {
-    const modal = document.getElementById('deploy-modal');
-    modal.classList.add('active');
-
-    // Reset UI
-    document.getElementById('deploy-modal-title').textContent = '🚀 배포 진행 중...';
-    document.getElementById('deploy-progress-fill').style.width = '0%';
-    document.getElementById('deploy-progress-fill').className = 'deploy-progress-fill';
-    document.getElementById('deploy-progress-label').textContent = '배포를 시작합니다...';
-    document.getElementById('deploy-log-viewer').textContent = '';
-    document.getElementById('deploy-log-viewer').classList.remove('collapsed');
-
-    // Build step checklist
-    const defaultSteps = [
-        { id: 'clone', label: '📥 소스 코드 가져오기' },
-        { id: 'build', label: '🔨 Docker 이미지 빌드' },
-        { id: 'container', label: '🚀 컨테이너 시작' },
-        { id: 'nginx', label: '🌐 프록시 설정' },
-        { id: 'tunnel', label: '🔗 외부 접속 터널 생성' },
-        { id: 'done', label: '✅ 배포 완료' },
-    ];
-    document.getElementById('deploy-steps').innerHTML = defaultSteps.map(s => `
-        <div class="deploy-step" id="step-${s.id}">
-          <div class="deploy-step-icon">●</div>
-          <div class="deploy-step-label">${s.label}</div>
-          <div class="deploy-step-status"></div>
-        </div>
-    `).join('');
-
-    // Connect SSE
-    if (activeEventSource) {
-        activeEventSource.close();
-    }
-
-    const es = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
-    activeEventSource = es;
-
-    let completedSteps = [];
-
-    es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'connected') return;
-
-        // Update progress bar
-        document.getElementById('deploy-progress-fill').style.width = data.progress + '%';
-        document.getElementById('deploy-progress-label').textContent = data.message;
-
-        // Update step states
-        const currentStepId = data.stepId;
-
-        // Mark previous steps as completed
-        if (!completedSteps.includes(currentStepId)) {
-            defaultSteps.forEach(s => {
-                const el = document.getElementById(`step-${s.id}`);
-                if (!el) return;
-                if (completedSteps.includes(s.id)) {
-                    el.className = 'deploy-step completed';
-                    el.querySelector('.deploy-step-icon').textContent = '✓';
-                }
-            });
-        }
-
-        const currentEl = document.getElementById(`step-${currentStepId}`);
-        if (currentEl) {
-            if (data.status === 'success') {
-                // All steps completed
-                currentEl.className = 'deploy-step completed';
-                currentEl.querySelector('.deploy-step-icon').textContent = '✓';
-                document.getElementById('deploy-progress-fill').classList.add('done');
-                document.getElementById('deploy-modal-title').textContent = '✅ 배포 완료!';
-
-                // Add success result
-                const logViewer = document.getElementById('deploy-log-viewer');
-                logViewer.textContent += '\n✅ 배포가 성공적으로 완료되었습니다!\n';
-
-                es.close();
-                activeEventSource = null;
-                loadProjects();
-            } else if (data.status === 'failed') {
-                currentEl.className = 'deploy-step failed';
-                currentEl.querySelector('.deploy-step-icon').textContent = '✕';
-                document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
-                document.getElementById('deploy-progress-fill').classList.add('done');
-                document.getElementById('deploy-modal-title').textContent = '❌ 배포 실패';
-
-                es.close();
-                activeEventSource = null;
-                loadProjects();
-            } else {
-                // Running - mark as active
-                currentEl.className = 'deploy-step active';
-                currentEl.querySelector('.deploy-step-icon').textContent = '◉';
-            }
-        }
-
-        // Track completed steps
-        if (data.status === 'running' && !completedSteps.includes(currentStepId)) {
-            // Mark all steps before this one as completed
-            for (const s of defaultSteps) {
-                if (s.id === currentStepId) break;
-                if (!completedSteps.includes(s.id)) {
-                    completedSteps.push(s.id);
-                    const el = document.getElementById(`step-${s.id}`);
-                    if (el) {
-                        el.className = 'deploy-step completed';
-                        el.querySelector('.deploy-step-icon').textContent = '✓';
-                    }
-                }
-            }
-        }
-
-        // Append to log viewer
-        const logViewer = document.getElementById('deploy-log-viewer');
-        const timestamp = new Date(data.timestamp).toLocaleTimeString('ko-KR');
-        logViewer.textContent += `[${timestamp}] ${data.message}\n`;
-        logViewer.scrollTop = logViewer.scrollHeight;
-    };
-
-    es.onerror = () => {
-        // SSE disconnected - may happen after deploy completes
-        setTimeout(() => {
-            if (activeEventSource === es) {
-                es.close();
-                activeEventSource = null;
-            }
-        }, 3000);
-    };
-}
-
-function closeDeployModal() {
-    document.getElementById('deploy-modal').classList.remove('active');
-    if (activeEventSource) {
-        activeEventSource.close();
-        activeEventSource = null;
-    }
-    loadProjects();
-}
-
-function toggleDeployLog() {
-    document.getElementById('deploy-log-viewer').classList.toggle('collapsed');
-}
-
-async function stopProject(id) {
-    try {
-        await fetch(`${API}/projects/${id}/stop`, { method: 'POST' });
-        toast('프로젝트가 중지되었습니다.', 'success');
-        loadProjects();
-    } catch (error) {
-        toast('중지 실패: ' + error.message, 'error');
-    }
-}
-
-async function deleteProject(id) {
-    if (!confirm('정말로 이 프로젝트를 삭제하시겠습니까?')) return;
-    try {
-        await fetch(`${API}/projects/${id}`, { method: 'DELETE' });
-        toast('프로젝트가 삭제되었습니다.', 'success');
-        loadProjects();
-    } catch (error) {
-        toast('삭제 실패: ' + error.message, 'error');
-    }
-}
-
 // ============ PROJECT DETAIL ============
 
 async function openProject(id) {
     try {
         const res = await fetch(`${API}/projects/${id}`);
         currentProject = await res.json();
-        renderProjectDetail();
-        document.getElementById('detail-modal').classList.add('active');
-        switchTab('overview');
+        navigateTo('project-overview');
     } catch (error) {
         toast('프로젝트 로드 실패', 'error');
     }
 }
 
-function renderProjectDetail() {
+function renderProjectOverview() {
     const p = currentProject;
-    document.getElementById('detail-title').textContent = `📦 ${p.name}`;
-
-    // Overview
+    if (!p) return;
     const localUrl = `http://${serverHost}:${p.port}`;
-    const siteUrl = p.tunnel_url || localUrl;
-    const urlLabel = p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`;
+    const siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || localUrl);
+    const urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
+
     document.getElementById('overview-content').innerHTML = `
     ${p.status === 'running' ? `
-    <div style="background:linear-gradient(135deg,rgba(63,185,80,0.15),rgba(88,166,255,0.1));border:1px solid var(--success);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;text-align:center;">
+    <div style="background:linear-gradient(135deg,rgba(63,185,80,0.15),rgba(88,166,255,0.1));border:1px solid var(--success);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
       <div style="font-size:13px;color:var(--success);margin-bottom:8px;font-weight:600;">🟢 사이트 실행 중</div>
-      <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:20px;font-weight:700;text-decoration:none;">${urlLabel}</a>
+      <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:22px;font-weight:700;text-decoration:none;">${urlLabel}</a>
+      ${p.custom_domain ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">터널: ${p.tunnel_url || 'N/A'}</div>` : ''}
       <div style="margin-top:12px;"><a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">🌐 사이트 열기</a></div>
-    </div>` : ''}
+    </div>` : `
+    <div style="background:rgba(139,148,158,0.1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">⏹ 중지됨</div>
+      <button class="btn btn-success" onclick="deployProject(${p.id})">▶ 배포 시작</button>
+    </div>`}
+    <div id="resource-monitor"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">상태</div>
@@ -368,7 +206,7 @@ function renderProjectDetail() {
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">사이트 URL</div>
-        <a href="${siteUrl}" target="_blank" style="color:var(--accent);">${siteUrl}</a>
+        <a href="${siteUrl}" target="_blank" style="color:var(--accent);">${urlLabel}</a>
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">GitHub</div>
@@ -386,86 +224,124 @@ function renderProjectDetail() {
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">생성일</div>
         <span>${new Date(p.created_at).toLocaleDateString('ko-KR')}</span>
       </div>
-    </div>
-    <div style="margin-top:24px; display:flex; gap:8px; align-items:center;">
-      ${p.status === 'running'
-            ? `<button class="btn btn-ghost" onclick="stopProject(${p.id}); closeDetailModal();">⏹ 중지</button>`
-            : `<button class="btn btn-success" onclick="deployProject(${p.id}); closeDetailModal();">▶ 배포</button>`
-        }
-      <button class="btn btn-primary" onclick="deployProject(${p.id}); closeDetailModal();">🔄 재배포</button>
-      <span style="margin-left:auto; font-size:13px; color:var(--text-secondary);">
-        ${p.auto_deploy !== false ? '🔄 자동 배포 활성' : '✋ 수동 배포'}
-      </span>
-    </div>
-  `;
+    </div>`;
+    if (p.status === 'running') loadResourceStats(p.id);
+}
 
-    // Settings
+function renderSettings() {
+    const p = currentProject;
+    if (!p) return;
     const webhookUrl = `${window.location.origin}/api/webhooks/github`;
     document.getElementById('settings-content').innerHTML = `
-    <div class="form-group">
-      <label>프로젝트 이름</label>
-      <input type="text" id="set-name" value="${escapeHtml(p.name)}">
-    </div>
-    <div class="form-group">
-      <label>GitHub URL</label>
-      <input type="text" id="set-github" value="${escapeHtml(p.github_url)}">
-    </div>
-    <div class="form-group">
-      <label>Branch</label>
-      <input type="text" id="set-branch" value="${p.branch}">
-    </div>
-    <div class="form-group">
-      <label>빌드 명령어</label>
-      <input type="text" id="set-build" value="${escapeHtml(p.build_command || '')}">
-    </div>
-    <div class="form-group">
-      <label>시작 명령어</label>
-      <input type="text" id="set-start" value="${escapeHtml(p.start_command || '')}">
+    <div class="form-group"><label>프로젝트 이름</label><input type="text" id="set-name" value="${escapeHtml(p.name)}"></div>
+    <div class="form-group"><label>GitHub URL</label><input type="text" id="set-github" value="${escapeHtml(p.github_url)}"></div>
+    <div class="form-group"><label>Branch</label><input type="text" id="set-branch" value="${p.branch}"></div>
+    <div class="form-group"><label>빌드 명령어</label><input type="text" id="set-build" value="${escapeHtml(p.build_command || '')}"></div>
+    <div class="form-group"><label>시작 명령어</label><input type="text" id="set-start" value="${escapeHtml(p.start_command || '')}"></div>
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인</label>
+      <input type="text" id="set-custom-domain" value="${escapeHtml(p.custom_domain || '')}" placeholder="예: myapp.example.com">
+      <div class="form-hint">도메인의 DNS A 레코드를 이 서버 IP로 설정한 후 입력하세요</div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🔄 배포 모드</label>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
-        <label class="toggle-switch">
-          <input type="checkbox" id="set-autodeploy" ${p.auto_deploy !== false ? 'checked' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
-        <span id="autodeploy-label" style="font-size:14px;color:var(--text-secondary);">
-          ${p.auto_deploy !== false ? '자동 배포: GitHub push 시 자동으로 재배포됩니다' : '수동 배포: 직접 배포 버튼을 눌러야 합니다'}
-        </span>
+        <label class="toggle-switch"><input type="checkbox" id="set-autodeploy" ${p.auto_deploy !== false ? 'checked' : ''}><span class="toggle-slider"></span></label>
+        <span style="font-size:14px;color:var(--text-secondary);">${p.auto_deploy !== false ? '자동 배포 활성' : '수동 배포'}</span>
       </div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🔗 GitHub Webhook URL</label>
-      <div class="form-hint">GitHub 레포 → Settings → Webhooks → Add webhook 에 아래 URL을 등록하세요</div>
+      <div class="form-hint">GitHub 레포 → Settings → Webhooks → Add webhook</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
         <input type="text" value="${webhookUrl}" readonly style="flex:1;background:var(--surface);cursor:text;" id="webhook-url-input">
-        <button class="btn btn-sm btn-ghost" onclick="copyWebhookUrl()" title="복사">📋 복사</button>
+        <button class="btn btn-sm btn-ghost" onclick="copyWebhookUrl()">📋 복사</button>
       </div>
       <div class="form-hint" style="margin-top:4px;">Content type: <code>application/json</code> | Secret: <code>devdeploy-secret</code></div>
     </div>
     <button class="btn btn-primary" onclick="saveSettings()">설정 저장</button>
-  `;
-
-    // Env vars
-    renderEnvVars();
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:24px;">
+      <button class="btn btn-danger" onclick="deleteProject(${p.id})">🗑 프로젝트 삭제</button>
+    </div>`;
 }
 
+// ============ PROJECT ACTIONS ============
+
+async function createProject() {
+    const name = document.getElementById('input-name').value.trim();
+    const github_url = document.getElementById('input-github').value.trim();
+    const branch = document.getElementById('input-branch').value.trim() || 'main';
+    const build_command = document.getElementById('input-build').value.trim();
+    const start_command = document.getElementById('input-start').value.trim();
+    const port = document.getElementById('input-port').value ? parseInt(document.getElementById('input-port').value) : null;
+    const subdomain = document.getElementById('input-subdomain').value.trim() || null;
+    if (!name || !github_url) { toast('프로젝트 이름과 GitHub URL은 필수입니다.', 'error'); return; }
+    const auto_deploy = document.getElementById('input-autodeploy')?.checked ?? true;
+    try {
+        const res = await fetch(`${API}/projects`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, github_url, branch, build_command, start_command, port, subdomain, auto_deploy })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast('프로젝트가 생성되었습니다!', 'success');
+        closeModal();
+        loadProjects();
+    } catch (error) { toast(error.message, 'error'); }
+}
+
+async function deployProject(id) {
+    try {
+        openDeployModal(id);
+        await fetch(`${API}/projects/${id}/deploy`, { method: 'POST' });
+    } catch (error) { toast('배포 요청 실패: ' + error.message, 'error'); }
+}
+
+async function stopProject(id) {
+    try {
+        await fetch(`${API}/projects/${id}/stop`, { method: 'POST' });
+        toast('프로젝트가 중지되었습니다.', 'success');
+        loadProjects();
+        if (currentProject?.id === id) { currentProject.status = 'stopped'; navigateTo(currentPage); }
+    } catch (error) { toast('중지 실패: ' + error.message, 'error'); }
+}
+
+async function deleteProject(id) {
+    if (!confirm('정말로 이 프로젝트를 삭제하시겠습니까?')) return;
+    try {
+        await fetch(`${API}/projects/${id}`, { method: 'DELETE' });
+        toast('프로젝트가 삭제되었습니다.', 'success');
+        currentProject = null;
+        navigateTo('projects');
+        loadProjects();
+    } catch (error) { toast('삭제 실패: ' + error.message, 'error'); }
+}
+
+// ============ ENV VARS ============
+
 function renderEnvVars() {
+    if (!currentProject) return;
     const envVars = currentProject.env_vars || {};
     const container = document.getElementById('env-content');
     const entries = Object.entries(envVars);
-
     if (entries.length === 0) {
         container.innerHTML = '<p style="color:var(--text-secondary);font-size:14px;">환경변수가 없습니다.</p>';
     } else {
         container.innerHTML = entries.map(([key, val]) => `
       <div class="env-row">
         <input type="text" class="env-key" value="${escapeHtml(key)}" placeholder="KEY">
-        <input type="text" class="env-val" value="${escapeHtml(val)}" placeholder="VALUE">
+        <input type="password" class="env-val" value="${escapeHtml(val)}" placeholder="VALUE">
+        <button class="btn btn-sm btn-ghost" onclick="toggleEnvVisibility(this)">👁</button>
         <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">✕</button>
-      </div>
-    `).join('');
+      </div>`).join('');
     }
+    const badge = document.getElementById('env-changed-badge');
+    if (badge) badge.style.display = 'none';
+}
+
+function toggleEnvVisibility(btn) {
+    const input = btn.parentElement.querySelector('.env-val');
+    input.type = input.type === 'password' ? 'text' : 'password';
+    btn.textContent = input.type === 'password' ? '👁' : '🙈';
 }
 
 function addEnvRow() {
@@ -474,9 +350,9 @@ function addEnvRow() {
     row.className = 'env-row';
     row.innerHTML = `
     <input type="text" class="env-key" placeholder="KEY">
-    <input type="text" class="env-val" placeholder="VALUE">
-    <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">✕</button>
-  `;
+    <input type="password" class="env-val" placeholder="VALUE">
+    <button class="btn btn-sm btn-ghost" onclick="toggleEnvVisibility(this)">👁</button>
+    <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">✕</button>`;
     container.appendChild(row);
 }
 
@@ -488,55 +364,50 @@ async function saveEnvVars() {
         const val = row.querySelector('.env-val').value.trim();
         if (key) envVars[key] = val;
     });
-
     try {
         await fetch(`${API}/projects/${currentProject.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ env_vars: envVars })
         });
-        toast('환경변수가 저장되었습니다!', 'success');
+        toast('환경변수가 저장되었습니다! 재배포하면 적용됩니다.', 'success');
         currentProject.env_vars = envVars;
-    } catch (error) {
-        toast('저장 실패', 'error');
-    }
+        const badge = document.getElementById('env-changed-badge');
+        if (badge) badge.style.display = 'inline';
+    } catch (error) { toast('저장 실패', 'error'); }
 }
 
 async function saveSettings() {
     try {
         const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
+        const custom_domain = document.getElementById('set-custom-domain')?.value?.trim() || null;
         await fetch(`${API}/projects/${currentProject.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: document.getElementById('set-name').value,
                 github_url: document.getElementById('set-github').value,
                 branch: document.getElementById('set-branch').value,
                 build_command: document.getElementById('set-build').value,
                 start_command: document.getElementById('set-start').value,
-                auto_deploy,
+                auto_deploy, custom_domain,
             })
         });
         currentProject.auto_deploy = auto_deploy;
+        currentProject.custom_domain = custom_domain;
+        currentProject.name = document.getElementById('set-name').value;
         toast('설정이 저장되었습니다!', 'success');
         loadProjects();
-    } catch (error) {
-        toast('저장 실패', 'error');
-    }
+    } catch (error) { toast('저장 실패', 'error'); }
 }
 
 async function toggleAutoDeploy(id, enable) {
     try {
         await fetch(`${API}/projects/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ auto_deploy: enable })
         });
-        toast(enable ? '자동 배포가 활성화되었습니다' : '수동 배포로 전환되었습니다', 'success');
+        toast(enable ? '자동 배포 활성화' : '수동 배포로 전환', 'success');
         loadProjects();
-    } catch (error) {
-        toast('변경 실패', 'error');
-    }
+    } catch (error) { toast('변경 실패', 'error'); }
 }
 
 function copyWebhookUrl() {
@@ -564,38 +435,208 @@ async function loadDeployments() {
     try {
         const res = await fetch(`${API}/deployments/${currentProject.id}`);
         const deployments = await res.json();
-
         if (deployments.length === 0) {
-            document.getElementById('deployments-content').innerHTML =
-                '<p style="color:var(--text-secondary);">배포 이력이 없습니다.</p>';
+            document.getElementById('deployments-content').innerHTML = '<p style="color:var(--text-secondary);">배포 이력이 없습니다.</p>';
             return;
         }
-
-        document.getElementById('deployments-content').innerHTML = deployments.map(d => `
+        document.getElementById('deployments-content').innerHTML = deployments.map(d => {
+            const duration = d.finished_at && d.started_at ? formatDuration(new Date(d.finished_at) - new Date(d.started_at)) : '---';
+            return `
       <div class="deploy-item">
         <span class="deploy-status ${d.status}">${statusLabel(d.status)}</span>
         <div class="deploy-info">
           <div class="deploy-commit">${d.commit_hash ? d.commit_hash.substring(0, 7) : '---'} ${escapeHtml(d.commit_message || '')}</div>
-          <div class="deploy-time">${timeAgo(d.started_at)}</div>
+          <div class="deploy-time">${timeAgo(d.started_at)} · ⏱ ${duration}</div>
         </div>
-      </div>
-    `).join('');
+        ${d.status === 'success' && d.commit_hash ? `<button class="btn btn-sm btn-ghost btn-rollback" onclick="rollbackTo(${d.id})">↩ 롤백</button>` : ''}
+      </div>`;
+        }).join('');
     } catch (error) {
         document.getElementById('deployments-content').innerHTML = '<p style="color:var(--danger);">로드 실패</p>';
     }
 }
 
-// ============ TABS ============
+// ============ DEPLOY MONITOR ============
 
-function switchTab(tabName) {
-    document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+let activeEventSource = null;
 
-    event.target.classList.add('active');
-    document.getElementById(`tab-${tabName}`).classList.add('active');
+function openDeployModal(projectId) {
+    const modal = document.getElementById('deploy-modal');
+    modal.classList.add('active');
+    document.getElementById('deploy-modal-title').textContent = '🚀 배포 진행 중...';
+    document.getElementById('deploy-progress-fill').style.width = '0%';
+    document.getElementById('deploy-progress-fill').className = 'deploy-progress-fill';
+    document.getElementById('deploy-progress-label').textContent = '배포를 시작합니다...';
+    document.getElementById('deploy-log-viewer').textContent = '';
+    document.getElementById('deploy-log-viewer').classList.remove('collapsed');
 
-    if (tabName === 'logs') refreshLogs();
-    if (tabName === 'deployments') loadDeployments();
+    const defaultSteps = [
+        { id: 'clone', label: '📥 소스 코드 가져오기' },
+        { id: 'build', label: '🔨 Docker 이미지 빌드' },
+        { id: 'container', label: '🚀 컨테이너 시작' },
+        { id: 'nginx', label: '🌐 프록시 설정' },
+        { id: 'tunnel', label: '🔗 외부 접속 터널 생성' },
+        { id: 'done', label: '✅ 배포 완료' },
+    ];
+    document.getElementById('deploy-steps').innerHTML = defaultSteps.map(s => `
+        <div class="deploy-step" id="step-${s.id}">
+          <div class="deploy-step-icon">●</div>
+          <div class="deploy-step-label">${s.label}</div>
+        </div>`).join('');
+
+    if (activeEventSource) activeEventSource.close();
+    const es = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
+    activeEventSource = es;
+    let completedSteps = [];
+
+    es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'connected') return;
+        document.getElementById('deploy-progress-fill').style.width = data.progress + '%';
+        document.getElementById('deploy-progress-label').textContent = data.message;
+        const currentStepId = data.stepId;
+
+        if (!completedSteps.includes(currentStepId)) {
+            defaultSteps.forEach(s => {
+                const el = document.getElementById(`step-${s.id}`);
+                if (el && completedSteps.includes(s.id)) {
+                    el.className = 'deploy-step completed';
+                    el.querySelector('.deploy-step-icon').textContent = '✓';
+                }
+            });
+        }
+
+        const currentEl = document.getElementById(`step-${currentStepId}`);
+        if (currentEl) {
+            if (data.status === 'success') {
+                currentEl.className = 'deploy-step completed';
+                currentEl.querySelector('.deploy-step-icon').textContent = '✓';
+                document.getElementById('deploy-progress-fill').classList.add('done');
+                document.getElementById('deploy-modal-title').textContent = '✅ 배포 완료!';
+                document.getElementById('deploy-log-viewer').textContent += '\n✅ 배포가 성공적으로 완료되었습니다!\n';
+                es.close(); activeEventSource = null; loadProjects();
+                if (currentProject?.id === projectId) openProject(projectId);
+            } else if (data.status === 'failed') {
+                currentEl.className = 'deploy-step failed';
+                currentEl.querySelector('.deploy-step-icon').textContent = '✕';
+                document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
+                document.getElementById('deploy-progress-fill').classList.add('done');
+                document.getElementById('deploy-modal-title').textContent = '❌ 배포 실패';
+                es.close(); activeEventSource = null; loadProjects();
+            } else {
+                currentEl.className = 'deploy-step active';
+                currentEl.querySelector('.deploy-step-icon').textContent = '◉';
+            }
+        }
+
+        if (data.status === 'running' && !completedSteps.includes(currentStepId)) {
+            for (const s of defaultSteps) {
+                if (s.id === currentStepId) break;
+                if (!completedSteps.includes(s.id)) {
+                    completedSteps.push(s.id);
+                    const el = document.getElementById(`step-${s.id}`);
+                    if (el) { el.className = 'deploy-step completed'; el.querySelector('.deploy-step-icon').textContent = '✓'; }
+                }
+            }
+        }
+
+        const logViewer = document.getElementById('deploy-log-viewer');
+        const timestamp = new Date(data.timestamp).toLocaleTimeString('ko-KR');
+        logViewer.textContent += `[${timestamp}] ${data.message}\n`;
+        logViewer.scrollTop = logViewer.scrollHeight;
+    };
+
+    es.onerror = () => {
+        setTimeout(() => { if (activeEventSource === es) { es.close(); activeEventSource = null; } }, 3000);
+    };
+}
+
+function closeDeployModal() {
+    document.getElementById('deploy-modal').classList.remove('active');
+    if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
+    loadProjects();
+}
+
+function toggleDeployLog() { document.getElementById('deploy-log-viewer').classList.toggle('collapsed'); }
+
+// ============ NEW FEATURES ============
+
+async function loadResourceStats(projectId) {
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/stats`);
+        const stats = await res.json();
+        const monitor = document.getElementById('resource-monitor');
+        if (!monitor) return;
+        const cpuVal = parseFloat(stats.cpu) || 0;
+        const memVal = parseFloat(stats.memPercent) || 0;
+        const uptime = formatUptime(stats.uptime || 0);
+        monitor.innerHTML = `
+        <div class="resource-grid">
+          <div class="resource-card"><div class="resource-label">💻 CPU</div><div class="resource-value" style="color:var(--accent)">${cpuVal.toFixed(1)}%</div><div class="resource-bar"><div class="resource-bar-fill cpu" style="width:${Math.min(cpuVal, 100)}%"></div></div></div>
+          <div class="resource-card"><div class="resource-label">🧠 메모리</div><div class="resource-value" style="color:var(--purple)">${stats.memUsage}</div><div class="resource-bar"><div class="resource-bar-fill mem" style="width:${Math.min(memVal, 100)}%"></div></div></div>
+          <div class="resource-card"><div class="resource-label">⏱ Uptime</div><div class="resource-value">${uptime}</div></div>
+          <div class="resource-card"><div class="resource-label">🌐 Network I/O</div><div class="resource-value" style="font-size:14px">${stats.netIO}</div></div>
+        </div>`;
+    } catch (e) { /* ignore */ }
+}
+
+async function rollbackTo(deploymentId) {
+    if (!confirm('이 버전으로 롤백하시겠습니까?')) return;
+    try {
+        openDeployModal(currentProject.id);
+        await fetch(`${API}/projects/${currentProject.id}/rollback`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deployment_id: deploymentId })
+        });
+    } catch (e) { toast('롤백 실패: ' + e.message, 'error'); }
+}
+
+async function execCommand() {
+    const input = document.getElementById('console-input');
+    const output = document.getElementById('console-output');
+    const cmd = input.value.trim();
+    if (!cmd || !currentProject) return;
+    output.textContent += `$ ${cmd}\n`;
+    input.value = '';
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/exec`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: cmd })
+        });
+        const data = await res.json();
+        output.textContent += (data.output || '(no output)') + '\n';
+    } catch (e) { output.textContent += `Error: ${e.message}\n`; }
+    output.scrollTop = output.scrollHeight;
+}
+
+function openBulkImport() {
+    document.getElementById('bulk-import-modal').classList.add('active');
+    document.getElementById('bulk-env-input').value = '';
+    document.getElementById('bulk-env-input').focus();
+}
+function closeBulkImport() { document.getElementById('bulk-import-modal').classList.remove('active'); }
+
+function applyBulkImport() {
+    const raw = document.getElementById('bulk-env-input').value;
+    const lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+    const container = document.getElementById('env-content');
+    lines.forEach(line => {
+        const eqIdx = line.indexOf('=');
+        if (eqIdx === -1) return;
+        const key = line.substring(0, eqIdx).trim();
+        const val = line.substring(eqIdx + 1).trim();
+        if (!key) return;
+        const row = document.createElement('div');
+        row.className = 'env-row';
+        row.innerHTML = `
+        <input type="text" class="env-key" value="${escapeHtml(key)}" placeholder="KEY">
+        <input type="password" class="env-val" value="${escapeHtml(val)}" placeholder="VALUE">
+        <button class="btn btn-sm btn-ghost" onclick="toggleEnvVisibility(this)">👁</button>
+        <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">✕</button>`;
+        container.appendChild(row);
+    });
+    closeBulkImport();
+    toast(`${lines.length}개 변수가 추가되었습니다`, 'success');
 }
 
 // ============ MODALS ============
@@ -612,23 +653,10 @@ function openNewProjectModal() {
     document.getElementById('input-name').focus();
 }
 
-function closeModal() {
-    document.getElementById('new-project-modal').classList.remove('active');
-}
+function closeModal() { document.getElementById('new-project-modal').classList.remove('active'); }
 
-function closeDetailModal() {
-    document.getElementById('detail-modal').classList.remove('active');
-    currentProject = null;
-}
-
-// Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-            overlay.classList.remove('active');
-            currentProject = null;
-        }
-    });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('active'); });
 });
 
 // ============ HELPERS ============
@@ -651,10 +679,25 @@ function statusLabel(status) {
 
 function timeAgo(dateStr) {
     const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
+    if (seconds < 0) return '방금 전';
     if (seconds < 60) return '방금 전';
     if (seconds < 3600) return `${Math.floor(seconds / 60)}분 전`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}시간 전`;
     return `${Math.floor(seconds / 86400)}일 전`;
+}
+
+function formatUptime(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}초`;
+    if (s < 3600) return `${Math.floor(s / 60)}분`;
+    if (s < 86400) return `${Math.floor(s / 3600)}시간 ${Math.floor((s % 3600) / 60)}분`;
+    return `${Math.floor(s / 86400)}일 ${Math.floor((s % 86400) / 3600)}시간`;
+}
+
+function formatDuration(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}초`;
+    return `${Math.floor(s / 60)}분 ${s % 60}초`;
 }
 
 function toast(message, type = 'info') {
@@ -668,7 +711,6 @@ function toast(message, type = 'info') {
 
 // ============ INIT ============
 
-// Fetch public IP then load projects
 async function init() {
     try {
         const res = await fetch(`${API}/server-info`);

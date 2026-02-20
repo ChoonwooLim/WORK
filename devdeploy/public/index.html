@@ -12,54 +12,149 @@
 
 <body>
 
-  <!-- Header -->
-  <header class="header">
-    <a href="/" class="header-logo">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
       <span class="icon">🚀</span>
       <span>DevDeploy</span>
-    </a>
-    <div class="header-actions">
-      <button class="btn btn-primary" onclick="openNewProjectModal()">+ New Project</button>
     </div>
-  </header>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">메뉴</div>
+      <a class="nav-item active" onclick="navigateTo('dashboard')" id="nav-dashboard">
+        <span class="nav-icon">📊</span>
+        <span>대시보드</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('projects')" id="nav-projects">
+        <span class="nav-icon">📦</span>
+        <span>프로젝트</span>
+      </a>
+
+      <div class="nav-section-label" id="nav-project-section" style="display:none;">프로젝트 상세</div>
+      <div id="nav-project-items" style="display:none;">
+        <a class="nav-item sub" onclick="navigateTo('project-overview')" id="nav-project-overview">
+          <span class="nav-icon">📋</span>
+          <span>개요</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-logs')" id="nav-project-logs">
+          <span class="nav-icon">📄</span>
+          <span>로그</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-deployments')" id="nav-project-deployments">
+          <span class="nav-icon">🔄</span>
+          <span>배포 이력</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-env')" id="nav-project-env">
+          <span class="nav-icon">🔧</span>
+          <span>환경변수</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-console')" id="nav-project-console">
+          <span class="nav-icon">🖥</span>
+          <span>콘솔</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-settings')" id="nav-project-settings">
+          <span class="nav-icon">⚙️</span>
+          <span>설정</span>
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="btn btn-primary" style="width:100%;" onclick="openNewProjectModal()">+ New Project</button>
+    </div>
+  </aside>
 
   <!-- Main Content -->
-  <main class="main" id="app">
-    <!-- Stats -->
-    <div class="stats" id="stats">
-      <div class="stat-card">
-        <div class="stat-value" id="stat-total">0</div>
-        <div class="stat-label">전체 프로젝트</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--success)" id="stat-running">0</div>
-        <div class="stat-label">실행 중</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--danger)" id="stat-stopped">0</div>
-        <div class="stat-label">중지됨</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--warning)" id="stat-building">0</div>
-        <div class="stat-label">빌드 중</div>
-      </div>
-    </div>
+  <div class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-title" id="topbar-title">📊 대시보드</div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </header>
 
-    <!-- Project List -->
-    <div class="page-title">
-      <h2>📦 프로젝트</h2>
-    </div>
-    <div class="project-list" id="project-list">
-      <div class="empty-state">
-        <div class="icon">📦</div>
-        <h3>프로젝트가 없습니다</h3>
-        <p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p>
+    <main class="main-content" id="main-content">
+
+      <!-- Dashboard Page -->
+      <div class="page active" id="page-dashboard">
+        <div class="stats" id="stats">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-total">0</div>
+            <div class="stat-label">전체 프로젝트</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--success)" id="stat-running">0</div>
+            <div class="stat-label">실행 중</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--danger)" id="stat-stopped">0</div>
+            <div class="stat-label">중지됨</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--warning)" id="stat-building">0</div>
+            <div class="stat-label">빌드 중</div>
+          </div>
+        </div>
+        <h3 style="margin-bottom:16px;">최근 프로젝트</h3>
+        <div class="project-list" id="dashboard-project-list"></div>
       </div>
-    </div>
-  </main>
+
+      <!-- Projects Page -->
+      <div class="page" id="page-projects">
+        <div class="project-list" id="project-list">
+          <div class="empty-state">
+            <div class="icon">📦</div>
+            <h3>프로젝트가 없습니다</h3>
+            <p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project Detail Pages -->
+      <div class="page" id="page-project-overview">
+        <div id="overview-content"></div>
+      </div>
+      <div class="page" id="page-project-logs">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+          <span style="font-size:14px;color:var(--text-secondary)">컨테이너 로그</span>
+          <button class="btn btn-sm btn-ghost" onclick="refreshLogs()">🔄 새로고침</button>
+        </div>
+        <div class="log-viewer" id="log-content">로딩 중...</div>
+      </div>
+      <div class="page" id="page-project-deployments">
+        <div id="deployments-content">로딩 중...</div>
+      </div>
+      <div class="page" id="page-project-env">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h3>환경변수</h3>
+          <button class="btn btn-sm btn-ghost" onclick="openBulkImport()">📋 Bulk Import (.env)</button>
+        </div>
+        <div id="env-content"></div>
+        <button class="btn btn-sm btn-ghost" onclick="addEnvRow()" style="margin-top:12px;">+ 변수 추가</button>
+        <div style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary" onclick="saveEnvVars()">환경변수 저장</button>
+          <span id="env-changed-badge"
+            style="display:none;font-size:12px;color:var(--warning);background:rgba(210,153,34,0.15);padding:2px 8px;border-radius:12px;">⚠
+            재배포 필요</span>
+        </div>
+      </div>
+      <div class="page" id="page-project-console">
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">🖥 컨테이너 내부에서 명령을 실행합니다</div>
+        <div class="console-viewer" id="console-output">$ 명령어를 입력하세요...
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <input type="text" id="console-input" placeholder="ls -la" class="console-input"
+            onkeypress="if(event.key==='Enter') execCommand()">
+          <button class="btn btn-primary" onclick="execCommand()">실행</button>
+        </div>
+      </div>
+      <div class="page" id="page-project-settings">
+        <div id="settings-content"></div>
+      </div>
+    </main>
+  </div>
 
   <!-- Login Modal -->
-  <div class="modal-overlay" id="login-modal" style="z-index:9999; background:var(--background)">
+  <div class="modal-overlay" id="login-modal" style="z-index:9999; background:var(--bg-primary)">
     <div class="modal" style="width: 400px; margin-top: 20vh;">
       <div class="modal-header">
         <h2>🔒 관리자 로그인</h2>
@@ -133,58 +228,6 @@
     </div>
   </div>
 
-  <!-- Project Detail Modal -->
-  <div class="modal-overlay" id="detail-modal">
-    <div class="modal" style="width: 700px;">
-      <div class="modal-header">
-        <h2 id="detail-title">프로젝트</h2>
-        <button class="modal-close" onclick="closeDetailModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="detail-tabs">
-          <div class="detail-tab active" onclick="switchTab('overview')">개요</div>
-          <div class="detail-tab" onclick="switchTab('logs')">로그</div>
-          <div class="detail-tab" onclick="switchTab('deployments')">배포 이력</div>
-          <div class="detail-tab" onclick="switchTab('env')">환경변수</div>
-          <div class="detail-tab" onclick="switchTab('settings')">설정</div>
-        </div>
-
-        <!-- Overview Tab -->
-        <div class="tab-content active" id="tab-overview">
-          <div id="overview-content"></div>
-        </div>
-
-        <!-- Logs Tab -->
-        <div class="tab-content" id="tab-logs">
-          <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-            <span style="font-size:14px;color:var(--text-secondary)">컨테이너 로그</span>
-            <button class="btn btn-sm btn-ghost" onclick="refreshLogs()">🔄 새로고침</button>
-          </div>
-          <div class="log-viewer" id="log-content">로딩 중...</div>
-        </div>
-
-        <!-- Deployments Tab -->
-        <div class="tab-content" id="tab-deployments">
-          <div id="deployments-content">로딩 중...</div>
-        </div>
-
-        <!-- Env Tab -->
-        <div class="tab-content" id="tab-env">
-          <div id="env-content"></div>
-          <button class="btn btn-sm btn-ghost" onclick="addEnvRow()" style="margin-top:12px;">+ 변수 추가</button>
-          <div style="margin-top:16px;">
-            <button class="btn btn-primary" onclick="saveEnvVars()">환경변수 저장</button>
-          </div>
-        </div>
-
-        <!-- Settings Tab -->
-        <div class="tab-content" id="tab-settings">
-          <div id="settings-content"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Deploy Monitor Modal -->
   <div class="modal-overlay" id="deploy-modal">
     <div class="modal" style="width: 640px;">
@@ -193,21 +236,38 @@
         <button class="modal-close" onclick="closeDeployModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <!-- Progress Bar -->
         <div class="deploy-progress-bar">
           <div class="deploy-progress-fill" id="deploy-progress-fill" style="width: 0%"></div>
         </div>
         <div class="deploy-progress-label" id="deploy-progress-label">준비 중...</div>
-
-        <!-- Step Checklist -->
         <div class="deploy-steps" id="deploy-steps"></div>
-
-        <!-- Live Log -->
         <div class="deploy-log-header">
           <span>📋 실시간 로그</span>
           <button class="btn btn-sm btn-ghost" onclick="toggleDeployLog()">펼치기/접기</button>
         </div>
         <div class="deploy-log-viewer" id="deploy-log-viewer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Import Modal -->
+  <div class="modal-overlay" id="bulk-import-modal">
+    <div class="modal" style="width:500px;">
+      <div class="modal-header">
+        <h2>📋 Bulk Import (.env)</h2>
+        <button class="modal-close" onclick="closeBulkImport()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>.env 형식으로 붙여넣기</label>
+          <textarea id="bulk-env-input" rows="10"
+            placeholder="KEY=value&#10;DATABASE_URL=postgresql://...&#10;NODE_ENV=production"
+            style="font-family:'JetBrains Mono',monospace;font-size:13px;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeBulkImport()">취소</button>
+        <button class="btn btn-primary" onclick="applyBulkImport()">적용</button>
       </div>
     </div>
   </div>

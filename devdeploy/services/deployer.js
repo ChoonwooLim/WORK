@@ -66,7 +66,7 @@ class Deployer extends EventEmitter {
 
             // Step 1: Clone or pull
             this.emitProgress(project.id, 'clone', '소스 코드를 가져오는 중...');
-            logs += await this.cloneOrPull(project, projectDir);
+            logs += await this.cloneOrPull(project, projectDir, commitHash);
             logs += '\n--- Clone/Pull complete ---\n';
             this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
 
@@ -139,14 +139,14 @@ class Deployer extends EventEmitter {
         }
     }
 
-    // Clone or pull repo
-    async cloneOrPull(project, projectDir) {
+    // Clone or pull repo (with optional commitHash for rollback)
+    async cloneOrPull(project, projectDir, commitHash = null) {
         return new Promise((resolve, reject) => {
             if (fs.existsSync(path.join(projectDir, '.git'))) {
-                // Pull latest
-                exec(`cd ${projectDir} && git fetch origin && git reset --hard origin/${project.branch}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                const resetTarget = commitHash || `origin/${project.branch}`;
+                exec(`cd ${projectDir} && git fetch origin && git reset --hard ${resetTarget}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                     if (error) reject(new Error(`Git pull failed: ${stderr}`));
-                    else resolve(`Git pull:\n${stdout}${stderr}`);
+                    else resolve(`Git pull${commitHash ? ` (rollback to ${commitHash.substring(0, 7)})` : ''}:\n${stdout}${stderr}`);
                 });
             } else {
                 // Clone

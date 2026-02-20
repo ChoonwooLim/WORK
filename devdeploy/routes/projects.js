@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const deployer = require('../services/deployer');
+const { execSync } = require('child_process');
+const nginxService = require('../services/nginx');
 
 // GET /api/projects - List all projects
 router.get('/', async (req, res) => {
@@ -67,7 +69,7 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain } = req.body;
         const project = await db.queryOne(
             `UPDATE projects SET
         name = COALESCE($1, name),
@@ -79,11 +81,18 @@ router.put('/:id', async (req, res) => {
         subdomain = COALESCE($7, subdomain),
         env_vars = COALESCE($8, env_vars),
         auto_deploy = COALESCE($9, auto_deploy),
+        custom_domain = COALESCE($10, custom_domain),
         updated_at = NOW()
-       WHERE id = $10 RETURNING *`,
-            [name, github_url, branch, build_command, start_command, port, subdomain, env_vars ? JSON.stringify(env_vars) : null, auto_deploy !== undefined ? auto_deploy : null, req.params.id]
+       WHERE id = $11 RETURNING *`,
+            [name, github_url, branch, build_command, start_command, port, subdomain, env_vars ? JSON.stringify(env_vars) : null, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, req.params.id]
         );
         if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        // If custom_domain changed, update nginx config
+        if (custom_domain !== undefined) {
+            nginxService.addProject(project);
+        }
+
         res.json(project);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -130,6 +139,97 @@ router.post('/:id/stop', async (req, res) => {
 
         await deployer.stop(project);
         res.json({ message: 'Project stopped' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/projects/:id/stats - Container resource usage
+router.get('/:id/stats', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const containerName = `devdeploy-${project.subdomain}`;
+        try {
+            const raw = execSync(
+                `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.PIDs}}' ${containerName} 2>/dev/null`,
+                { stdio: 'pipe', timeout: 5000 }
+            ).toString().trim();
+            const [cpu, memUsage, memPerc, netIO, pids] = raw.split('|');
+
+            // Get uptime
+            const uptimeRaw = execSync(
+                `docker inspect --format '{{.State.StartedAt}}' ${containerName} 2>/dev/null`,
+                { stdio: 'pipe', timeout: 3000 }
+            ).toString().trim();
+            const startedAt = new Date(uptimeRaw);
+            const uptimeMs = Date.now() - startedAt.getTime();
+
+            res.json({
+                cpu: cpu.replace('%', '').trim(),
+                memUsage: memUsage.trim(),
+                memPercent: memPerc.replace('%', '').trim(),
+                netIO: netIO.trim(),
+                pids: pids.trim(),
+                uptime: uptimeMs,
+                startedAt: uptimeRaw
+            });
+        } catch (e) {
+            res.json({ cpu: '0', memUsage: '0B / 0B', memPercent: '0', netIO: '0B / 0B', pids: '0', uptime: 0, error: 'Container not running' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/:id/rollback - Rollback to specific deployment
+router.post('/:id/rollback', async (req, res) => {
+    try {
+        const { deployment_id } = req.body;
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const deployment = await db.queryOne('SELECT * FROM deployments WHERE id = $1 AND project_id = $2', [deployment_id, req.params.id]);
+        if (!deployment || !deployment.commit_hash) {
+            return res.status(400).json({ error: 'Invalid deployment or missing commit hash' });
+        }
+
+        // Trigger deploy in background with specific commit
+        res.json({ message: 'Rollback started', commit: deployment.commit_hash });
+        deployer.deploy(project, deployment.commit_hash).catch(err => {
+            console.error(`Rollback error for ${project.name}:`, err);
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/:id/exec - Execute command in container
+router.post('/:id/exec', async (req, res) => {
+    try {
+        const { command } = req.body;
+        if (!command) return res.status(400).json({ error: 'command is required' });
+
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const containerName = `devdeploy-${project.subdomain}`;
+        // Sanitize: block dangerous commands
+        const blocked = ['rm -rf /', 'mkfs', 'dd if=', ':(){', 'fork'];
+        if (blocked.some(b => command.includes(b))) {
+            return res.status(403).json({ error: 'Blocked command' });
+        }
+
+        try {
+            const output = execSync(
+                `docker exec ${containerName} sh -c ${JSON.stringify(command)} 2>&1`,
+                { stdio: 'pipe', timeout: 10000, maxBuffer: 1024 * 1024 }
+            ).toString();
+            res.json({ output });
+        } catch (e) {
+            res.json({ output: e.stdout?.toString() || e.stderr?.toString() || e.message });
+        }
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
