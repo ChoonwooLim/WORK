@@ -13,7 +13,7 @@ class DockerService {
     // Build a Docker image for a project
     async buildImage(project) {
         const projectDir = path.join(PROJECTS_DIR, project.subdomain);
-        const imageName = `devdeploy-${project.subdomain}`;
+        const imageName = `orbitron-${project.subdomain}`;
 
         // Always regenerate Dockerfile to match current project type
         const dockerfilePath = path.join(projectDir, 'Dockerfile');
@@ -125,8 +125,8 @@ EXPOSE ${port}
 
     // Start a container for a project
     async startContainer(project) {
-        const imageName = `devdeploy-${project.subdomain}`;
-        const containerName = `devdeploy-${project.subdomain}`;
+        const imageName = `orbitron-${project.subdomain}`;
+        const containerName = `orbitron-${project.subdomain}`;
         const port = project.port || 3000;
 
         // Stop existing container if any
@@ -195,7 +195,7 @@ EXPOSE ${port}
     // Remove image
     async removeImage(subdomain) {
         try {
-            execSync(`docker rmi devdeploy-${subdomain} 2>/dev/null`, { stdio: 'pipe' });
+            execSync(`docker rmi orbitron-${subdomain} 2>/dev/null`, { stdio: 'pipe' });
         } catch (e) {
             // Image doesn't exist
         }

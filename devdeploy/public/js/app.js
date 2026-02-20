@@ -1,44 +1,89 @@
-// DevDeploy Dashboard - Frontend JavaScript (Sidebar Layout)
+// Orbitron Dashboard - Frontend JavaScript (Sidebar Layout)
 
 const API = '/api';
 let currentProject = null;
 let serverHost = 'localhost';
 let currentPage = 'dashboard';
 
-const getToken = () => localStorage.getItem('devdeploy_token');
-const setToken = (t) => localStorage.setItem('devdeploy_token', t);
+const getToken = () => localStorage.getItem('orbitron_token');
+const setToken = (t) => localStorage.setItem('orbitron_token', t);
 
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
     let [resource, config] = args;
-    if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth/login' && resource !== '/api/health' && resource !== '/api/server-info' && !resource.startsWith('/api/webhooks')) {
+    if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth/login' && resource !== '/api/auth/register' && resource !== '/api/health' && resource !== '/api/server-info' && !resource.startsWith('/api/webhooks')) {
         config = config || {};
         config.headers = config.headers || {};
         config.headers['Authorization'] = `Bearer ${getToken() || ''}`;
     }
     const response = await originalFetch(resource, config);
     if (response.status === 401) {
-        document.getElementById('login-modal').classList.add('active');
-        document.getElementById('input-password').focus();
+        const modal = document.getElementById('login-modal');
+        if (!modal.classList.contains('active')) {
+            modal.classList.add('active');
+            document.getElementById('input-login-email').focus();
+        }
     }
     return response;
 };
 
+function switchAuthTab(tab) {
+    document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+    document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+    document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none';
+    document.getElementById('form-register').style.display = tab === 'register' ? 'block' : 'none';
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('register-error').textContent = '';
+    if (tab === 'login') document.getElementById('input-login-email').focus();
+    else document.getElementById('input-reg-username').focus();
+}
+
 async function login() {
-    const password = document.getElementById('input-password').value;
+    const email = document.getElementById('input-login-email').value.trim();
+    const password = document.getElementById('input-login-password').value;
+    const errorEl = document.getElementById('login-error');
+    errorEl.textContent = '';
+    if (!email || !password) { errorEl.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
     try {
         const res = await originalFetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
+            body: JSON.stringify({ email, password })
         });
-        if (!res.ok) { toast('비밀번호가 틀렸습니다.', 'error'); return; }
         const data = await res.json();
+        if (!res.ok) { errorEl.textContent = data.error || '로그인 실패'; return; }
         setToken(data.token);
         document.getElementById('login-modal').classList.remove('active');
-        document.getElementById('input-password').value = '';
+        document.getElementById('input-login-email').value = '';
+        document.getElementById('input-login-password').value = '';
+        toast(`${data.user.username}님, 환영합니다! 🪐`, 'success');
         init();
-    } catch (e) { toast('로그인 실패', 'error'); }
+    } catch (e) { errorEl.textContent = '서버에 연결할 수 없습니다.'; }
+}
+
+async function register() {
+    const username = document.getElementById('input-reg-username').value.trim();
+    const email = document.getElementById('input-reg-email').value.trim();
+    const password = document.getElementById('input-reg-password').value;
+    const confirm = document.getElementById('input-reg-confirm').value;
+    const errorEl = document.getElementById('register-error');
+    errorEl.textContent = '';
+    if (!username || !email || !password) { errorEl.textContent = '모든 필드를 입력해주세요.'; return; }
+    if (password.length < 4) { errorEl.textContent = '비밀번호는 4자 이상이어야 합니다.'; return; }
+    if (password !== confirm) { errorEl.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+    try {
+        const res = await originalFetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.textContent = data.error || '회원가입 실패'; return; }
+        setToken(data.token);
+        document.getElementById('login-modal').classList.remove('active');
+        toast(`${data.user.username}님, 가입을 환영합니다! 🎉`, 'success');
+        init();
+    } catch (e) { errorEl.textContent = '서버에 연결할 수 없습니다.'; }
 }
 
 // ============ NAVIGATION ============
@@ -254,7 +299,7 @@ function renderSettings() {
         <input type="text" value="${webhookUrl}" readonly style="flex:1;background:var(--surface);cursor:text;" id="webhook-url-input">
         <button class="btn btn-sm btn-ghost" onclick="copyWebhookUrl()">📋 복사</button>
       </div>
-      <div class="form-hint" style="margin-top:4px;">Content type: <code>application/json</code> | Secret: <code>devdeploy-secret</code></div>
+      <div class="form-hint" style="margin-top:4px;">Content type: <code>application/json</code> | Secret: <code>orbitron-secret</code></div>
     </div>
     <button class="btn btn-primary" onclick="saveSettings()">설정 저장</button>
     <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:24px;">
@@ -543,8 +588,53 @@ function openDeployModal(projectId) {
         logViewer.scrollTop = logViewer.scrollHeight;
     };
 
+    let sseRetried = false;
     es.onerror = () => {
-        setTimeout(() => { if (activeEventSource === es) { es.close(); activeEventSource = null; } }, 3000);
+        if (!sseRetried) {
+            sseRetried = true;
+            // Retry SSE once
+            setTimeout(() => {
+                if (activeEventSource === es) {
+                    es.close();
+                    const es2 = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
+                    activeEventSource = es2;
+                    es2.onmessage = es.onmessage;
+                    es2.onerror = es.onerror;
+                }
+            }, 2000);
+            return;
+        }
+        // SSE failed twice — fallback to polling
+        es.close(); activeEventSource = null;
+        document.getElementById('deploy-progress-label').textContent = '빌드 진행 중... (상태 확인 중)';
+        const poll = setInterval(async () => {
+            try {
+                const res = await fetch(`${API}/projects`);
+                const projects = await res.json();
+                const p = projects.find(x => x.id === projectId);
+                if (!p) { clearInterval(poll); return; }
+                if (p.status === 'running') {
+                    clearInterval(poll);
+                    document.getElementById('deploy-progress-fill').style.width = '100%';
+                    document.getElementById('deploy-progress-fill').classList.add('done');
+                    document.getElementById('deploy-modal-title').textContent = '✅ 배포 완료!';
+                    document.getElementById('deploy-progress-label').textContent = '배포가 성공적으로 완료되었습니다!';
+                    document.querySelectorAll('.deploy-step').forEach(el => {
+                        el.className = 'deploy-step completed';
+                        el.querySelector('.deploy-step-icon').textContent = '✓';
+                    });
+                    loadProjects();
+                    if (currentProject?.id === projectId) openProject(projectId);
+                } else if (p.status === 'failed') {
+                    clearInterval(poll);
+                    document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
+                    document.getElementById('deploy-progress-fill').classList.add('done');
+                    document.getElementById('deploy-modal-title').textContent = '❌ 배포 실패';
+                    document.getElementById('deploy-progress-label').textContent = '배포에 실패했습니다.';
+                    loadProjects();
+                }
+            } catch (e) { /* keep polling */ }
+        }, 3000);
     };
 }
 

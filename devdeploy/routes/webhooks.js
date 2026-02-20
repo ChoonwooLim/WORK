@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const db = require('../db/db');
 const deployer = require('../services/deployer');
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'devdeploy-secret';
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'orbitron-secret';
 
 // POST /api/webhooks/github - Receive GitHub webhook
 router.post('/github', async (req, res) => {

@@ -967,6 +967,107 @@ body {
   }
 }
 
+/* ===== AUTH MODAL ===== */
+.auth-modal {
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  box-shadow: 0 0 60px rgba(88, 166, 255, 0.08), 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.auth-logo {
+  text-align: center;
+  padding: 36px 24px 20px;
+  background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
+}
+
+.auth-logo-icon {
+  font-size: 56px;
+  display: block;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 0 20px rgba(88, 166, 255, 0.4));
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.auth-logo-text {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.auth-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+
+.auth-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 14px 0;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.auth-tab:hover {
+  color: var(--text-primary);
+}
+
+.auth-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.auth-error {
+  font-size: 13px;
+  color: var(--danger);
+  min-height: 18px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.auth-submit {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 4px;
+  background: linear-gradient(135deg, var(--accent) 0%, #4080d0 100%);
+  border: none;
+  transition: all 0.3s;
+}
+
+.auth-submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(88, 166, 255, 0.3);
+}
+
 .toggle-switch {
   position: relative;
   display: inline-block;

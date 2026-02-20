@@ -1,5 +1,5 @@
 {
-  "name": "devdeploy",
+  "name": "orbitron",
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
     "dockerode": "^4.0.9",

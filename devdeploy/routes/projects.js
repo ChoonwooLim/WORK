@@ -150,7 +150,7 @@ router.get('/:id/stats', async (req, res) => {
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
-        const containerName = `devdeploy-${project.subdomain}`;
+        const containerName = `orbitron-${project.subdomain}`;
         try {
             const raw = execSync(
                 `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.PIDs}}' ${containerName} 2>/dev/null`,
@@ -214,7 +214,7 @@ router.post('/:id/exec', async (req, res) => {
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
-        const containerName = `devdeploy-${project.subdomain}`;
+        const containerName = `orbitron-${project.subdomain}`;
         // Sanitize: block dangerous commands
         const blocked = ['rm -rf /', 'mkfs', 'dd if=', ':(){', 'fork'];
         if (blocked.some(b => command.includes(b))) {

@@ -22,7 +22,7 @@ router.get('/:projectId/logs', async (req, res) => {
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.projectId]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
-        const containerName = `devdeploy-${project.subdomain}`;
+        const containerName = `orbitron-${project.subdomain}`;
         const logs = await dockerService.getContainerLogs(containerName, req.query.lines || 100);
         res.json({ logs });
     } catch (error) {

@@ -167,7 +167,7 @@ class Deployer extends EventEmitter {
 
     // Stop a project
     async stop(project) {
-        await dockerService.stopContainer(`devdeploy-${project.subdomain}`);
+        await dockerService.stopContainer(`orbitron-${project.subdomain}`);
         nginxService.removeProject(project.subdomain);
         tunnelService.stopTunnel(project.subdomain);
         await db.query(`UPDATE projects SET status = 'stopped', container_id = NULL, tunnel_url = NULL WHERE id = $1`, [project.id]);

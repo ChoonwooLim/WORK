@@ -13,7 +13,8 @@ module.exports = (req, res, next) => {
 
     if (token) {
         try {
-            jwt.verify(token, process.env.JWT_SECRET || 'devdeploy-secret-key');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'orbitron-secret-key');
+            req.user = { userId: decoded.userId, username: decoded.username, role: decoded.role };
             return next();
         } catch (e) {
             return res.status(401).json({ error: 'Invalid or expired token' });

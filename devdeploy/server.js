@@ -55,10 +55,10 @@ app.get('/api/deploy-stream/:projectId', authMiddleware, (req, res) => {
 
     deployer.on('deploy-progress', onProgress);
 
-    // Heartbeat every 15s
+    // Heartbeat every 5s (prevents proxy timeout during long builds)
     const heartbeat = setInterval(() => {
         res.write(`: heartbeat\n\n`);
-    }, 15000);
+    }, 5000);
 
     // Cleanup on disconnect
     req.on('close', () => {
@@ -98,7 +98,7 @@ async function start() {
         app.listen(PORT, async () => {
             console.log(`
 ╔══════════════════════════════════════╗
-║   🚀 DevDeploy Server Running       ║
+║   🪐 Orbitron Server Running        ║
 ║   http://localhost:${PORT}              ║
 ║   Dashboard: http://localhost:${PORT}   ║
 ║   Webhook: POST /api/webhooks/github ║
@@ -112,7 +112,7 @@ async function start() {
                 const runningProjects = result.rows || [];
                 for (const project of runningProjects) {
                     // Check and restart container if needed
-                    const containerName = `devdeploy-${project.subdomain}`;
+                    const containerName = `orbitron-${project.subdomain}`;
                     const containerStatus = await dockerService.getContainerStatus(containerName);
                     if (containerStatus !== 'running') {
                         console.log(`🔄 Restarting container for ${project.name} (was: ${containerStatus})...`);

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Auto-restart cloudflared tunnel for DevDeploy dashboard
+# Auto-restart cloudflared tunnel for Orbitron dashboard
 # Usage: ./tunnel-dashboard.sh [port]
 
 PORT=${1:-4000}
