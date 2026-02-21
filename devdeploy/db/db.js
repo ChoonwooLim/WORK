@@ -1,4 +1,9 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Parse PostgreSQL TIMESTAMP WITHOUT TIMEZONE as UTC
+types.setTypeParser(1114, function (stringValue) {
+    return new Date(stringValue + "Z");
+});
 
 const pool = new Pool({
     host: process.env.DB_HOST || 'localhost',

@@ -124,7 +124,7 @@ function navigateTo(page) {
         const siteUrl = currentProject.custom_domain ? `http://${currentProject.custom_domain}` : (currentProject.tunnel_url || `http://${serverHost}:${currentProject.port}`);
         actions.innerHTML = `
             ${currentProject.status === 'running' ? `<a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank">🌐 열기</a>` : ''}
-            <button class="btn btn-sm btn-ghost" onclick="deployProject(${currentProject.id})">🔄 재배포</button>
+            <button class="btn btn-sm btn-ghost" onclick="openDeployOptions(${currentProject.id})">🔄 재배포</button>
             ${currentProject.status === 'running' ? `<button class="btn btn-sm btn-ghost" onclick="stopProject(${currentProject.id})">⏹ 중지</button>` : ''}
         `;
     } else {
@@ -238,7 +238,7 @@ function renderProjectOverview() {
     </div>` : `
     <div style="background:rgba(139,148,158,0.1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">⏹ 중지됨</div>
-      <button class="btn btn-success" onclick="deployProject(${p.id})">▶ 배포 시작</button>
+      <button class="btn btn-success" onclick="openDeployOptions(${p.id})">▶ 배포 시작</button>
     </div>`}
     <div id="resource-monitor"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
@@ -331,10 +331,15 @@ async function createProject() {
     } catch (error) { toast(error.message, 'error'); }
 }
 
-async function deployProject(id) {
+async function deployProject(id, commitHash = null) {
     try {
         openDeployModal(id);
-        await fetch(`${API}/projects/${id}/deploy`, { method: 'POST' });
+        const body = commitHash ? JSON.stringify({ commit_hash: commitHash }) : '{}';
+        await fetch(`${API}/projects/${id}/deploy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body
+        });
     } catch (error) { toast('배포 요청 실패: ' + error.message, 'error'); }
 }
 
@@ -645,6 +650,79 @@ function closeDeployModal() {
 }
 
 function toggleDeployLog() { document.getElementById('deploy-log-viewer').classList.toggle('collapsed'); }
+
+function openDeployOptions(projectId) {
+    const modal = document.getElementById('deploy-options-modal');
+    modal.classList.add('active');
+    modal.dataset.projectId = projectId;
+
+    const list = document.getElementById('deploy-options-list');
+    list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">커밋 목록을 불러오는 중...</div>';
+
+    fetch(`${API}/projects/${projectId}/commits`)
+        .then(res => res.json())
+        .then(commits => {
+            if (!commits || commits.length === 0) {
+                list.innerHTML = `
+                    <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-primary);">
+                        <input type="radio" name="deploy_commit" value="" checked>
+                        <div style="flex:1;">
+                            <div style="font-weight:600; font-size:14px;">최신 브랜치 (Latest)</div>
+                            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">소스 코드를 아직 가져오지 않았거나 커밋이 없습니다.</div>
+                        </div>
+                    </label>
+                `;
+                return;
+            }
+
+            let html = `
+                <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--success); border-radius:var(--radius-sm); cursor:pointer; background:rgba(63,185,80,0.05); margin-bottom:8px;">
+                    <input type="radio" name="deploy_commit" value="" checked>
+                    <div style="flex:1;">
+                        <div style="font-weight:600; font-size:14px; color:var(--success);">🌟 최신 브랜치로 배포 (Default)</div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">수동으로 지정하지 않고 GitHub의 최신 코드를 당겨와 배포합니다.</div>
+                    </div>
+                </label>
+            `;
+
+            commits.forEach(c => {
+                const dateStr = new Date(c.date).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                html += `
+                    <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-primary);">
+                        <input type="radio" name="deploy_commit" value="${c.hash}">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.message)}</div>
+                            <div style="font-size:12px; color:var(--text-muted); margin-top:4px; display:flex; gap:8px;">
+                                <span style="font-family:monospace; background:var(--surface); padding:2px 6px; border-radius:4px;">${c.shortHash}</span>
+                                <span>👤 ${escapeHtml(c.author)}</span>
+                                <span>🕒 ${dateStr}</span>
+                            </div>
+                        </div>
+                    </label>
+                `;
+            });
+            list.innerHTML = html;
+        })
+        .catch(() => {
+            list.innerHTML = '<div style="color:var(--danger); padding:20px; text-align:center;">목록을 불러오는데 실패했습니다.</div>';
+        });
+}
+
+function closeDeployOptions() {
+    document.getElementById('deploy-options-modal').classList.remove('active');
+}
+
+function confirmDeploySelect() {
+    const modal = document.getElementById('deploy-options-modal');
+    const projectId = modal.dataset.projectId;
+    if (!projectId) return;
+
+    const selected = document.querySelector('input[name="deploy_commit"]:checked');
+    const commitHash = selected ? selected.value : null;
+
+    closeDeployOptions();
+    deployProject(projectId, commitHash || null);
+}
 
 // ============ NEW FEATURES ============
 

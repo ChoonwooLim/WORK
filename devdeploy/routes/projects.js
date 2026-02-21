@@ -117,13 +117,14 @@ router.delete('/:id', async (req, res) => {
 // POST /api/projects/:id/deploy - Manually trigger deploy
 router.post('/:id/deploy', async (req, res) => {
     try {
+        const { commit_hash } = req.body || {};
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         // Deploy in background
-        res.json({ message: 'Deployment started', project_id: project.id });
+        res.json({ message: 'Deployment started', project_id: project.id, commit: commit_hash || 'latest' });
 
-        deployer.deploy(project).catch(err => {
+        deployer.deploy(project, commit_hash || null, null).catch(err => {
             console.error(`Deploy error for ${project.name}:`, err);
         });
     } catch (error) {
@@ -177,6 +178,52 @@ router.get('/:id/stats', async (req, res) => {
             });
         } catch (e) {
             res.json({ cpu: '0', memUsage: '0B / 0B', memPercent: '0', netIO: '0B / 0B', pids: '0', uptime: 0, error: 'Container not running' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/projects/:id/commits - Get recent 20 commits for deployment options
+router.get('/:id/commits', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const path = require('path');
+        const fs = require('fs');
+        const projectDir = path.join(__dirname, '..', 'deployments', project.subdomain);
+
+        if (!fs.existsSync(path.join(projectDir, '.git'))) {
+            return res.json([]); // Not cloned yet
+        }
+
+        try {
+            // Check remote for newer commits first, but fallback gracefully if it fails
+            try {
+                execSync(`git fetch origin ${project.branch}`, { cwd: projectDir, timeout: 5000 });
+            } catch (e) { } // ignore fetch errors (e.g., offline)
+
+            const formatStr = '%H|%h|%s|%an|%ad';
+            // Output local and remote commits on the specified branch
+            const logCmd = `git log -n 20 --pretty=format:"${formatStr}" origin/${project.branch} 2>/dev/null || git log -n 20 --pretty=format:"${formatStr}" 2>/dev/null`;
+
+            const raw = execSync(logCmd, { cwd: projectDir, timeout: 5000 }).toString().trim();
+            if (!raw) return res.json([]);
+
+            const commits = raw.split('\\n').filter(Boolean).map(line => {
+                const parts = line.split('|');
+                return {
+                    hash: parts[0] || '',
+                    shortHash: parts[1] || '',
+                    message: parts[2] || '',
+                    author: parts[3] || '',
+                    date: parts[4] || ''
+                };
+            });
+            res.json(commits);
+        } catch (e) {
+            res.json([]);
         }
     } catch (error) {
         res.status(500).json({ error: error.message });

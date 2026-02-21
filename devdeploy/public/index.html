@@ -265,6 +265,30 @@
     </div>
   </div>
 
+  <!-- Deploy Options Modal -->
+  <div class="modal-overlay" id="deploy-options-modal">
+    <div class="modal" style="width: 500px;">
+      <div class="modal-header">
+        <h2>🔄 배포 옵션 선택</h2>
+        <button class="modal-close" onclick="closeDeployOptions()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>배포할 커밋 (버전)을 선택하세요</label>
+          <div id="deploy-options-list"
+            style="margin-top:8px; display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--radius-md); padding:8px; background:var(--surface);">
+            <div style="text-align:center; padding:20px; color:var(--text-secondary);">커밋 목록을 불러오는 중...</div>
+          </div>
+          <div class="form-hint" style="margin-top:8px;">특정 커밋을 선택하면 해당 시점의 코드로 롤백/배포됩니다. 기본값은 최신 브랜치 상태입니다.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeDeployOptions()">취소</button>
+        <button class="btn btn-primary" onclick="confirmDeploySelect()">배포 시작</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Deploy Monitor Modal -->
   <div class="modal-overlay" id="deploy-modal">
     <div class="modal" style="width: 640px;">
