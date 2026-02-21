@@ -664,41 +664,41 @@ function openDeployOptions(projectId) {
         .then(commits => {
             if (!commits || commits.length === 0) {
                 list.innerHTML = `
-                    <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-primary);">
-                        <input type="radio" name="deploy_commit" value="" checked>
-                        <div style="flex:1;">
+                    <div class="commit-option" onclick="this.querySelector('input').checked=true" style="display:flex; align-items:flex-start; gap:10px; padding:10px; border:1px solid var(--border); border-radius:6px; cursor:pointer; background:var(--bg-primary);">
+                        <input type="radio" name="deploy_commit" value="" checked style="width:16px; height:16px; margin-top:2px; flex-shrink:0;">
+                        <div>
                             <div style="font-weight:600; font-size:14px;">최신 브랜치 (Latest)</div>
                             <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">소스 코드를 아직 가져오지 않았거나 커밋이 없습니다.</div>
                         </div>
-                    </label>
+                    </div>
                 `;
                 return;
             }
 
             let html = `
-                <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--success); border-radius:var(--radius-sm); cursor:pointer; background:rgba(63,185,80,0.05); margin-bottom:8px;">
-                    <input type="radio" name="deploy_commit" value="" checked>
-                    <div style="flex:1;">
-                        <div style="font-weight:600; font-size:14px; color:var(--success);">🌟 최신 브랜치로 배포 (Default)</div>
-                        <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">수동으로 지정하지 않고 GitHub의 최신 코드를 당겨와 배포합니다.</div>
+                <div class="commit-option" onclick="this.querySelector('input').checked=true" style="display:flex; align-items:flex-start; gap:10px; padding:10px; border:1px solid var(--success); border-radius:6px; cursor:pointer; background:rgba(63,185,80,0.05); margin-bottom:6px;">
+                    <input type="radio" name="deploy_commit" value="" checked style="width:16px; height:16px; margin-top:2px; flex-shrink:0;">
+                    <div style="min-width:0;">
+                        <div style="font-weight:600; font-size:13px; color:var(--success);">🌟 최신 브랜치로 배포 (Default)</div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">GitHub의 최신 코드를 당겨와 배포합니다.</div>
                     </div>
-                </label>
+                </div>
             `;
 
             commits.forEach(c => {
                 const dateStr = new Date(c.date).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                 html += `
-                    <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-primary);">
-                        <input type="radio" name="deploy_commit" value="${c.hash}">
-                        <div style="flex:1; min-width:0;">
-                            <div style="font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.message)}</div>
-                            <div style="font-size:12px; color:var(--text-muted); margin-top:4px; display:flex; gap:8px;">
-                                <span style="font-family:monospace; background:var(--surface); padding:2px 6px; border-radius:4px;">${c.shortHash}</span>
+                    <div class="commit-option" onclick="this.querySelector('input').checked=true" style="display:flex; align-items:flex-start; gap:10px; padding:10px; border:1px solid var(--border); border-radius:6px; cursor:pointer; background:var(--bg-primary); margin-bottom:6px;">
+                        <input type="radio" name="deploy_commit" value="${c.hash}" style="width:16px; height:16px; margin-top:2px; flex-shrink:0;">
+                        <div style="min-width:0; flex:1;">
+                            <div style="font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.message)}</div>
+                            <div style="font-size:11px; color:var(--text-muted); margin-top:3px; display:flex; gap:6px; flex-wrap:wrap;">
+                                <span style="font-family:monospace; background:var(--surface); padding:1px 5px; border-radius:3px; font-size:11px;">${c.shortHash}</span>
                                 <span>👤 ${escapeHtml(c.author)}</span>
                                 <span>🕒 ${dateStr}</span>
                             </div>
                         </div>
-                    </label>
+                    </div>
                 `;
             });
             list.innerHTML = html;
