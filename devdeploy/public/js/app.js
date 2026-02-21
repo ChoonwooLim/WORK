@@ -271,8 +271,25 @@ function renderProjectOverview() {
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">생성일</div>
         <span>${new Date(p.created_at).toLocaleDateString('ko-KR')}</span>
       </div>
+    </div>
+    <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">📁 미디어 백업</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-clone-backup" id="btn-media-backup" onclick="mediaBackup(${p.id})" title="DATA 드라이브에 미디어 백업">
+            <span class="btn-clone-icon">📁</span> 백업
+          </button>
+          <button class="btn-clone-backup" id="btn-media-restore" onclick="mediaRestore(${p.id})" title="백업에서 미디어 복원" style="border-color:var(--warning);color:var(--warning);">
+            <span class="btn-clone-icon">🔄</span> 복구
+          </button>
+        </div>
+      </div>
+      <div id="media-backup-status" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:13px;color:var(--text-secondary);">
+        백업 상태 확인 중...
+      </div>
     </div>`;
     if (p.status === 'running') loadResourceStats(p.id);
+    loadMediaBackupStatus(p.id);
 }
 
 function renderSettings() {
@@ -833,6 +850,85 @@ async function cloneBackup(projectId) {
             btn.disabled = false;
             btn.innerHTML = '<span class="btn-clone-icon">📥</span> 클론';
         }
+    }
+}
+
+// ============ MEDIA BACKUP ============
+
+async function mediaBackup(projectId) {
+    const btn = document.getElementById('btn-media-backup');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 백업 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/media-backup`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast(`✅ ${data.message}`, 'success');
+            loadMediaBackupStatus(projectId);
+        } else {
+            toast(`❌ 백업 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ 백업 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">📁</span> 백업';
+        }
+    }
+}
+
+async function mediaRestore(projectId) {
+    if (!confirm('백업에서 미디어 파일을 복원하시겠습니까?\n원본 파일이 백업 파일로 덮어씌워집니다.')) return;
+    const btn = document.getElementById('btn-media-restore');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 복구 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/media-restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast(`✅ ${data.message}`, 'success');
+        } else {
+            toast(`❌ 복구 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ 복구 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">🔄</span> 복구';
+        }
+    }
+}
+
+async function loadMediaBackupStatus(projectId) {
+    const container = document.getElementById('media-backup-status');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/media-backup/status`);
+        const status = await res.json();
+        if (status.exists) {
+            const backupTime = new Date(status.lastBackupTime).toLocaleString('ko-KR');
+            container.innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div>📅 마지막 백업: <strong>${backupTime}</strong></div>
+                    <div>📄 파일 수: <strong>${status.fileCount}개</strong></div>
+                    <div>💾 총 크기: <strong>${status.totalSizeFormatted}</strong></div>
+                    <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${status.backupDir}">📂 ${status.backupDir}</div>
+                </div>`;
+        } else {
+            container.innerHTML = '<span style="color:var(--text-muted);">⚠️ 아직 백업이 없습니다. 백업 버튼을 눌러 미디어 파일을 백업하세요.</span>';
+        }
+    } catch (e) {
+        container.innerHTML = '<span style="color:var(--danger);">백업 상태를 불러올 수 없습니다.</span>';
     }
 }
 

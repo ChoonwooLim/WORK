@@ -348,4 +348,57 @@ router.post('/:id/clone-backup', async (req, res) => {
     }
 });
 
+// POST /api/projects/:id/media-backup - Backup media files to DATA drive
+router.post('/:id/media-backup', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const mediaBackup = require('../services/mediaBackup');
+        const result = mediaBackup.backupMedia(project);
+        res.json({
+            success: true,
+            message: `미디어 백업 완료: ${result.fileCount}개 파일 (${result.totalSizeFormatted})`,
+            ...result
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/projects/:id/media-backup/status - Get media backup status
+router.get('/:id/media-backup/status', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const mediaBackup = require('../services/mediaBackup');
+        const status = mediaBackup.getBackupStatus(project);
+        res.json(status);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/:id/media-restore - Restore media files from backup
+router.post('/:id/media-restore', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const { filename } = req.body || {};
+        const mediaBackup = require('../services/mediaBackup');
+        const result = mediaBackup.restoreMedia(project, filename || null);
+        res.json({
+            success: true,
+            message: filename
+                ? `파일 복원 완료: ${filename}`
+                : `전체 복원 완료: ${result.restoredCount}개 파일 복원`,
+            ...result
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

@@ -6,6 +6,7 @@ const db = require('../db/db');
 const dockerService = require('./docker');
 const nginxService = require('./nginx');
 const tunnelService = require('./tunnel');
+const mediaBackup = require('./mediaBackup');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
 
@@ -69,6 +70,17 @@ class Deployer extends EventEmitter {
             logs += await this.cloneOrPull(project, projectDir, commitHash);
             logs += '\n--- Clone/Pull complete ---\n';
             this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
+
+            // Step 1.5: Auto media backup to DATA drive
+            try {
+                const backupResult = mediaBackup.backupMedia(project);
+                logs += `\n📁 미디어 백업: ${backupResult.fileCount}개 파일 (${backupResult.totalSizeFormatted}) → ${backupResult.backupDir}\n`;
+                if (backupResult.copiedCount > 0) {
+                    logs += `   새로/변경된 파일 ${backupResult.copiedCount}개 복사, ${backupResult.skippedCount}개 스킵\n`;
+                }
+            } catch (e) {
+                logs += `\n⚠️ 미디어 백업 건너뜀: ${e.message}\n`;
+            }
 
             // Step 2: Build Docker image
             this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 중...');
