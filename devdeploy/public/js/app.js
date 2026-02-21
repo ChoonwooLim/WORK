@@ -252,7 +252,12 @@ function renderProjectOverview() {
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">GitHub</div>
-        <a href="${p.github_url}" target="_blank" style="color:var(--accent);">${extractRepoName(p.github_url)}</a>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <a href="${p.github_url}" target="_blank" style="color:var(--accent);">${extractRepoName(p.github_url)}</a>
+          <button class="btn-clone-backup" id="btn-clone-backup" onclick="cloneBackup(${p.id})" title="GitClones 폴더에 백업 클론">
+            <span class="btn-clone-icon">📥</span> 클론
+          </button>
+        </div>
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Branch</div>
@@ -802,6 +807,33 @@ function applyBulkImport() {
     });
     closeBulkImport();
     toast(`${lines.length}개 변수가 추가되었습니다`, 'success');
+}
+
+// ============ CLONE BACKUP ============
+
+async function cloneBackup(projectId) {
+    const btn = document.getElementById('btn-clone-backup');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 클론 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/clone-backup`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            const actionLabel = data.action === 'cloned' ? '클론 완료' : '업데이트 완료';
+            toast(`✅ ${actionLabel}: ${data.path}`, 'success');
+        } else {
+            toast(`❌ 클론 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ 클론 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">📥</span> 클론';
+        }
+    }
 }
 
 // ============ MODALS ============

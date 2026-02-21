@@ -282,4 +282,70 @@ router.post('/:id/exec', async (req, res) => {
     }
 });
 
+// POST /api/projects/:id/clone-backup - Clone repo to GitClones folder for backup
+router.post('/:id/clone-backup', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const path = require('path');
+        const fs = require('fs');
+        const CLONE_DIR = '/home/stevenlim/GitClones';
+
+        // Ensure GitClones directory exists
+        if (!fs.existsSync(CLONE_DIR)) {
+            fs.mkdirSync(CLONE_DIR, { recursive: true });
+        }
+
+        // Extract repo name from GitHub URL
+        const repoMatch = project.github_url.match(/\/([^\/]+?)(?:\.git)?$/);
+        const repoName = repoMatch ? repoMatch[1] : project.subdomain;
+        const clonePath = path.join(CLONE_DIR, repoName);
+
+        if (fs.existsSync(path.join(clonePath, '.git'))) {
+            // Already cloned - pull latest
+            try {
+                const output = execSync(
+                    `cd ${clonePath} && git fetch origin && git pull origin ${project.branch}`,
+                    { stdio: 'pipe', timeout: 30000, maxBuffer: 1024 * 1024 * 50 }
+                ).toString();
+                res.json({
+                    success: true,
+                    action: 'updated',
+                    path: clonePath,
+                    message: `백업이 최신 상태로 업데이트되었습니다.`,
+                    output
+                });
+            } catch (e) {
+                res.status(500).json({
+                    error: `Git pull 실패: ${e.stderr?.toString() || e.message}`,
+                    path: clonePath
+                });
+            }
+        } else {
+            // Fresh clone
+            try {
+                const output = execSync(
+                    `git clone -b ${project.branch} ${project.github_url} ${clonePath}`,
+                    { stdio: 'pipe', timeout: 60000, maxBuffer: 1024 * 1024 * 50 }
+                ).toString();
+                res.json({
+                    success: true,
+                    action: 'cloned',
+                    path: clonePath,
+                    message: `리포지토리가 ${clonePath}에 클론되었습니다.`,
+                    output
+                });
+            } catch (e) {
+                res.status(500).json({
+                    error: `Git clone 실패: ${e.stderr?.toString() || e.message}`,
+                    path: clonePath
+                });
+            }
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

@@ -1144,3 +1144,58 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ===== CLONE BACKUP BUTTON ===== */
+.btn-clone-backup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 14px;
+  background: rgba(88, 166, 255, 0.08);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.btn-clone-backup:hover {
+  background: rgba(88, 166, 255, 0.18);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.btn-clone-backup:active {
+  transform: translateY(0);
+}
+
+.btn-clone-backup:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
+}
+
+.btn-clone-icon {
+  font-size: 12px;
+}
+
+.btn-clone-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(88, 166, 255, 0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: clone-spin 0.6s linear infinite;
+}
+
+@keyframes clone-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
