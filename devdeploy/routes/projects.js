@@ -211,7 +211,7 @@ router.get('/:id/commits', async (req, res) => {
             const raw = execSync(logCmd, { cwd: projectDir, timeout: 5000 }).toString().trim();
             if (!raw) return res.json([]);
 
-            const commits = raw.split('\\n').filter(Boolean).map(line => {
+            const commits = raw.split('\n').filter(Boolean).map(line => {
                 const parts = line.split('|');
                 return {
                     hash: parts[0] || '',
