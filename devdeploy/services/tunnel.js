@@ -1,4 +1,6 @@
-const { execSync, spawn } = require('child_process');
+const { exec, spawn } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
 const path = require('path');
 const fs = require('fs');
 
@@ -59,14 +61,14 @@ class TunnelService {
 
         try {
             // Step 1: Create tunnel if it doesn't exist
-            const tunnelId = this._ensureTunnel(tunnelName);
+            const tunnelId = await this._ensureTunnel(tunnelName);
             if (!tunnelId) {
                 console.error(`❌ Failed to create/find tunnel ${tunnelName}`);
                 return this._startQuickTunnel(project, key);
             }
 
             // Step 2: Add DNS route (idempotent — skips if exists)
-            this._ensureDnsRoute(tunnelName, hostname);
+            await this._ensureDnsRoute(tunnelName, hostname);
 
             // Step 3: Write config file
             const configPath = this._writeConfig(tunnelName, tunnelId, hostname, project.port);
@@ -84,13 +86,13 @@ class TunnelService {
     }
 
     // Ensure a named tunnel exists, return its ID
-    _ensureTunnel(tunnelName) {
+    async _ensureTunnel(tunnelName) {
         try {
             // Check if tunnel already exists
-            const listOutput = execSync(
-                `${CLOUDFLARED_PATH} tunnel list --name ${tunnelName} --output json 2>/dev/null`,
+            const { stdout: listOutput } = await execAsync(
+                `${CLOUDFLARED_PATH} tunnel list --name ${tunnelName} --output json`,
                 { stdio: 'pipe', timeout: 15000 }
-            ).toString().trim();
+            );
 
             const tunnels = JSON.parse(listOutput || '[]');
             if (tunnels.length > 0) {
@@ -99,10 +101,11 @@ class TunnelService {
             }
 
             // Create new tunnel
-            const createOutput = execSync(
-                `${CLOUDFLARED_PATH} tunnel create ${tunnelName} 2>&1`,
+            console.log(`Creating new Cloudflare tunnel for ${tunnelName}...`);
+            const { stdout: createOutput } = await execAsync(
+                `${CLOUDFLARED_PATH} tunnel create ${tunnelName}`,
                 { stdio: 'pipe', timeout: 15000 }
-            ).toString();
+            );
 
             const idMatch = createOutput.match(/with id ([a-f0-9-]+)/);
             if (idMatch) {
@@ -116,10 +119,10 @@ class TunnelService {
             const errMsg = e.stderr?.toString() || e.stdout?.toString() || e.message;
             if (errMsg.includes('already exists')) {
                 try {
-                    const listOutput = execSync(
-                        `${CLOUDFLARED_PATH} tunnel list --output json 2>/dev/null`,
+                    const { stdout: listOutput } = await execAsync(
+                        `${CLOUDFLARED_PATH} tunnel list --output json`,
                         { stdio: 'pipe', timeout: 15000 }
-                    ).toString();
+                    );
                     const tunnels = JSON.parse(listOutput || '[]');
                     const found = tunnels.find(t => t.name === tunnelName);
                     if (found) return found.id;
@@ -131,10 +134,10 @@ class TunnelService {
     }
 
     // Add DNS CNAME route for the tunnel (safe to call multiple times)
-    _ensureDnsRoute(tunnelName, hostname) {
+    async _ensureDnsRoute(tunnelName, hostname) {
         try {
-            execSync(
-                `${CLOUDFLARED_PATH} tunnel route dns ${tunnelName} ${hostname} 2>&1`,
+            await execAsync(
+                `${CLOUDFLARED_PATH} tunnel route dns -f ${tunnelName} ${hostname}`,
                 { stdio: 'pipe', timeout: 15000 }
             );
             console.log(`✅ DNS route: ${hostname} → ${tunnelName}`);
@@ -152,7 +155,10 @@ class TunnelService {
     _writeConfig(tunnelName, tunnelId, hostname, port) {
         const credFile = path.join(CF_CONFIG_DIR, `${tunnelId}.json`);
         const configPath = path.join(CF_CONFIG_DIR, `config-${tunnelName}.yml`);
-        const config = `tunnel: ${tunnelId}\ncredentials-file: ${credFile}\ningress:\n  - hostname: ${hostname}\n    service: http://localhost:${port}\n  - service: http_status:404\n`;
+
+        // Pass to Nginx on port 80. Cloudflare natively passes the `hostname` as Host header.
+        // Nginx is configured to match `${subdomain}.localhost` and `${custom_domain}`.
+        const config = `tunnel: ${tunnelId}\ncredentials-file: ${credFile}\ningress:\n  - hostname: ${hostname}\n    service: http://127.0.0.1:80\n  - service: http_status:404\n`;
         fs.writeFileSync(configPath, config);
         return configPath;
     }
@@ -248,16 +254,20 @@ class TunnelService {
     async deleteTunnel(key) {
         this.stopTunnel(key);
         const tunnelName = `devdeploy-${key}`;
-        try {
-            execSync(`${CLOUDFLARED_PATH} tunnel cleanup ${tunnelName} 2>&1`, { stdio: 'pipe', timeout: 10000 });
-            execSync(`${CLOUDFLARED_PATH} tunnel delete ${tunnelName} 2>&1`, { stdio: 'pipe', timeout: 10000 });
-            // Remove config file
-            const configPath = path.join(CF_CONFIG_DIR, `config-${tunnelName}.yml`);
-            if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
-            console.log(`🗑️ Tunnel ${tunnelName} deleted`);
-        } catch (e) {
-            console.log(`⚠️ Tunnel delete: ${e.message}`);
+        if (tunnelName) {
+            try {
+                // Ignore errors as tunnel might already be deleted or in use
+                await execAsync(`${CLOUDFLARED_PATH} tunnel cleanup ${tunnelName} 2>&1`, { timeout: 10000 });
+                await execAsync(`${CLOUDFLARED_PATH} tunnel delete ${tunnelName} 2>&1`, { timeout: 10000 });
+                console.log(`🗑️ Deleted Cloudflare tunnel: ${tunnelName}`);
+            } catch (e) {
+                // Expected if tunnel doesn't exist
+                console.log(`⚠️ Tunnel delete error for ${tunnelName}: ${e.message}`);
+            }
         }
+        // Remove config file
+        const configPath = path.join(CF_CONFIG_DIR, `config-${tunnelName}.yml`);
+        if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
     }
 
     // Get tunnel URL for a project

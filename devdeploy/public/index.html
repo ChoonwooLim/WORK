@@ -217,50 +217,95 @@
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label>프로젝트 이름 *</label>
-          <input type="text" id="input-name" placeholder="my-awesome-app">
+        <!-- Source Type Tabs -->
+        <div class="source-tabs">
+          <button class="source-tab active" id="tab-github" onclick="switchSourceTab('github')">🔗 GitHub Clone</button>
+          <button class="source-tab" id="tab-upload" onclick="switchSourceTab('upload')"> 📁 폴더 업로드</button>
         </div>
-        <div class="form-group">
-          <label>GitHub URL *</label>
-          <input type="text" id="input-github" placeholder="https://github.com/user/repo">
+
+        <!-- GitHub Mode -->
+        <div id="form-github-source">
+          <div class="form-group">
+            <label>프로젝트 이름 *</label>
+            <input type="text" id="input-name" placeholder="my-awesome-app">
+          </div>
+          <div class="form-group">
+            <label>GitHub URL *</label>
+            <input type="text" id="input-github" placeholder="https://github.com/user/repo">
+          </div>
+          <div class="form-group">
+            <label>Branch</label>
+            <input type="text" id="input-branch" placeholder="main" value="main">
+          </div>
+          <div class="form-group">
+            <label>빌드 명령어</label>
+            <input type="text" id="input-build" placeholder="npm install && npm run build" value="npm install">
+          </div>
+          <div class="form-group">
+            <label>시작 명령어</label>
+            <input type="text" id="input-start" placeholder="npm start" value="npm start">
+          </div>
+          <div class="form-group">
+            <label>포트</label>
+            <input type="number" id="input-port" placeholder="자동 할당">
+            <div class="form-hint">비우면 자동으로 할당됩니다</div>
+          </div>
+          <div class="form-group">
+            <label>서브도메인</label>
+            <input type="text" id="input-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
+            <div class="form-hint">{서브도메인}.localhost 로 접속됩니다</div>
+          </div>
+          <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;">
+            <label>🔄 배포 모드</label>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+              <label class="toggle-switch">
+                <input type="checkbox" id="input-autodeploy" checked>
+                <span class="toggle-slider"></span>
+              </label>
+              <span style="font-size:14px;color:var(--text-secondary);">자동 배포 (GitHub push 시 자동 재배포)</span>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Branch</label>
-          <input type="text" id="input-branch" placeholder="main" value="main">
-        </div>
-        <div class="form-group">
-          <label>빌드 명령어</label>
-          <input type="text" id="input-build" placeholder="npm install && npm run build" value="npm install">
-        </div>
-        <div class="form-group">
-          <label>시작 명령어</label>
-          <input type="text" id="input-start" placeholder="npm start" value="npm start">
-        </div>
-        <div class="form-group">
-          <label>포트</label>
-          <input type="number" id="input-port" placeholder="자동 할당">
-          <div class="form-hint">비우면 자동으로 할당됩니다</div>
-        </div>
-        <div class="form-group">
-          <label>서브도메인</label>
-          <input type="text" id="input-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
-          <div class="form-hint">{서브도메인}.localhost 로 접속됩니다</div>
-        </div>
-        <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;">
-          <label>🔄 배포 모드</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
-            <label class="toggle-switch">
-              <input type="checkbox" id="input-autodeploy" checked>
-              <span class="toggle-slider"></span>
-            </label>
-            <span style="font-size:14px;color:var(--text-secondary);">자동 배포 (GitHub push 시 자동 재배포)</span>
+
+        <!-- Upload Mode -->
+        <div id="form-upload-source" style="display:none;">
+          <div class="form-group">
+            <label>프로젝트 이름 *</label>
+            <input type="text" id="upload-name" placeholder="my-awesome-app">
+          </div>
+          <div class="form-group">
+            <label>프로젝트 ZIP 파일 *</label>
+            <div class="upload-dropzone" id="upload-dropzone">
+              <input type="file" id="upload-file" accept=".zip" style="display:none;" onchange="handleFileSelect(this)">
+              <div class="upload-dropzone-content" id="upload-dropzone-content">
+                <div class="upload-icon">📦</div>
+                <div class="upload-text">ZIP 파일을 드래그하거나 클릭하여 선택</div>
+                <div class="upload-hint">프로젝트 폴더를 ZIP으로 압축하여 업로드하세요 (최대 500MB)</div>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>빌드 명령어</label>
+            <input type="text" id="upload-build" placeholder="npm install && npm run build" value="npm install">
+          </div>
+          <div class="form-group">
+            <label>시작 명령어</label>
+            <input type="text" id="upload-start" placeholder="npm start" value="npm start">
+          </div>
+          <div class="form-group">
+            <label>포트</label>
+            <input type="number" id="upload-port" placeholder="자동 할당">
+            <div class="form-hint">비우면 자동으로 할당됩니다</div>
+          </div>
+          <div class="form-group">
+            <label>서브도메인</label>
+            <input type="text" id="upload-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
           </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal()">취소</button>
-        <button class="btn btn-primary" onclick="createProject()">프로젝트 생성</button>
+        <button class="btn btn-primary" id="btn-create-project" onclick="createProject()">프로젝트 생성</button>
       </div>
     </div>
   </div>

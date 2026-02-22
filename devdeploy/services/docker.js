@@ -1,4 +1,6 @@
-const { execSync, exec } = require('child_process');
+const { exec } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
 const path = require('path');
 const fs = require('fs');
 
@@ -142,11 +144,9 @@ EXPOSE ${port}
         let volumeFlags = '';
         if (envVars.UPLOAD_DIR) {
             const uploadPath = envVars.UPLOAD_DIR;
-            // Ensure host directory exists (attempt to create it if it doesn't, ignoring errors if permissions fail)
+            // Ensure host directory exists asynchronously
             try {
-                if (!fs.existsSync(uploadPath)) {
-                    execSync(`mkdir -p ${uploadPath}`);
-                }
+                await fs.promises.mkdir(uploadPath, { recursive: true });
             } catch (e) { /* ignore */ }
             volumeFlags = `-v ${uploadPath}:${uploadPath}`;
         }
@@ -163,48 +163,48 @@ EXPOSE ${port}
         });
     }
 
-    // Stop and remove a container
+    // Stop and remove a container asynchronously
     async stopContainer(containerName) {
         try {
-            execSync(`docker stop ${containerName} 2>/dev/null && docker rm ${containerName} 2>/dev/null`, { stdio: 'pipe' });
+            await execAsync(`docker stop ${containerName} 2>/dev/null && docker rm ${containerName} 2>/dev/null`);
         } catch (e) {
-            // Container doesn't exist, that's fine
+            // Container doesn't exist or already stopped, that's fine
         }
     }
 
-    // Get container status
+    // Get container status asynchronously
     async getContainerStatus(containerName) {
         try {
-            const status = execSync(`docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`, { stdio: 'pipe' });
-            return status.toString().trim();
+            const { stdout } = await execAsync(`docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`);
+            return stdout.trim();
         } catch (e) {
             return 'stopped';
         }
     }
 
-    // Get container logs
+    // Get container logs asynchronously
     async getContainerLogs(containerName, lines = 100) {
         try {
-            const logs = execSync(`docker logs --tail ${lines} ${containerName} 2>&1`, { stdio: 'pipe' });
-            return logs.toString();
+            const { stdout, stderr } = await execAsync(`docker logs --tail ${lines} ${containerName} 2>&1`);
+            return stdout || stderr;
         } catch (e) {
             return 'No logs available';
         }
     }
 
-    // Remove image
+    // Remove image asynchronously
     async removeImage(subdomain) {
         try {
-            execSync(`docker rmi orbitron-${subdomain} 2>/dev/null`, { stdio: 'pipe' });
+            await execAsync(`docker rmi orbitron-${subdomain} 2>/dev/null`);
         } catch (e) {
             // Image doesn't exist
         }
     }
 
-    // Prune dangling images to free up space
+    // Prune dangling images to free up space asynchronously
     async pruneImages() {
         try {
-            execSync('docker image prune -f', { stdio: 'ignore' });
+            await execAsync('docker image prune -f');
             console.log('🧹 Cleaned up unused Docker images');
         } catch (e) {
             // ignore

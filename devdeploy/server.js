@@ -4,6 +4,9 @@ const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db/db');
+const { exec } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -70,9 +73,8 @@ app.get('/api/deploy-stream/:projectId', authMiddleware, (req, res) => {
 // Server info - returns public IP for external URL display
 app.get('/api/server-info', async (req, res) => {
     try {
-        const { execSync } = require('child_process');
-        const publicIp = execSync('curl -4 -s --connect-timeout 3 ifconfig.me 2>/dev/null', { stdio: 'pipe' }).toString().trim();
-        res.json({ publicIp });
+        const { stdout } = await execAsync('curl -4 -s --connect-timeout 3 ifconfig.me 2>/dev/null');
+        res.json({ publicIp: stdout.trim() });
     } catch (e) {
         res.json({ publicIp: null });
     }
@@ -127,8 +129,7 @@ async function start() {
                     } else {
                         // Update restart policy for existing running containers
                         try {
-                            const { execSync } = require('child_process');
-                            execSync(`docker update --restart unless-stopped ${containerName} 2>/dev/null`, { stdio: 'pipe' });
+                            await execAsync(`docker update --restart unless-stopped ${containerName} 2>/dev/null`);
                         } catch (e) { /* ignore */ }
                     }
 

@@ -168,6 +168,8 @@ function renderProjects(projects) {
             const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
             const statusGlow = p.status === 'running' ? `box-shadow: 0 0 20px ${statusColors.running}22, inset 0 1px 0 rgba(255,255,255,0.05);` : '';
             const updatedAt = p.updated_at ? timeAgo(p.updated_at) : timeAgo(p.created_at);
+            const sourceIcon = p.source_type === 'upload' ? '📁' : '🔗';
+            const sourceLabel = p.source_type === 'upload' ? '직접 업로드' : extractRepoName(p.github_url);
             return `
         <div class="selector-card" onclick="openProject(${p.id})" style="${statusGlow}">
           <div class="selector-card-top">
@@ -175,9 +177,9 @@ function renderProjects(projects) {
             <span class="selector-status-label">${statusLabel(p.status)}</span>
           </div>
           <div class="selector-card-name">${escapeHtml(p.name)}</div>
-          <div class="selector-card-repo">${extractRepoName(p.github_url)}</div>
+          <div class="selector-card-repo">${sourceIcon} ${sourceLabel}</div>
           <div class="selector-card-footer">
-            <span>${p.branch}</span>
+            <span>${p.source_type === 'upload' ? '업로드' : p.branch}</span>
             <span>${updatedAt}</span>
           </div>
         </div>`;
@@ -189,12 +191,13 @@ function renderProjects(projects) {
     if (dashList) {
         dashList.innerHTML = projects.map(p => {
             const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+            const sourceLabel = p.source_type === 'upload' ? '📁 업로드' : `${extractRepoName(p.github_url)} · ${p.branch}`;
             return `
         <div class="dash-project-row" onclick="openProject(${p.id})">
           <div class="selector-status-dot" style="background:${statusColors[p.status] || '#484f58'};${p.status === 'running' ? `box-shadow:0 0 6px ${statusColors.running};` : ''}"></div>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:15px;margin-bottom:2px;">${escapeHtml(p.name)}</div>
-            <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${extractRepoName(p.github_url)} · ${p.branch}</div>
+            <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sourceLabel}</div>
           </div>
           <span class="badge badge-${p.status}" style="font-size:11px;">${statusLabel(p.status)}</span>
         </div>`;
@@ -251,17 +254,25 @@ function renderProjectOverview() {
         <a href="${siteUrl}" target="_blank" style="color:var(--accent);">${urlLabel}</a>
       </div>
       <div>
-        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">GitHub</div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">소스</div>
+        ${p.source_type === 'upload' ? `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:var(--accent);">📁 직접 업로드</span>
+          <button class="btn-clone-backup" onclick="triggerReupload(${p.id})" title="새 ZIP 파일로 업데이트">
+            <span class="btn-clone-icon">📤</span> 재업로드
+          </button>
+          <input type="file" id="reupload-file-${p.id}" accept=".zip" style="display:none;" onchange="doReupload(${p.id}, this)">
+        </div>` : `
         <div style="display:flex;align-items:center;gap:8px;">
           <a href="${p.github_url}" target="_blank" style="color:var(--accent);">${extractRepoName(p.github_url)}</a>
           <button class="btn-clone-backup" id="btn-clone-backup" onclick="cloneBackup(${p.id})" title="GitClones 폴더에 백업 클론">
             <span class="btn-clone-icon">📥</span> 클론
           </button>
-        </div>
+        </div>`}
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Branch</div>
-        <span>${p.branch}</span>
+        <span>${p.source_type === 'upload' ? '-' : p.branch}</span>
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">포트</div>
@@ -287,9 +298,26 @@ function renderProjectOverview() {
       <div id="media-backup-status" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:13px;color:var(--text-secondary);">
         백업 상태 확인 중...
       </div>
+    </div>
+    <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">📦 프로젝트 백업 <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(DATA 드라이브)</span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-clone-backup" id="btn-project-backup" onclick="projectBackup(${p.id})" title="DATA 드라이브에 프로젝트 전체 백업">
+            <span class="btn-clone-icon">📦</span> 백업
+          </button>
+          <button class="btn-clone-backup" id="btn-project-restore" onclick="projectRestore(${p.id})" title="백업에서 프로젝트 복원" style="border-color:var(--warning);color:var(--warning);">
+            <span class="btn-clone-icon">🔄</span> 복원
+          </button>
+        </div>
+      </div>
+      <div id="project-backup-status" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:13px;color:var(--text-secondary);">
+        백업 상태 확인 중...
+      </div>
     </div>`;
     if (p.status === 'running') loadResourceStats(p.id);
     loadMediaBackupStatus(p.id);
+    loadProjectBackupStatus(p.id);
 }
 
 function renderSettings() {
@@ -329,9 +357,38 @@ function renderSettings() {
     </div>`;
 }
 
-// ============ PROJECT ACTIONS ============
+let currentSourceTab = 'github';
+let selectedUploadFile = null;
+
+function switchSourceTab(tab) {
+    currentSourceTab = tab;
+    document.getElementById('tab-github').classList.toggle('active', tab === 'github');
+    document.getElementById('tab-upload').classList.toggle('active', tab === 'upload');
+    document.getElementById('form-github-source').style.display = tab === 'github' ? 'block' : 'none';
+    document.getElementById('form-upload-source').style.display = tab === 'upload' ? 'block' : 'none';
+    const createBtn = document.getElementById('btn-create-project');
+    if (createBtn) createBtn.textContent = tab === 'upload' ? '업로드 & 배포' : '프로젝트 생성';
+}
+
+function handleFileSelect(input) {
+    const file = input.files[0];
+    if (file) {
+        selectedUploadFile = file;
+        const content = document.getElementById('upload-dropzone-content');
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        content.innerHTML = `
+            <div class="upload-icon">✅</div>
+            <div class="upload-text">${escapeHtml(file.name)}</div>
+            <div class="upload-hint">${sizeMB} MB · 클릭하여 다른 파일 선택</div>
+        `;
+        document.getElementById('upload-dropzone').classList.add('has-file');
+    }
+}
 
 async function createProject() {
+    if (currentSourceTab === 'upload') {
+        return createUploadProject();
+    }
     const name = document.getElementById('input-name').value.trim();
     const github_url = document.getElementById('input-github').value.trim();
     const branch = document.getElementById('input-branch').value.trim() || 'main';
@@ -351,6 +408,76 @@ async function createProject() {
         closeModal();
         loadProjects();
     } catch (error) { toast(error.message, 'error'); }
+}
+
+async function createUploadProject() {
+    const name = document.getElementById('upload-name').value.trim();
+    if (!name) { toast('프로젝트 이름은 필수입니다.', 'error'); return; }
+    if (!selectedUploadFile) { toast('ZIP 파일을 선택해주세요.', 'error'); return; }
+
+    const formData = new FormData();
+    formData.append('zipfile', selectedUploadFile);
+    formData.append('name', name);
+    formData.append('build_command', document.getElementById('upload-build').value.trim());
+    formData.append('start_command', document.getElementById('upload-start').value.trim());
+    formData.append('port', document.getElementById('upload-port').value || '');
+    formData.append('subdomain', document.getElementById('upload-subdomain').value.trim());
+
+    const createBtn = document.getElementById('btn-create-project');
+    createBtn.disabled = true;
+    createBtn.textContent = '업로드 중...';
+
+    try {
+        const res = await fetch(`${API}/projects/upload`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken() || ''}` },
+            body: formData
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        const project = await res.json();
+        toast('프로젝트가 업로드되었습니다! 배포를 시작합니다.', 'success');
+        closeModal();
+        loadProjects();
+        openDeployModal(project.id);
+    } catch (error) {
+        toast(error.message, 'error');
+    } finally {
+        createBtn.disabled = false;
+        createBtn.textContent = '업로드 & 배포';
+    }
+}
+
+function triggerReupload(projectId) {
+    const input = document.getElementById(`reupload-file-${projectId}`);
+    if (input) input.click();
+}
+
+async function doReupload(projectId, input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (!confirm(`"${file.name}"으로 소스 코드를 교체하고 재배포하시겠습니까?`)) { input.value = ''; return; }
+
+    const formData = new FormData();
+    formData.append('zipfile', file);
+
+    toast('소스 코드 업로드 중...', 'info');
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/reupload`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken() || ''}` },
+            body: formData
+        });
+        const data = await res.json();
+        if (res.ok) {
+            toast('✅ ' + data.message, 'success');
+            openDeployModal(projectId);
+        } else {
+            toast('❌ 재업로드 실패: ' + (data.error || '알 수 없는 오류'), 'error');
+        }
+    } catch (e) {
+        toast('❌ 재업로드 실패: ' + e.message, 'error');
+    }
+    input.value = '';
 }
 
 async function deployProject(id, commitHash = null) {
@@ -936,6 +1063,7 @@ async function loadMediaBackupStatus(projectId) {
 
 function openNewProjectModal() {
     document.getElementById('new-project-modal').classList.add('active');
+    // Reset GitHub tab
     document.getElementById('input-name').value = '';
     document.getElementById('input-github').value = '';
     document.getElementById('input-branch').value = 'main';
@@ -943,6 +1071,25 @@ function openNewProjectModal() {
     document.getElementById('input-start').value = 'npm start';
     document.getElementById('input-port').value = '';
     document.getElementById('input-subdomain').value = '';
+    // Reset Upload tab
+    document.getElementById('upload-name').value = '';
+    document.getElementById('upload-build').value = 'npm install';
+    document.getElementById('upload-start').value = 'npm start';
+    document.getElementById('upload-port').value = '';
+    document.getElementById('upload-subdomain').value = '';
+    const uploadFile = document.getElementById('upload-file');
+    if (uploadFile) uploadFile.value = '';
+    selectedUploadFile = null;
+    const dropContent = document.getElementById('upload-dropzone-content');
+    if (dropContent) dropContent.innerHTML = `
+        <div class="upload-icon">📦</div>
+        <div class="upload-text">ZIP 파일을 드래그하거나 클릭하여 선택</div>
+        <div class="upload-hint">프로젝트 폴더를 ZIP으로 압축하여 업로드하세요 (최대 500MB)</div>
+    `;
+    const dropzone = document.getElementById('upload-dropzone');
+    if (dropzone) dropzone.classList.remove('has-file');
+    // Reset to GitHub tab
+    switchSourceTab('github');
     document.getElementById('input-name').focus();
 }
 
@@ -1001,6 +1148,111 @@ function toast(message, type = 'info') {
     container.appendChild(el);
     setTimeout(() => el.remove(), 4000);
 }
+
+// ============ PROJECT BACKUP ============
+
+async function projectBackup(projectId) {
+    const btn = document.getElementById('btn-project-backup');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 백업 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/project-backup`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast(`✅ ${data.message}`, 'success');
+            loadProjectBackupStatus(projectId);
+        } else {
+            toast(`❌ 백업 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ 백업 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">📦</span> 백업';
+        }
+    }
+}
+
+async function projectRestore(projectId) {
+    if (!confirm('백업에서 프로젝트를 복원하시겠습니까?\n현재 소스 코드가 백업 파일로 덮어씌워집니다.')) return;
+    const btn = document.getElementById('btn-project-restore');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 복원 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/project-restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast(`✅ ${data.message}`, 'success');
+        } else {
+            toast(`❌ 복원 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ 복원 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">🔄</span> 복원';
+        }
+    }
+}
+
+async function loadProjectBackupStatus(projectId) {
+    const container = document.getElementById('project-backup-status');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/project-backup/status`);
+        const status = await res.json();
+        if (status.exists) {
+            const backupTime = new Date(status.lastBackupTime).toLocaleString('ko-KR');
+            container.innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div>📅 마지막 백업: <strong>${backupTime}</strong></div>
+                    <div>💾 크기: <strong>${status.totalSizeFormatted}</strong></div>
+                    <div style="grid-column:1/3;font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${status.backupDir}">📂 ${status.backupDir}</div>
+                </div>`;
+        } else {
+            container.innerHTML = '<span style="color:var(--text-muted);">⚠️ 아직 백업이 없습니다. 배포 시 자동으로 백업됩니다.</span>';
+        }
+    } catch (e) {
+        container.innerHTML = '<span style="color:var(--danger);">백업 상태를 불러올 수 없습니다.</span>';
+    }
+}
+
+// ============ DRAG & DROP ============
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Setup dropzone
+    setTimeout(() => {
+        const dropzone = document.getElementById('upload-dropzone');
+        if (!dropzone) return;
+        dropzone.addEventListener('click', () => document.getElementById('upload-file').click());
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.zip') || file.type.includes('zip'))) {
+                const input = document.getElementById('upload-file');
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                handleFileSelect(input);
+            } else {
+                toast('ZIP 파일만 업로드할 수 있습니다.', 'error');
+            }
+        });
+    }, 500);
+});
 
 // ============ INIT ============
 

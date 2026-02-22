@@ -3,12 +3,20 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const db = require('../db/db');
+const rateLimit = require('express-rate-limit');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'orbitron-secret-key';
 const SALT_ROUNDS = 10;
 
+// Rate limiting for auth routes
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // Limit each IP to 20 requests per `window` (here, per 15 minutes)
+    message: { error: '너무 많은 요청이 발생했습니다. 15분 후에 다시 시도해주세요.', success: false }
+});
+
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
@@ -49,7 +57,7 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {

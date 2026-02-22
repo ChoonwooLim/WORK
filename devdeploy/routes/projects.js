@@ -2,16 +2,49 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const deployer = require('../services/deployer');
-const { execSync } = require('child_process');
+const { exec, spawn } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
 const nginxService = require('../services/nginx');
+const multer = require('multer');
+const AdmZip = require('adm-zip');
+const path = require('path');
+const fs = require('fs');
+const { encrypt, decrypt } = require('../db/crypto');
 
-// GET /api/projects - List all projects
+// Multer config for ZIP upload (max 500MB)
+const upload = multer({
+    dest: path.join(__dirname, '..', 'uploads_tmp'),
+    limits: { fileSize: 500 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/zip' ||
+            file.mimetype === 'application/x-zip-compressed' ||
+            file.originalname.endsWith('.zip')) {
+            cb(null, true);
+        } else {
+            cb(new Error('ZIP 파일만 업로드할 수 있습니다.'));
+        }
+    }
+});
+
+// GET /api/projects - List all projects for current user
 router.get('/', async (req, res) => {
     try {
         const projects = await db.queryAll(
-            'SELECT * FROM projects ORDER BY created_at DESC'
+            'SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC',
+            [req.user.userId]
         );
-        res.json(projects);
+        // Decrypt env_vars before sending to client
+        const decryptedProjects = projects.map(p => {
+            if (p.env_vars && typeof p.env_vars === 'string') {
+                try {
+                    const decrypted = decrypt(p.env_vars);
+                    p.env_vars = decrypted ? JSON.parse(decrypted) : {};
+                } catch (e) { p.env_vars = {}; }
+            }
+            return p;
+        });
+        res.json(decryptedProjects);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -20,8 +53,16 @@ router.get('/', async (req, res) => {
 // GET /api/projects/:id - Get project details
 router.get('/:id', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+        // Decrypt env_vars before sending to client
+        if (project.env_vars && typeof project.env_vars === 'string') {
+            try {
+                const decrypted = decrypt(project.env_vars);
+                project.env_vars = decrypted ? JSON.parse(decrypted) : {};
+            } catch (e) { project.env_vars = {}; }
+        }
         res.json(project);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -49,12 +90,21 @@ router.post('/', async (req, res) => {
             }
             projectSubdomain = sanitized;
         }
+
+        // STRICT VALIDATION for subdomain (prevents XSS and Command Injection)
+        if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(projectSubdomain)) {
+            return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
+        }
+
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
+        // Encrypt environment variables
+        const encryptedEnvVars = encrypt(JSON.stringify(env_vars || {}));
+
         const project = await db.queryOne(
-            `INSERT INTO projects (name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, JSON.stringify(env_vars || {}), auto_deploy !== false]
+            `INSERT INTO projects (user_id, name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false]
         );
 
         res.status(201).json(project);
@@ -70,6 +120,12 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain } = req.body;
+        if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
+            return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
+        }
+
+        const encryptedEnvVars = env_vars ? encrypt(JSON.stringify(env_vars)) : null;
+
         const project = await db.queryOne(
             `UPDATE projects SET
         name = COALESCE($1, name),
@@ -83,10 +139,10 @@ router.put('/:id', async (req, res) => {
         auto_deploy = COALESCE($9, auto_deploy),
         custom_domain = COALESCE($10, custom_domain),
         updated_at = NOW()
-       WHERE id = $11 RETURNING *`,
-            [name, github_url, branch, build_command, start_command, port, subdomain, env_vars ? JSON.stringify(env_vars) : null, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, req.params.id]
+       WHERE id = $11 AND user_id = $12 RETURNING *`,
+            [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, req.params.id, req.user.userId]
         );
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // If custom_domain changed, update nginx config
         if (custom_domain !== undefined) {
@@ -102,8 +158,8 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/projects/:id - Delete a project
 router.delete('/:id', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         await deployer.deleteProject(project);
         await db.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
@@ -118,8 +174,8 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/deploy', async (req, res) => {
     try {
         const { commit_hash } = req.body || {};
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // Deploy in background
         res.json({ message: 'Deployment started', project_id: project.id, commit: commit_hash || 'latest' });
@@ -135,8 +191,8 @@ router.post('/:id/deploy', async (req, res) => {
 // POST /api/projects/:id/stop - Stop a project
 router.post('/:id/stop', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         await deployer.stop(project);
         res.json({ message: 'Project stopped' });
@@ -148,22 +204,22 @@ router.post('/:id/stop', async (req, res) => {
 // GET /api/projects/:id/stats - Container resource usage
 router.get('/:id/stats', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const containerName = `orbitron-${project.subdomain}`;
         try {
-            const raw = execSync(
+            const { stdout: raw } = await execAsync(
                 `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.PIDs}}' ${containerName} 2>/dev/null`,
-                { stdio: 'pipe', timeout: 5000 }
-            ).toString().trim();
-            const [cpu, memUsage, memPerc, netIO, pids] = raw.split('|');
+                { timeout: 5000 }
+            );
+            const [cpu, memUsage, memPerc, netIO, pids] = raw.trim().split('|');
 
             // Get uptime
-            const uptimeRaw = execSync(
+            const { stdout: uptimeRaw } = await execAsync(
                 `docker inspect --format '{{.State.StartedAt}}' ${containerName} 2>/dev/null`,
-                { stdio: 'pipe', timeout: 3000 }
-            ).toString().trim();
+                { timeout: 3000 }
+            );
             const startedAt = new Date(uptimeRaw);
             const uptimeMs = Date.now() - startedAt.getTime();
 
@@ -187,8 +243,8 @@ router.get('/:id/stats', async (req, res) => {
 // GET /api/projects/:id/commits - Get recent 20 commits for deployment options
 router.get('/:id/commits', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const path = require('path');
         const fs = require('fs');
@@ -208,10 +264,10 @@ router.get('/:id/commits', async (req, res) => {
             // Output local and remote commits on the specified branch
             const logCmd = `git log -n 20 --pretty=format:"${formatStr}" origin/${project.branch} 2>/dev/null || git log -n 20 --pretty=format:"${formatStr}" 2>/dev/null`;
 
-            const raw = execSync(logCmd, { cwd: projectDir, timeout: 5000 }).toString().trim();
-            if (!raw) return res.json([]);
+            const { stdout: raw } = await execAsync(logCmd, { cwd: projectDir, timeout: 5000 });
+            if (!raw || !raw.trim()) return res.json([]);
 
-            const commits = raw.split('\n').filter(Boolean).map(line => {
+            const commits = raw.trim().split('\n').filter(Boolean).map(line => {
                 const parts = line.split('|');
                 return {
                     hash: parts[0] || '',
@@ -234,8 +290,8 @@ router.get('/:id/commits', async (req, res) => {
 router.post('/:id/rollback', async (req, res) => {
     try {
         const { deployment_id } = req.body;
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const deployment = await db.queryOne('SELECT * FROM deployments WHERE id = $1 AND project_id = $2', [deployment_id, req.params.id]);
         if (!deployment || !deployment.commit_hash) {
@@ -258,8 +314,8 @@ router.post('/:id/exec', async (req, res) => {
         const { command } = req.body;
         if (!command) return res.status(400).json({ error: 'command is required' });
 
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const containerName = `orbitron-${project.subdomain}`;
         // Sanitize: block dangerous commands
@@ -269,13 +325,27 @@ router.post('/:id/exec', async (req, res) => {
         }
 
         try {
-            const output = execSync(
-                `docker exec ${containerName} sh -c ${JSON.stringify(command)} 2>&1`,
-                { stdio: 'pipe', timeout: 10000, maxBuffer: 1024 * 1024 }
-            ).toString();
-            res.json({ output });
+            // Use spawn instead of exec to prevent shell metacharacter injection entirely
+            const childProc = spawn('docker', ['exec', containerName, 'sh', '-c', command], {
+                timeout: 10000
+            });
+            let stdoutData = '';
+            let stderrData = '';
+
+            childProc.stdout.on('data', (data) => stdoutData += data);
+            childProc.stderr.on('data', (data) => stderrData += data);
+
+            await new Promise((resolve) => {
+                childProc.on('close', resolve);
+                childProc.on('error', (err) => {
+                    stderrData += err.toString();
+                    resolve();
+                });
+            });
+
+            res.json({ output: stdoutData || stderrData });
         } catch (e) {
-            res.json({ output: e.stdout?.toString() || e.stderr?.toString() || e.message });
+            res.json({ output: e.message });
         }
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -285,8 +355,8 @@ router.post('/:id/exec', async (req, res) => {
 // POST /api/projects/:id/clone-backup - Clone repo to GitClones folder for backup
 router.post('/:id/clone-backup', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const path = require('path');
         const fs = require('fs');
@@ -305,10 +375,10 @@ router.post('/:id/clone-backup', async (req, res) => {
         if (fs.existsSync(path.join(clonePath, '.git'))) {
             // Already cloned - pull latest
             try {
-                const output = execSync(
+                const { stdout: output } = await execAsync(
                     `cd ${clonePath} && git fetch origin && git pull origin ${project.branch}`,
-                    { stdio: 'pipe', timeout: 30000, maxBuffer: 1024 * 1024 * 50 }
-                ).toString();
+                    { maxBuffer: 1024 * 1024 * 50 }
+                );
                 res.json({
                     success: true,
                     action: 'updated',
@@ -318,17 +388,17 @@ router.post('/:id/clone-backup', async (req, res) => {
                 });
             } catch (e) {
                 res.status(500).json({
-                    error: `Git pull 실패: ${e.stderr?.toString() || e.message}`,
+                    error: `Git pull 실패: ${e.stderr || e.message}`,
                     path: clonePath
                 });
             }
         } else {
             // Fresh clone
             try {
-                const output = execSync(
+                const { stdout: output } = await execAsync(
                     `git clone -b ${project.branch} ${project.github_url} ${clonePath}`,
-                    { stdio: 'pipe', timeout: 60000, maxBuffer: 1024 * 1024 * 50 }
-                ).toString();
+                    { maxBuffer: 1024 * 1024 * 50 }
+                );
                 res.json({
                     success: true,
                     action: 'cloned',
@@ -338,7 +408,7 @@ router.post('/:id/clone-backup', async (req, res) => {
                 });
             } catch (e) {
                 res.status(500).json({
-                    error: `Git clone 실패: ${e.stderr?.toString() || e.message}`,
+                    error: `Git clone 실패: ${e.stderr || e.message}`,
                     path: clonePath
                 });
             }
@@ -351,8 +421,8 @@ router.post('/:id/clone-backup', async (req, res) => {
 // POST /api/projects/:id/media-backup - Backup media files to DATA drive
 router.post('/:id/media-backup', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const mediaBackup = require('../services/mediaBackup');
         const result = mediaBackup.backupMedia(project);
@@ -369,8 +439,8 @@ router.post('/:id/media-backup', async (req, res) => {
 // GET /api/projects/:id/media-backup/status - Get media backup status
 router.get('/:id/media-backup/status', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const mediaBackup = require('../services/mediaBackup');
         const status = mediaBackup.getBackupStatus(project);
@@ -383,8 +453,8 @@ router.get('/:id/media-backup/status', async (req, res) => {
 // POST /api/projects/:id/media-restore - Restore media files from backup
 router.post('/:id/media-restore', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-        if (!project) return res.status(404).json({ error: 'Project not found' });
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const { filename } = req.body || {};
         const mediaBackup = require('../services/mediaBackup');
@@ -394,6 +464,201 @@ router.post('/:id/media-restore', async (req, res) => {
             message: filename
                 ? `파일 복원 완료: ${filename}`
                 : `전체 복원 완료: ${result.restoredCount}개 파일 복원`,
+            ...result
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ PROJECT UPLOAD ============
+
+// POST /api/projects/upload - Create project from uploaded ZIP
+router.post('/upload', upload.single('zipfile'), async (req, res) => {
+    let tmpPath = null;
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'ZIP 파일이 필요합니다.' });
+        }
+        tmpPath = req.file.path;
+
+        const { name, build_command, start_command, port, subdomain } = req.body;
+        if (!name) {
+            return res.status(400).json({ error: '프로젝트 이름은 필수입니다.' });
+        }
+
+        // Generate subdomain
+        let projectSubdomain = subdomain;
+        if (!projectSubdomain) {
+            let sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+            if (!sanitized) {
+                sanitized = `upload-${Date.now()}`;
+            }
+            projectSubdomain = sanitized;
+        }
+        // Check projectSubdomain validity
+        if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(projectSubdomain)) {
+            return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 허용됩니다.' });
+        }
+
+        const projectPort = port ? parseInt(port) : (3000 + Math.floor(Math.random() * 1000));
+
+        // Create project in DB
+        const project = await db.queryOne(
+            `INSERT INTO projects (user_id, name, github_url, branch, source_type, build_command, start_command, port, subdomain, auto_deploy)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false) RETURNING *`,
+            [req.user.userId, name, null, 'main', 'upload', build_command || 'npm install', start_command || 'npm start', projectPort, projectSubdomain]
+        );
+
+        // Extract ZIP to deployments dir
+        const projectDir = path.join(__dirname, '..', 'deployments', project.subdomain);
+        fs.mkdirSync(projectDir, { recursive: true });
+
+        const zip = new AdmZip(tmpPath);
+        zip.extractAllTo(projectDir, true);
+
+        // If ZIP contains a single root folder, move contents up
+        const entries = fs.readdirSync(projectDir).filter(e => !e.startsWith('.'));
+        if (entries.length === 1) {
+            const singleDir = path.join(projectDir, entries[0]);
+            if (fs.statSync(singleDir).isDirectory()) {
+                const innerEntries = fs.readdirSync(singleDir);
+                for (const ie of innerEntries) {
+                    const src = path.join(singleDir, ie);
+                    const dest = path.join(projectDir, ie);
+                    fs.renameSync(src, dest);
+                }
+                fs.rmdirSync(singleDir);
+            }
+        }
+
+        // Cleanup temp file
+        try { fs.unlinkSync(tmpPath); } catch (e) { }
+        tmpPath = null;
+
+        res.status(201).json(project);
+
+        // Deploy in background
+        deployer.deploy(project, null, null).catch(err => {
+            console.error(`Upload deploy error for ${project.name}:`, err);
+        });
+    } catch (error) {
+        if (tmpPath) try { fs.unlinkSync(tmpPath); } catch (e) { }
+        if (error.code === '23505') {
+            return res.status(409).json({ error: '서브도메인이 이미 존재합니다.' });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/:id/reupload - Update uploaded project with new ZIP
+router.post('/:id/reupload', upload.single('zipfile'), async (req, res) => {
+    let tmpPath = null;
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        if (project.source_type !== 'upload') {
+            return res.status(400).json({ error: 'GitHub 프로젝트는 재업로드할 수 없습니다.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ error: 'ZIP 파일이 필요합니다.' });
+        }
+        tmpPath = req.file.path;
+
+        const projectDir = path.join(__dirname, '..', 'deployments', project.subdomain);
+
+        // Remove old source (but keep Dockerfile)
+        if (fs.existsSync(projectDir)) {
+            const keepFiles = new Set(['Dockerfile']);
+            const entries = fs.readdirSync(projectDir);
+            for (const entry of entries) {
+                if (keepFiles.has(entry)) continue;
+                const fullPath = path.join(projectDir, entry);
+                fs.rmSync(fullPath, { recursive: true, force: true });
+            }
+        }
+        fs.mkdirSync(projectDir, { recursive: true });
+
+        // Extract new ZIP
+        const zip = new AdmZip(tmpPath);
+        zip.extractAllTo(projectDir, true);
+
+        // If ZIP contains a single root folder, move contents up
+        const entries = fs.readdirSync(projectDir).filter(e => !e.startsWith('.') && e !== 'Dockerfile');
+        if (entries.length === 1) {
+            const singleDir = path.join(projectDir, entries[0]);
+            if (fs.statSync(singleDir).isDirectory()) {
+                const innerEntries = fs.readdirSync(singleDir);
+                for (const ie of innerEntries) {
+                    const src = path.join(singleDir, ie);
+                    const dest = path.join(projectDir, ie);
+                    fs.renameSync(src, dest);
+                }
+                fs.rmdirSync(singleDir);
+            }
+        }
+
+        // Cleanup temp file
+        try { fs.unlinkSync(tmpPath); } catch (e) { }
+        tmpPath = null;
+
+        res.json({ success: true, message: '소스 코드가 업데이트되었습니다. 재배포를 시작합니다.' });
+
+        // Deploy in background
+        deployer.deploy(project, null, null).catch(err => {
+            console.error(`Reupload deploy error for ${project.name}:`, err);
+        });
+    } catch (error) {
+        if (tmpPath) try { fs.unlinkSync(tmpPath); } catch (e) { }
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ PROJECT BACKUP ============
+
+// POST /api/projects/:id/project-backup - Backup project to DATA drive
+router.post('/:id/project-backup', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+        const projectBackup = require('../services/projectBackup');
+        const result = projectBackup.backupProject(project);
+        res.json({
+            success: true,
+            message: `프로젝트 백업 완료: ${result.copiedCount}개 파일 복사 (${result.totalSizeFormatted})`,
+            ...result
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/projects/:id/project-backup/status - Get project backup status
+router.get('/:id/project-backup/status', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+        const projectBackup = require('../services/projectBackup');
+        const status = projectBackup.getProjectBackupStatus(project);
+        res.json(status);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/:id/project-restore - Restore project from backup
+router.post('/:id/project-restore', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+        const projectBackup = require('../services/projectBackup');
+        const result = projectBackup.restoreProject(project);
+        res.json({
+            success: true,
+            message: `프로젝트 복원 완료: ${result.copiedCount}개 파일 복원`,
             ...result
         });
     } catch (error) {

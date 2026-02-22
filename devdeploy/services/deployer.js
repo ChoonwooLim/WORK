@@ -1,4 +1,6 @@
 const { exec } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
 const path = require('path');
 const fs = require('fs');
 const EventEmitter = require('events');
@@ -7,6 +9,7 @@ const dockerService = require('./docker');
 const nginxService = require('./nginx');
 const tunnelService = require('./tunnel');
 const mediaBackup = require('./mediaBackup');
+const projectBackup = require('./projectBackup');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
 
@@ -65,11 +68,17 @@ class Deployer extends EventEmitter {
             // Update project status
             await db.query(`UPDATE projects SET status = 'building' WHERE id = $1`, [project.id]);
 
-            // Step 1: Clone or pull
-            this.emitProgress(project.id, 'clone', '소스 코드를 가져오는 중...');
-            logs += await this.cloneOrPull(project, projectDir, commitHash);
-            logs += '\n--- Clone/Pull complete ---\n';
-            this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
+            // Step 1: Clone or pull (skip for upload projects)
+            if (project.source_type === 'upload') {
+                this.emitProgress(project.id, 'clone', '업로드된 소스 코드 사용 중...');
+                logs += '\n--- Using uploaded source code ---\n';
+                this.emitProgress(project.id, 'clone', '업로드된 소스 코드 준비 완료');
+            } else {
+                this.emitProgress(project.id, 'clone', '소스 코드를 가져오는 중...');
+                logs += await this.cloneOrPull(project, projectDir, commitHash);
+                logs += '\n--- Clone/Pull complete ---\n';
+                this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
+            }
 
             // Step 1.5: Auto media backup to DATA drive
             try {
@@ -133,6 +142,14 @@ class Deployer extends EventEmitter {
                 [logs, deploymentId]
             );
 
+            // Auto backup project to DATA drive
+            try {
+                const backupResult = projectBackup.backupProject(project);
+                logs += `\n📦 프로젝트 백업: ${backupResult.copiedCount}개 파일 복사 (${backupResult.totalSizeFormatted}) → ${backupResult.backupDir}\n`;
+            } catch (e) {
+                logs += `\n⚠️ 프로젝트 백업 건너뜀: ${e.message}\n`;
+            }
+
             logs += '\n✅ Deployment successful!\n';
             this.emitProgress(project.id, 'done', '배포가 성공적으로 완료되었습니다!', 'success');
             return { success: true, logs, deploymentId, tunnelUrl };
@@ -159,29 +176,31 @@ class Deployer extends EventEmitter {
 
     // Clone or pull repo (with optional commitHash for rollback)
     async cloneOrPull(project, projectDir, commitHash = null) {
-        return new Promise((resolve, reject) => {
-            if (fs.existsSync(path.join(projectDir, '.git'))) {
-                const resetTarget = commitHash || `origin/${project.branch}`;
-                exec(`cd ${projectDir} && git fetch origin && git reset --hard ${resetTarget}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
-                    if (error) reject(new Error(`Git pull failed: ${stderr}`));
-                    else resolve(`Git pull${commitHash ? ` (rollback to ${commitHash.substring(0, 7)})` : ''}:\n${stdout}${stderr}`);
-                });
-            } else {
-                // Clone
-                fs.mkdirSync(projectDir, { recursive: true });
-                exec(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
-                    if (error) reject(new Error(`Git clone failed: ${stderr}`));
-                    else resolve(`Git clone:\n${stdout}${stderr}`);
-                });
+        if (fs.existsSync(path.join(projectDir, '.git'))) {
+            const resetTarget = commitHash || `origin/${project.branch}`;
+            try {
+                const { stdout, stderr } = await execAsync(`cd ${projectDir} && git fetch origin && git reset --hard ${resetTarget}`, { maxBuffer: 1024 * 1024 * 50 });
+                return `Git pull${commitHash ? ` (rollback to ${commitHash.substring(0, 7)})` : ''}:\n${stdout}${stderr}`;
+            } catch (error) {
+                throw new Error(`Git pull failed: ${error.stderr || error.message}`);
             }
-        });
+        } else {
+            // Clone
+            fs.mkdirSync(projectDir, { recursive: true });
+            try {
+                const { stdout, stderr } = await execAsync(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 });
+                return `Git clone:\n${stdout}${stderr}`;
+            } catch (error) {
+                throw new Error(`Git clone failed: ${error.stderr || error.message}`);
+            }
+        }
     }
 
     // Stop a project
     async stop(project) {
         await dockerService.stopContainer(`orbitron-${project.subdomain}`);
-        nginxService.removeProject(project.subdomain);
-        tunnelService.stopTunnel(project.subdomain);
+        await nginxService.removeProject(project.subdomain);
+        await tunnelService.deleteTunnel(project.subdomain);
         await db.query(`UPDATE projects SET status = 'stopped', container_id = NULL, tunnel_url = NULL WHERE id = $1`, [project.id]);
     }
 

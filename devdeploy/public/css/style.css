@@ -1199,3 +1199,86 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* ===== SOURCE TABS ===== */
+.source-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.source-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.source-tab:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.source-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.source-tab.active {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent);
+}
+
+/* ===== UPLOAD DROPZONE ===== */
+.upload-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: var(--bg-primary);
+}
+
+.upload-dropzone:hover {
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.upload-dropzone.drag-over {
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.1);
+  box-shadow: 0 0 20px rgba(88, 166, 255, 0.1);
+  transform: scale(1.01);
+}
+
+.upload-dropzone.has-file {
+  border-color: var(--success);
+  border-style: solid;
+  background: rgba(63, 185, 80, 0.05);
+}
+
+.upload-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.upload-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
