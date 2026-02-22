@@ -153,6 +153,7 @@ async function loadProjects() {
         const projects = await res.json();
         renderProjects(projects);
         updateStats(projects);
+        loadDashboardResourceStats();
     } catch (error) {
         console.error('Failed to load projects:', error);
     }
@@ -178,9 +179,16 @@ function renderProjects(projects) {
           </div>
           <div class="selector-card-name">${escapeHtml(p.name)}</div>
           <div class="selector-card-repo">${sourceIcon} ${sourceLabel}</div>
-          <div class="selector-card-footer">
-            <span>${p.source_type === 'upload' ? '업로드' : p.branch}</span>
-            <span>${updatedAt}</span>
+          <div class="selector-card-footer" style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; width:100%;">
+              <span>${p.source_type === 'upload' ? '업로드' : p.branch}</span>
+              <span>${updatedAt}</span>
+            </div>
+            ${p.status === 'running' ? `
+            <div id="selector-res-${p.id}" style="display:flex; gap:12px; font-size:11px; margin-top:4px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.05);">
+              <span style="color:var(--text-muted); font-style:italic;">리소스 통계 수집 중...</span>
+            </div>
+            ` : ''}
           </div>
         </div>`;
         }).join('')}</div>`;
@@ -192,14 +200,46 @@ function renderProjects(projects) {
         dashList.innerHTML = projects.map(p => {
             const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
             const sourceLabel = p.source_type === 'upload' ? '📁 업로드' : `${extractRepoName(p.github_url)} · ${p.branch}`;
+
+            const siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || `http://${serverHost}:${p.port}`);
+            const urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
+
             return `
-        <div class="dash-project-row" onclick="openProject(${p.id})">
-          <div class="selector-status-dot" style="background:${statusColors[p.status] || '#484f58'};${p.status === 'running' ? `box-shadow:0 0 6px ${statusColors.running};` : ''}"></div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;font-size:15px;margin-bottom:2px;">${escapeHtml(p.name)}</div>
-            <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sourceLabel}</div>
+        <div class="dash-project-row" style="display:flex; flex-direction:column; align-items:stretch; gap:12px; padding:16px;" onclick="openProject(${p.id})">
+          <div style="display:flex; align-items:center;">
+            <div class="selector-status-dot" style="background:${statusColors[p.status] || '#484f58'};${p.status === 'running' ? `box-shadow:0 0 6px ${statusColors.running};` : ''}"></div>
+            <div style="flex:1;min-width:0; margin-left:14px;">
+              <div style="font-weight:600;font-size:16px;margin-bottom:2px;">${escapeHtml(p.name)}</div>
+              <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sourceLabel}</div>
+            </div>
+            <span class="badge badge-${p.status}" style="font-size:11px;">${statusLabel(p.status)}</span>
           </div>
-          <span class="badge badge-${p.status}" style="font-size:11px;">${statusLabel(p.status)}</span>
+          
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; margin-top:4px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.05);">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; flex-direction:column; gap:4px; font-size:12px;">
+                <div style="color:var(--text-secondary);">포트: <strong style="color:var(--text-primary); font-family:monospace;">${p.port}</strong></div>
+                ${p.status === 'running' ? `<div style="color:var(--text-secondary);">URL: <a href="${siteUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent); text-decoration:none;">${urlLabel}</a></div>` : ''}
+              </div>
+              
+              <!-- Realtime Resource KPI Container -->
+              ${p.status === 'running' ? `
+              <div id="dash-res-${p.id}" style="display:flex; gap:16px; font-size:12px; margin-top:4px;">
+                <span style="color:var(--text-muted); font-style:italic;">리소스 통계 수집 중...</span>
+              </div>
+              ` : ''}
+            </div>
+            
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openDeployOptions(${p.id})">🔄 재배포</button>
+              ${p.status === 'running' ? `
+                <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹ 중지</button>
+                <a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank" onclick="event.stopPropagation()">🌐 열기</a>
+              ` : `
+                <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); openDeployOptions(${p.id})">▶ 시작</button>
+              `}
+            </div>
+          </div>
         </div>`;
         }).join('');
     }
@@ -235,9 +275,12 @@ function renderProjectOverview() {
     ${p.status === 'running' ? `
     <div style="background:linear-gradient(135deg,rgba(63,185,80,0.15),rgba(88,166,255,0.1));border:1px solid var(--success);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
       <div style="font-size:13px;color:var(--success);margin-bottom:8px;font-weight:600;">🟢 사이트 실행 중</div>
-      <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:22px;font-weight:700;text-decoration:none;">${urlLabel}</a>
+      <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:22px;font-weight:700;text-decoration:none; word-break: break-all;">${urlLabel}</a>
       ${p.custom_domain ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">터널: ${p.tunnel_url || 'N/A'}</div>` : ''}
-      <div style="margin-top:12px;"><a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">🌐 사이트 열기</a></div>
+      <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
+        <a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">🌐 사이트 열기</a>
+        <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 재배포</button>
+      </div>
     </div>` : `
     <div style="background:rgba(139,148,158,0.1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">⏹ 중지됨</div>
@@ -894,6 +937,28 @@ async function loadResourceStats(projectId) {
     } catch (e) { /* ignore */ }
 }
 
+async function loadDashboardResourceStats() {
+    // Collect all elements with ID starting with selector-res-
+    const containers = document.querySelectorAll('[id^="selector-res-"]');
+    for (let el of containers) {
+        const projectId = el.id.replace('selector-res-', '');
+        try {
+            const res = await fetch(`${API}/projects/${projectId}/stats`);
+            if (res.ok) {
+                const stats = await res.json();
+                const cpuVal = parseFloat(stats.cpu) || 0;
+                const uptime = formatUptime(stats.uptime || 0);
+                el.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">💻 <span style="color:var(--accent); font-weight:600;">${cpuVal.toFixed(1)}%</span></div>
+                    <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">🧠 <span style="color:var(--purple); font-weight:600;">${stats.memUsage}</span></div>
+                    <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">⏱ <span style="color:var(--text-primary);">${uptime}</span></div>
+                    <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">🌐 <span style="color:var(--text-primary);">${stats.netIO}</span></div>
+                `;
+            }
+        } catch (e) { /* silently fail for background pollers */ }
+    }
+}
+
 async function rollbackTo(deploymentId) {
     if (!confirm('이 버전으로 롤백하시겠습니까?')) return;
     try {
@@ -1267,3 +1332,4 @@ async function init() {
 
 init();
 setInterval(loadProjects, 5000);
+setInterval(loadDashboardResourceStats, 5000);
