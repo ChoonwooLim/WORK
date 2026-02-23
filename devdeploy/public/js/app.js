@@ -61,6 +61,12 @@ async function login() {
     } catch (e) { errorEl.textContent = '서버에 연결할 수 없습니다.'; }
 }
 
+function logout() {
+    localStorage.removeItem('orbitron_token');
+    document.cookie = 'orbitron_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    window.location.reload();
+}
+
 async function register() {
     const username = document.getElementById('input-reg-username').value.trim();
     const email = document.getElementById('input-reg-email').value.trim();
@@ -105,7 +111,6 @@ function navigateTo(page) {
     const navEl = document.getElementById(`nav-${page}`);
     if (navEl) navEl.classList.add('active');
 
-    // Update topbar title
     const titles = {
         'dashboard': '📊 대시보드',
         'projects': '📦 프로젝트',
@@ -115,6 +120,7 @@ function navigateTo(page) {
         'project-env': `🔧 ${currentProject?.name || ''} — 환경변수`,
         'project-console': `🖥 ${currentProject?.name || ''} — 콘솔`,
         'project-settings': `⚙️ ${currentProject?.name || ''} — 설정`,
+        'project-ai': `💬 ${currentProject?.name || ''} — AI 어시스턴트`,
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
 
@@ -143,6 +149,13 @@ function navigateTo(page) {
     if (page === 'project-env') renderEnvVars();
     if (page === 'project-settings') renderSettings();
     if (page === 'project-console') document.getElementById('console-input')?.focus();
+    if (page === 'project-ai') {
+        document.getElementById('page-project-ai').style.display = 'flex'; // Ensure flex layout
+        loadAiChatHistory();
+    } else {
+        const aiPage = document.getElementById('page-project-ai');
+        if (aiPage) aiPage.style.display = 'none';
+    }
 }
 
 // ============ PROJECT LIST ============
@@ -386,6 +399,35 @@ function renderSettings() {
       </div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <label style="font-size:15px;font-weight:600;">🤖 AI 에러 분석 모델 설정</label>
+      <div class="form-hint" style="margin-bottom:8px;">배포 실패 시 에러 로그를 분석할 AI 모델을 선택하세요.</div>
+      <select id="set-ai-model" style="width:100%; padding:10px; border-radius:6px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); font-family:var(--font-family); margin-bottom: 12px;" onchange="toggleAiKeyFields()">
+          <option value="claude-4-6-opus-20260205" ${p.ai_model === 'claude-4-6-opus-20260205' ? 'selected' : ''}>👑 Claude 4.6 Opus (가장 강력함)</option>
+          <option value="claude-4-6-sonnet-20260217" ${p.ai_model === 'claude-4-6-sonnet-20260217' ? 'selected' : ''}>⚡ Claude 4.6 Sonnet (빠르고 똑똑함)</option>
+          <option value="claude-3-5-sonnet-20241022" ${p.ai_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Claude 3.5 Sonnet</option>
+          <option value="gemini-3.1-pro" ${p.ai_model === 'gemini-3.1-pro' ? 'selected' : ''}>🔭 Gemini 3.1 Pro (강력한 추론)</option>
+          <option value="gemini-3.0-flash" ${p.ai_model === 'gemini-3.0-flash' ? 'selected' : ''}>🚀 Gemini 3.0 Flash (초고속)</option>
+          <option value="gemini-2.5-pro" ${p.ai_model === 'gemini-2.5-pro' ? 'selected' : ''}>📚 Gemini 2.5 Pro</option>
+          <option value="gemini-2.5-flash" ${p.ai_model === 'gemini-2.5-flash' ? 'selected' : ''}>✨ Gemini 2.5 Flash</option>
+      </select>
+
+      <div id="ai-key-anthropic" style="display: ${(!p.ai_model || p.ai_model.startsWith('claude')) ? 'block' : 'none'};">
+         <label style="font-size:13px;font-weight:600;color:var(--text-secondary);">🔑 Anthropic API Key <span style="font-weight:normal;font-size:11px;">(해당 프로젝트 전용)</span></label>
+         <div style="display:flex; gap:8px; margin-top:4px;">
+            <input type="password" id="set-anthropic-key" placeholder="${(p.env_vars && p.env_vars.ANTHROPIC_API_KEY) ? '✅ 설정됨 (변경하려면 새 키 입력)' : 'sk-ant-...'}" style="flex:1;">
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="btn btn-outline" style="white-space:nowrap; text-decoration:none; display:flex; align-items:center;">발급받기 🔗</a>
+         </div>
+      </div>
+      
+      <div id="ai-key-gemini" style="display: ${p.ai_model?.startsWith('gemini') ? 'block' : 'none'};">
+         <label style="font-size:13px;font-weight:600;color:var(--text-secondary);">🔑 Gemini API Key <span style="font-weight:normal;font-size:11px;">(해당 프로젝트 전용)</span></label>
+         <div style="display:flex; gap:8px; margin-top:4px;">
+            <input type="password" id="set-gemini-key" placeholder="${(p.env_vars && p.env_vars.GEMINI_API_KEY) ? '✅ 설정됨 (변경하려면 새 키 입력)' : 'AIzaSy...'}" style="flex:1;">
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn btn-outline" style="white-space:nowrap; text-decoration:none; display:flex; align-items:center;">발급받기 🔗</a>
+         </div>
+      </div>
+    </div>
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🔗 GitHub Webhook URL</label>
       <div class="form-hint">GitHub 레포 → Settings → Webhooks → Add webhook</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
@@ -399,6 +441,14 @@ function renderSettings() {
       <button class="btn btn-danger" onclick="deleteProject(${p.id})">🗑 프로젝트 삭제</button>
     </div>`;
 }
+
+window.toggleAiKeyFields = function () {
+    const model = document.getElementById('set-ai-model').value;
+    const anthropicDiv = document.getElementById('ai-key-anthropic');
+    const geminiDiv = document.getElementById('ai-key-gemini');
+    if (anthropicDiv) anthropicDiv.style.display = model.startsWith('claude') ? 'block' : 'none';
+    if (geminiDiv) geminiDiv.style.display = model.startsWith('gemini') ? 'block' : 'none';
+};
 
 let currentSourceTab = 'github';
 let selectedUploadFile = null;
@@ -619,19 +669,37 @@ async function saveSettings() {
     try {
         const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
         const custom_domain = document.getElementById('set-custom-domain')?.value?.trim() || null;
+        const ai_model = document.getElementById('set-ai-model')?.value || 'claude-4-6-opus-20260205';
+
+        const anthropicKey = document.getElementById('set-anthropic-key')?.value?.trim();
+        const geminiKey = document.getElementById('set-gemini-key')?.value?.trim();
+
+        let targetEnvVars = currentProject.env_vars || {};
+        let envVarsChanged = false;
+        if (anthropicKey) { targetEnvVars.ANTHROPIC_API_KEY = anthropicKey; envVarsChanged = true; }
+        if (geminiKey) { targetEnvVars.GEMINI_API_KEY = geminiKey; envVarsChanged = true; }
+
+        const payload = {
+            name: document.getElementById('set-name').value,
+            github_url: document.getElementById('set-github').value,
+            branch: document.getElementById('set-branch').value,
+            build_command: document.getElementById('set-build').value,
+            start_command: document.getElementById('set-start').value,
+            auto_deploy,
+            custom_domain,
+            ai_model
+        };
+        if (envVarsChanged) {
+            payload.env_vars = targetEnvVars;
+        }
+
         await fetch(`${API}/projects/${currentProject.id}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: document.getElementById('set-name').value,
-                github_url: document.getElementById('set-github').value,
-                branch: document.getElementById('set-branch').value,
-                build_command: document.getElementById('set-build').value,
-                start_command: document.getElementById('set-start').value,
-                auto_deploy, custom_domain,
-            })
+            body: JSON.stringify(payload)
         });
         currentProject.auto_deploy = auto_deploy;
         currentProject.custom_domain = custom_domain;
+        currentProject.ai_model = ai_model;
         currentProject.name = document.getElementById('set-name').value;
         toast('설정이 저장되었습니다!', 'success');
         loadProjects();
@@ -781,7 +849,7 @@ function openDeployModal(projectId) {
 
         const logViewer = document.getElementById('deploy-log-viewer');
         const timestamp = new Date(data.timestamp).toLocaleTimeString('ko-KR');
-        logViewer.textContent += `[${timestamp}] ${data.message}\n`;
+
         logViewer.scrollTop = logViewer.scrollHeight;
     };
 
@@ -956,6 +1024,117 @@ async function loadDashboardResourceStats() {
                 `;
             }
         } catch (e) { /* silently fail for background pollers */ }
+    }
+}
+
+// ============ AI CHAT ============
+function formatMarkdownLite(text) {
+    if (!text) return '';
+    return text
+        .replace(/```([a-z]*)\n([\s\S]*?)```/g, '<pre style="background:#161b22;padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-family:monospace;border:1px solid var(--border);"><code>$2</code></pre>')
+        .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.1);padding:2px 4px;border-radius:4px;color:var(--accent);">$1</code>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\#(.*?)\n/g, '<h4 style="margin:12px 0 8px;color:var(--accent);">$1</h4>')
+        .replace(/\n/g, '<br/>');
+}
+
+function renderAiMessage(msg, isSystem = false) {
+    const isUser = msg.role === 'user';
+    const bg = isUser ? 'rgba(88, 166, 255, 0.1)' : (isSystem ? 'transparent' : 'rgba(189, 147, 249, 0.1)');
+    const border = isUser ? 'rgba(88, 166, 255, 0.3)' : (isSystem ? 'transparent' : 'rgba(189, 147, 249, 0.3)');
+    const align = isUser ? 'flex-end' : 'flex-start';
+    const textAlign = isUser ? 'right' : 'left';
+    const icon = isUser ? '🧑‍💻' : (isSystem ? '⚙️' : '🤖');
+
+    return `
+    <div style="display:flex; flex-direction:column; align-items:${align}; width:100%;">
+        <div style="display:flex; flex-direction:${isUser ? 'row-reverse' : 'row'}; gap:8px; max-width:85%;">
+            <div style="font-size:20px; margin-top:4px;">${icon}</div>
+            <div style="background:${bg}; border:1px solid ${border}; border-radius:8px; padding:12px 16px; text-align:${textAlign}; line-height:1.6; font-size:14px;">
+                ${isUser ? escapeHtml(msg.content) : formatMarkdownLite(msg.content)}
+            </div>
+        </div>
+    </div>`;
+}
+
+async function loadAiChatHistory() {
+    if (!currentProject) return;
+    const container = document.getElementById('ai-chat-messages');
+    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">대화 기록을 불러오는 중...</div>';
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/chat`);
+        const data = await res.json();
+
+        if (data.history && data.history.length > 0) {
+            container.innerHTML = data.history.map(msg => renderAiMessage(msg)).join('');
+        } else {
+            container.innerHTML = renderAiMessage({ role: 'assistant', content: '안녕하세요! 저는 소스 코드 오류, 배포 실패 문제 등을 돕는 궤도 전용 AI 어시스턴트입니다.\n무엇을 도와드릴까요?' });
+        }
+        container.scrollTop = container.scrollHeight;
+    } catch (e) {
+        container.innerHTML = '<div style="color:var(--danger); text-align:center; padding:20px;">대화 기록을 불러올 수 없습니다.</div>';
+    }
+}
+
+async function sendAiChat() {
+    const input = document.getElementById('ai-chat-input');
+    const text = input.value.trim();
+    if (!text || !currentProject) return;
+
+    const container = document.getElementById('ai-chat-messages');
+
+    // Remove the greeting helper message if it exists and history was empty
+    if (container.innerHTML.includes('무엇을 도와드릴까요?')) container.innerHTML = '';
+
+    // Add user message locally
+    container.innerHTML += renderAiMessage({ role: 'user', content: text });
+    input.value = '';
+
+    // Add loading indicator
+    const loadingId = 'ai-loading-' + Date.now();
+    container.innerHTML += `<div id="${loadingId}" style="display:flex; gap:8px; margin-top:8px;">
+        <div style="font-size:20px;">🤖</div>
+        <div style="color:var(--text-muted); font-style:italic; padding-top:4px;">AI가 답변을 생성하고 있습니다...</div>
+    </div>`;
+    container.scrollTop = container.scrollHeight;
+
+    const btn = document.getElementById('btn-ai-chat-send');
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+
+        document.getElementById(loadingId)?.remove();
+
+        if (!res.ok) {
+            container.innerHTML += renderAiMessage({ role: 'system', content: `❌ 오류: ${data.error || '답변을 생성하지 못했습니다.'}` }, true);
+        } else if (data.reply) {
+            container.innerHTML += renderAiMessage(data.reply);
+        }
+    } catch (e) {
+        document.getElementById(loadingId)?.remove();
+        container.innerHTML += renderAiMessage({ role: 'system', content: `❌ 네트워크 오류: ${e.message}` }, true);
+    } finally {
+        container.scrollTop = container.scrollHeight;
+        btn.disabled = false;
+        input.focus();
+    }
+}
+
+async function clearAiChat() {
+    if (!confirm('대화 기록을 모두 지우시겠습니까?')) return;
+    try {
+        await fetch(`${API}/projects/${currentProject.id}/chat`, { method: 'DELETE' });
+        loadAiChatHistory();
+        toast('대화 기록이 초기화되었습니다.', 'success');
+    } catch (e) {
+        toast('지우기 실패: ' + e.message, 'error');
     }
 }
 

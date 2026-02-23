@@ -72,7 +72,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/projects - Create a new project
 router.post('/', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, ai_model } = req.body;
 
         if (!name || !github_url) {
             return res.status(400).json({ error: 'name and github_url are required' });
@@ -98,13 +98,16 @@ router.post('/', async (req, res) => {
 
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
-        // Encrypt environment variables
-        const encryptedEnvVars = encrypt(JSON.stringify(env_vars || {}));
+        // Encrypt environment variables and wrap in double quotes for JSONB column
+        const encryptedEnvVars = '"' + encrypt(JSON.stringify(env_vars || {})) + '"';
 
+        // Include ai_model in insertion
         const project = await db.queryOne(
-            `INSERT INTO projects (user_id, name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false]
+            `INSERT INTO projects (
+                user_id, name, github_url, branch, build_command, start_command, 
+                port, subdomain, env_vars, auto_deploy, source_type, ai_model
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'github', $11) RETURNING *`,
+            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false, ai_model || 'claude-4-6-opus-20260205']
         );
 
         res.status(201).json(project);
@@ -119,12 +122,12 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model } = req.body;
         if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
 
-        const encryptedEnvVars = env_vars ? encrypt(JSON.stringify(env_vars)) : null;
+        const encryptedEnvVars = env_vars ? '"' + encrypt(JSON.stringify(env_vars)) + '"' : null;
 
         const project = await db.queryOne(
             `UPDATE projects SET
@@ -138,9 +141,10 @@ router.put('/:id', async (req, res) => {
         env_vars = COALESCE($8, env_vars),
         auto_deploy = COALESCE($9, auto_deploy),
         custom_domain = COALESCE($10, custom_domain),
+        ai_model = COALESCE($11, ai_model),
         updated_at = NOW()
-       WHERE id = $11 AND user_id = $12 RETURNING *`,
-            [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, req.params.id, req.user.userId]
+       WHERE id = $12 AND user_id = $13 RETURNING *`,
+            [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, req.params.id, req.user.userId]
         );
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
@@ -661,6 +665,86 @@ router.post('/:id/project-restore', async (req, res) => {
             message: `프로젝트 복원 완료: ${result.copiedCount}개 파일 복원`,
             ...result
         });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/projects/:id/chat - Get AI chat history
+router.get('/:id/chat', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT ai_chat_history FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        let history = [];
+        if (project.ai_chat_history) {
+            history = typeof project.ai_chat_history === 'string' ? JSON.parse(project.ai_chat_history) : project.ai_chat_history;
+        }
+        res.json({ history });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/:id/chat - Send a message to AI
+router.post('/:id/chat', async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message) return res.status(400).json({ error: 'Message is required' });
+
+        const project = await db.queryOne('SELECT id, ai_model, env_vars, ai_chat_history FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        let history = [];
+        if (project.ai_chat_history) {
+            history = typeof project.ai_chat_history === 'string' ? JSON.parse(project.ai_chat_history) : project.ai_chat_history;
+        }
+
+        // Add user message
+        const userMsg = { role: 'user', content: message, timestamp: new Date().toISOString() };
+        history.push(userMsg);
+
+        // Decrypt env_vars
+        let envVars = {};
+        if (project.env_vars && typeof project.env_vars === 'string') {
+            try {
+                const decrypted = decrypt(project.env_vars);
+                envVars = decrypted ? JSON.parse(decrypted) : {};
+            } catch (e) {
+                console.error(`Failed to decrypt env_vars for project ${project.id}`);
+            }
+        } else if (typeof project.env_vars === 'object' && project.env_vars !== null) {
+            envVars = project.env_vars;
+        }
+
+        const aiAnalyzer = require('../services/aiAnalyzer');
+
+        // Ensure ai_model has a safe default if not selected
+        const model = project.ai_model || 'claude-4-6-opus-20260205';
+
+        // Get AI response
+        const aiResponseText = await aiAnalyzer.chat(history, model, envVars);
+
+        // Add assistant message
+        const assistantMsg = { role: 'assistant', content: aiResponseText, timestamp: new Date().toISOString() };
+        history.push(assistantMsg);
+
+        // Save updated history to DB
+        await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2', [JSON.stringify(history), project.id]);
+
+        res.json({ reply: assistantMsg });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/projects/:id/chat - Clear AI chat history
+router.delete('/:id/chat', async (req, res) => {
+    try {
+        const result = await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2 AND user_id = $3 RETURNING id', ['[]', req.params.id, req.user.userId]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Project not found' });
+
+        res.json({ message: 'Chat history cleared' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

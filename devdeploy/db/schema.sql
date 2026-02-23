@@ -49,6 +49,12 @@ DO $$ BEGIN
     
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
     
+    -- New AI model choice column
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50) DEFAULT 'claude-4-6-opus-20260205';
+
+    -- New AI Chat History column
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_chat_history JSONB DEFAULT '[]'::jsonb;
+
     -- Assign existing projects to the first user (admin) if they have no owner
     UPDATE projects SET user_id = (SELECT id FROM users ORDER BY id ASC LIMIT 1) WHERE user_id IS NULL;
     

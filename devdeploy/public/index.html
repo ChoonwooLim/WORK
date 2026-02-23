@@ -56,11 +56,18 @@
           <span class="nav-icon">⚙️</span>
           <span>설정</span>
         </a>
+        <a class="nav-item sub" onclick="navigateTo('project-ai')" id="nav-project-ai"
+          style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.05); padding-top:12px;">
+          <span class="nav-icon" style="color:#bd93f9;">💬</span>
+          <span style="color:#bd93f9; font-weight:600;">AI 어시스턴트</span>
+        </a>
       </div>
     </nav>
 
-    <div class="sidebar-footer">
-      <button class="btn btn-primary" style="width:100%;" onclick="openNewProjectModal()">+ New Project</button>
+    <div class="sidebar-footer" style="display:flex; gap:8px;">
+      <button class="btn btn-outline" style="flex:1; border-color:rgba(255,255,255,0.1); color:var(--text-secondary);"
+        onclick="logout()">⏏ 로그아웃</button>
+      <button class="btn btn-primary" style="flex:2;" onclick="openNewProjectModal()">+ New Project</button>
     </div>
   </aside>
 
@@ -149,6 +156,34 @@
       </div>
       <div class="page" id="page-project-settings">
         <div id="settings-content"></div>
+      </div>
+      <div class="page" id="page-project-ai" style="display:none; flex-direction:column; height:calc(100vh - 120px);">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div>
+            <h3 style="margin:0; color:#bd93f9; display:flex; align-items:center; gap:8px;"><span>💬</span> AI 어시스턴트
+            </h3>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">현재 프로젝트의 코드와 배포 상태에 대해 무엇이든 물어보세요.
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="clearAiChat()" title="대화 기록 초기화">🧹 대화 초기화</button>
+        </div>
+
+        <div id="ai-chat-messages"
+          style="flex:1; overflow-y:auto; padding-right:8px; display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
+          <div style="text-align:center; padding:40px; color:var(--text-muted);">
+            로딩 중...
+          </div>
+        </div>
+
+        <div
+          style="display:flex; gap:8px; background:var(--surface); padding:12px; border:1px solid var(--border); border-radius:8px;">
+          <input type="text" id="ai-chat-input" placeholder="어떤 부분이 궁금하신가요?"
+            style="flex:1; background:transparent; border:none; outline:none; color:var(--text-primary); font-size:14px; padding:0 8px;"
+            onkeypress="if(event.key==='Enter') sendAiChat()">
+          <button class="btn btn-primary" onclick="sendAiChat()" id="btn-ai-chat-send"
+            style="background:#bd93f9; color:#0d1117; border:none; padding:8px 16px;">전송</button>
+        </div>
       </div>
     </main>
   </div>

@@ -10,6 +10,8 @@ const nginxService = require('./nginx');
 const tunnelService = require('./tunnel');
 const mediaBackup = require('./mediaBackup');
 const projectBackup = require('./projectBackup');
+const aiAnalyzer = require('./aiAnalyzer');
+const { decrypt } = require('../db/crypto');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
 
@@ -67,6 +69,21 @@ class Deployer extends EventEmitter {
 
             // Update project status
             await db.query(`UPDATE projects SET status = 'building' WHERE id = $1`, [project.id]);
+
+            // Decrypt env_vars before further processing
+            let envVars = {};
+            if (project.env_vars && typeof project.env_vars === 'string') {
+                try {
+                    const decrypted = decrypt(project.env_vars);
+                    envVars = decrypted ? JSON.parse(decrypted) : {};
+                } catch (e) {
+                    console.error(`Failed to decrypt env_vars for project ${project.id}`);
+                }
+            } else if (typeof project.env_vars === 'object' && project.env_vars !== null) {
+                // Keep mostly for backward compatibility or if it's somehow already parsed
+                envVars = project.env_vars;
+            }
+            project.env_vars = envVars; // Important: Update the project object so dockerService sees decrypted vars!
 
             // Step 1: Clone or pull (skip for upload projects)
             if (project.source_type === 'upload') {
@@ -156,6 +173,12 @@ class Deployer extends EventEmitter {
 
         } catch (error) {
             logs += `\n❌ Error: ${error.message}\n`;
+
+            this.emitProgress(project.id, 'done', `오류 원인 분석 중...`, 'running');
+            const aiAnalysis = await aiAnalyzer.analyzeError(logs, project.ai_model, project.env_vars || {});
+            if (aiAnalysis) {
+                logs += `\n\n🤖 [AI Error Analysis]\n${aiAnalysis}\n`;
+            }
 
             await db.query(`UPDATE projects SET status = 'failed' WHERE id = $1`, [project.id]);
             if (deploymentId) {

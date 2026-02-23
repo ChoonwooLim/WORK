@@ -1,8 +1,9 @@
-const { exec, spawn } = require('child_process');
+const { exec, execSync, spawn } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const TUNNEL_PROCS = {}; // key -> { proc, url, tunnelId, retryTimer }
 const CLOUDFLARED_DIR = path.join(__dirname, '..', 'bin');
@@ -68,7 +69,7 @@ class TunnelService {
             }
 
             // Step 2: Add DNS route (idempotent — skips if exists)
-            await this._ensureDnsRoute(tunnelName, hostname);
+            await this._ensureDnsRoute(tunnelName, tunnelId, hostname);
 
             // Step 3: Write config file
             const configPath = this._writeConfig(tunnelName, tunnelId, hostname, project.port);
@@ -94,8 +95,13 @@ class TunnelService {
                 { stdio: 'pipe', timeout: 15000 }
             );
 
-            const tunnels = JSON.parse(listOutput || '[]');
-            if (tunnels.length > 0) {
+            let tunnels = [];
+            try {
+                tunnels = JSON.parse(listOutput || '[]') || [];
+            } catch (e) {
+                tunnels = [];
+            }
+            if (tunnels && tunnels.length > 0) {
                 console.log(`✅ Tunnel "${tunnelName}" already exists (${tunnels[0].id})`);
                 return tunnels[0].id;
             }
@@ -123,8 +129,9 @@ class TunnelService {
                         `${CLOUDFLARED_PATH} tunnel list --output json`,
                         { stdio: 'pipe', timeout: 15000 }
                     );
-                    const tunnels = JSON.parse(listOutput || '[]');
-                    const found = tunnels.find(t => t.name === tunnelName);
+                    let tunnels = [];
+                    try { tunnels = JSON.parse(listOutput || '[]') || []; } catch (e) { }
+                    const found = tunnels.find(t => t && t.name === tunnelName);
                     if (found) return found.id;
                 } catch (_) { }
             }
@@ -134,10 +141,10 @@ class TunnelService {
     }
 
     // Add DNS CNAME route for the tunnel (safe to call multiple times)
-    async _ensureDnsRoute(tunnelName, hostname) {
+    async _ensureDnsRoute(tunnelName, tunnelId, hostname) {
         try {
             await execAsync(
-                `${CLOUDFLARED_PATH} tunnel route dns -f ${tunnelName} ${hostname}`,
+                `${CLOUDFLARED_PATH} tunnel route dns -f ${tunnelId} ${hostname}`,
                 { stdio: 'pipe', timeout: 15000 }
             );
             console.log(`✅ DNS route: ${hostname} → ${tunnelName}`);
@@ -163,38 +170,80 @@ class TunnelService {
         return configPath;
     }
 
-    // Run the named tunnel process
+    // Run the named tunnel process via Systemd (Zero-Downtime Decoupling)
     _runTunnel(project, key, tunnelName, configPath, fixedUrl) {
-        // Stop existing process if any
-        this.stopTunnel(key);
+        try {
+            // Wait for Nginx to finish applying buffers before systemd lock
+            execSync(`sleep 1`);
 
-        const proc = spawn(CLOUDFLARED_PATH, [
-            'tunnel', '--config', configPath, '--no-autoupdate', 'run'
-        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+            const serviceName = `cloudflared-${tunnelName}`;
+            const serviceContent = `[Unit]
+Description=Cloudflare Tunnel for ${tunnelName}
+After=network.target
 
-        TUNNEL_PROCS[key] = { proc, url: fixedUrl, tunnelName, project, key };
+[Service]
+TimeoutStartSec=0
+Type=simple
+ExecStart=${CLOUDFLARED_PATH} tunnel --edge-ip-version auto --config ${configPath} run
+Restart=on-failure
+RestartSec=5s
 
-        proc.stdout.on('data', (d) => {
-            const msg = d.toString();
-            if (msg.includes('ERR') || msg.includes('error')) console.log(`[tunnel:${key}] ${msg.trim()}`);
-        });
-        proc.stderr.on('data', (d) => {
-            const msg = d.toString();
-            if (msg.includes('Registered') || msg.includes('ERR') || msg.includes('error')) {
-                console.log(`[tunnel:${key}] ${msg.trim()}`);
+[Install]
+WantedBy=multi-user.target
+`;
+            // Write to a local temp file first
+            const tmpPath = path.join(os.tmpdir(), `${serviceName}.service`);
+            fs.writeFileSync(tmpPath, serviceContent);
+
+            // Use sudo to move the file to systemd and enable it
+            const sudoPwd = process.env.SUDO_PASSWORD;
+            if (!sudoPwd) {
+                console.error('❌ SUDO_PASSWORD is required in .env for systemd tunnel decoupling.');
+                return;
             }
-        });
 
-        proc.on('exit', (code) => {
-            console.log(`⚠️ Tunnel ${tunnelName} exited (code ${code}). Restarting in 5s...`);
-            const retryTimer = setTimeout(() => {
-                if (TUNNEL_PROCS[key] && TUNNEL_PROCS[key].proc === proc) {
-                    console.log(`🔄 Restarting tunnel ${tunnelName}...`);
-                    this._runTunnel(project, key, tunnelName, configPath, fixedUrl);
+            const enableCmd = `
+                echo "${sudoPwd}" | sudo -S mv ${tmpPath} /etc/systemd/system/ && 
+                echo "${sudoPwd}" | sudo -S systemctl daemon-reload && 
+                echo "${sudoPwd}" | sudo -S systemctl enable ${serviceName} && 
+                echo "${sudoPwd}" | sudo -S systemctl restart ${serviceName}
+            `;
+
+            execSync(enableCmd, { stdio: 'ignore' });
+
+            // Register in memory just for Orbitron tracking, but do NOT hold the process
+            TUNNEL_PROCS[key] = { url: fixedUrl, tunnelName, project, key, isSystemd: true };
+
+        } catch (e) {
+            console.error(`❌ Failed to create systemd service for ${tunnelName}:`, e.message);
+        }
+    }
+
+    // Stop a tunnel for a project using systemctl
+    stopTunnel(key) {
+        if (TUNNEL_PROCS[key]) {
+            const tunnelConfig = TUNNEL_PROCS[key];
+            if (tunnelConfig.isSystemd) {
+                try {
+                    const sudoPwd = process.env.SUDO_PASSWORD;
+                    if (sudoPwd) {
+                        const serviceName = `cloudflared-${tunnelConfig.tunnelName}`;
+                        const stopCmd = `
+                            echo "${sudoPwd}" | sudo -S systemctl stop ${serviceName} && 
+                            echo "${sudoPwd}" | sudo -S systemctl disable ${serviceName}
+                        `;
+                        require('child_process').execSync(stopCmd, { stdio: 'ignore' });
+                    }
+                } catch (e) {
+                    console.error('Failed to stop systemd tunnel:', e.message);
                 }
-            }, 5000);
-            if (TUNNEL_PROCS[key]) TUNNEL_PROCS[key].retryTimer = retryTimer;
-        });
+            } else if (tunnelConfig.proc) {
+                // Fallback for old legacy spawned processes (during migration)
+                try { tunnelConfig.proc.kill(); } catch (e) { }
+            }
+
+            delete TUNNEL_PROCS[key];
+        }
     }
 
     // Fallback: quick tunnel (trycloudflare.com) if no cert
