@@ -2,7 +2,7 @@
 set -e
 echo "🚀 Starting manual forced deployment for WRA without Docker cache..."
 
-cd /home/stevenlim/WORK/devdeploy/deployments/wra
+cd /home/stevenlim/WORK/orbitron/deployments/wra
 
 echo "🔨 Building Docker image (this will take a few minutes)..."
 docker build --no-cache -t orbitron-wra .

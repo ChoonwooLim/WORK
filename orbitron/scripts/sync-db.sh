@@ -16,7 +16,7 @@ LOCAL_DB_USER="devuser"
 LOCAL_DB_NAME="wra_db"
 LOCAL_CONTAINER="dev-postgres"
 
-BACKUP_DIR="/home/stevenlim/WORK/devdeploy/backups"
+BACKUP_DIR="/home/stevenlim/WORK/orbitron/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="wra_render_${TIMESTAMP}.sql"
 
