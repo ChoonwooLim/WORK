@@ -35,9 +35,14 @@ class DockerService {
 
     // Detect project type and generate appropriate Dockerfile
     detectProjectType(projectDir, project = null) {
-        // Quick override for Pixel Streaming projects
-        if (project && project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming') {
-            return { type: 'pixel_streaming', subdir: null };
+        // Quick override for specialized project types
+        if (project && project.env_vars) {
+            if (project.env_vars.PROJECT_TYPE === 'pixel_streaming') {
+                return { type: 'pixel_streaming', subdir: null };
+            }
+            if (project.env_vars.PROJECT_TYPE === 'unity_webgl') {
+                return { type: 'unity_webgl', subdir: null };
+            }
         }
 
         // Check root directory first
@@ -172,6 +177,56 @@ CMD ${JSON.stringify((project.start_command || 'npm start').split(' '))}
 `;
         }
 
+        if (type === 'unity_webgl') {
+            // Unity WebGL needs specific MIME types for WASM and gzip support
+            return `FROM nginx:alpine
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Create custom nginx config for Unity WebGL
+RUN echo 'server { \\
+    listen ${port}; \\
+    location / { \\
+        root /usr/share/nginx/html; \\
+        index index.html index.htm; \\
+        try_files $uri $uri/ /index.html; \\
+    } \\
+    # Unity WebGL specific MIME types \\
+    location ~ \\.wasm$ { \\
+        add_header Content-Type application/wasm; \\
+    } \\
+    location ~ \\.wasm\\.gz$ { \\
+        add_header Content-Type application/wasm; \\
+        add_header Content-Encoding gzip; \\
+    } \\
+    location ~ \\.js\\.gz$ { \\
+        add_header Content-Type application/javascript; \\
+        add_header Content-Encoding gzip; \\
+    } \\
+    location ~ \\.data\\.gz$ { \\
+        add_header Content-Type application/octet-stream; \\
+        add_header Content-Encoding gzip; \\
+    } \\
+    location ~ \\.wasm\\.br$ { \\
+        add_header Content-Type application/wasm; \\
+        add_header Content-Encoding br; \\
+    } \\
+    location ~ \\.js\\.br$ { \\
+        add_header Content-Type application/javascript; \\
+        add_header Content-Encoding br; \\
+    } \\
+    location ~ \\.data\\.br$ { \\
+        add_header Content-Type application/octet-stream; \\
+        add_header Content-Encoding br; \\
+    } \\
+}' > /etc/nginx/conf.d/unity.conf
+
+COPY ${copyFrom} /usr/share/nginx/html
+EXPOSE ${port}
+`;
+        }
+
         // Static site - serve with nginx
         return `FROM nginx:alpine
 COPY ${copyFrom} /usr/share/nginx/html
@@ -179,7 +234,6 @@ RUN echo 'server { listen ${port}; location / { root /usr/share/nginx/html; inde
 EXPOSE ${port}
 `;
     }
-
 
     // Start a container for a project
     async startContainer(project) {
@@ -207,14 +261,69 @@ EXPOSE ${port}
             volumeFlags = `-v ${uploadPath}:${uploadPath}`;
         }
 
+        const isWorker = project.type === 'worker';
+        const portFlags = isWorker ? '' : `-p ${port}:${port}`;
+
         return new Promise((resolve, reject) => {
-            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network infrastructure_dev-network ${volumeFlags} ${envFlags} -p ${port}:${port} ${imageName}`;
+            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
             exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Start failed: ${stderr}`));
                 } else {
                     resolve(stdout.trim());
                 }
+            });
+        });
+    }
+
+    // Start an official Database Container
+    async startDatabaseContainer(project) {
+        const containerName = `orbitron-${project.subdomain}`;
+        let imageName = '';
+        let port = project.port;
+        const envVars = project.env_vars || {};
+
+        let volumeName = `${containerName}_data`;
+        let volumePath = '';
+
+        if (project.type === 'db_postgres') {
+            imageName = 'postgres:15-alpine';
+            port = port || 5432;
+            volumePath = '/var/lib/postgresql/data';
+            envVars.POSTGRES_PASSWORD = envVars.POSTGRES_PASSWORD || 'orbitron_db_pass';
+            envVars.POSTGRES_USER = envVars.POSTGRES_USER || 'orbitron_user';
+            envVars.POSTGRES_DB = envVars.POSTGRES_DB || 'orbitron_db';
+        } else if (project.type === 'db_redis') {
+            imageName = 'redis:7-alpine';
+            port = port || 6379;
+            volumePath = '/data';
+        } else {
+            throw new Error(`Unsupported database type: ${project.type}`);
+        }
+
+        await this.stopContainer(containerName);
+
+        // Create persistent docker volume natively to avoid permission issues
+        try {
+            await execAsync(`docker volume create ${volumeName}`);
+        } catch (e) { /* ignore */ }
+
+        const envFlags = Object.entries(envVars)
+            .map(([k, v]) => `-e ${k}="${v}"`)
+            .join(' ');
+
+        const volumeFlags = `-v ${volumeName}:${volumePath}`;
+
+        // We do not map the port to the host machine for internal private networking
+        // However, if the user explicitly provided a port or we want mapping, we can uncomment below:
+        // const portFlags = port ? `-p ${port}:${port}` : '';
+        const portFlags = '';
+
+        return new Promise((resolve, reject) => {
+            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
+            exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                if (error) reject(new Error(`Start failed: ${stderr}`));
+                else resolve(stdout.trim());
             });
         });
     }

@@ -48,6 +48,7 @@ services:
       - postgres
     networks:
       - dev-network
+      - orbitron_internal
 
 volumes:
   postgres_data:
@@ -57,3 +58,5 @@ volumes:
 networks:
   dev-network:
     driver: bridge
+  orbitron_internal:
+    external: true

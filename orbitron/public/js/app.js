@@ -64,7 +64,7 @@ async function login() {
 function logout() {
     localStorage.removeItem('orbitron_token');
     document.cookie = 'orbitron_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    window.location.reload();
+    window.location.href = '/';
 }
 
 async function register() {
@@ -114,6 +114,8 @@ function navigateTo(page) {
     const titles = {
         'dashboard': '📊 대시보드',
         'projects': '📦 프로젝트',
+        'deploy-unreal': '🎮 Unreal Engine 서버 배포',
+        'deploy-unity': '🎲 Unity WebGL 퍼블리싱',
         'project-overview': `📋 ${currentProject?.name || ''} — 개요`,
         'project-logs': `📄 ${currentProject?.name || ''} — 로그`,
         'project-deployments': `🔄 ${currentProject?.name || ''} — 배포 이력`,
@@ -137,10 +139,10 @@ function navigateTo(page) {
         actions.innerHTML = '';
     }
 
-    // Show/hide project sub-nav
-    const showProjectNav = page.startsWith('project-');
-    document.getElementById('nav-project-section').style.display = showProjectNav ? 'block' : 'none';
-    document.getElementById('nav-project-items').style.display = showProjectNav ? 'block' : 'none';
+    // Remove dynamic show/hide of project sub-nav, it is now permanently visible
+    // Update active state styling manually since both dashboard and project views are visible
+    document.getElementById('nav-project-section').style.display = 'block';
+    document.getElementById('nav-project-items').style.display = 'block';
 
     // Load page data
     if (page === 'project-overview') renderProjectOverview();
@@ -164,11 +166,51 @@ async function loadProjects() {
     try {
         const res = await fetch(`${API}/projects`);
         const projects = await res.json();
+
+        // Update Sidebar Options
+        const selectEl = document.getElementById('global-project-select');
+        if (selectEl) {
+            selectEl.innerHTML = '<option value="" disabled>프로젝트를 선택하세요...</option>' +
+                projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+
+            if (currentProject) {
+                // Keep the current project selected if it exists
+                selectEl.value = currentProject.id;
+            } else if (projects.length > 0) {
+                // Auto-select the first project by default, but stay on Dashboard page
+                selectEl.value = projects[0].id;
+                await onGlobalProjectSelect(projects[0].id, false);
+            } else {
+                selectEl.innerHTML = '<option value="" disabled selected>생성된 프로젝트 없음</option>';
+            }
+        }
+
         renderProjects(projects);
         updateStats(projects);
         loadDashboardResourceStats();
     } catch (error) {
         console.error('Failed to load projects:', error);
+    }
+}
+
+// Sidebar Global Selection Event
+async function onGlobalProjectSelect(id, navigate = true) {
+    if (!id) return;
+    try {
+        const res = await fetch(`${API}/projects/${id}`);
+        const data = await res.json();
+        if (res.ok) {
+            currentProject = data;
+            // Update the topbar action buttons
+            navigateTo(currentPage);
+
+            // If they are on a generic page and select a project, jump to project overview
+            if (navigate && (currentPage === 'dashboard' || currentPage === 'projects' || currentPage.startsWith('deploy-'))) {
+                navigateTo('project-overview');
+            }
+        }
+    } catch (error) {
+        toast('프로젝트 상세 로드 실패', 'error');
     }
 }
 
@@ -214,8 +256,20 @@ function renderProjects(projects) {
             const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
             const sourceLabel = p.source_type === 'upload' ? '📁 업로드' : `${extractRepoName(p.github_url)} · ${p.branch}`;
 
-            const siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || `http://${serverHost}:${p.port}`);
-            const urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
+            const isPixelStreaming = p.env_vars && p.env_vars.PROJECT_TYPE === 'pixel_streaming';
+            let siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || `http://${serverHost}:${p.port}`);
+            let urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
+            let openSiteButtonHtml = '';
+
+            if (p.status === 'running') {
+                if (isPixelStreaming) {
+                    siteUrl = `/pixel-stream.html?project=${p.subdomain}`;
+                    urlLabel = `🎮 Pixel Streaming`;
+                    openSiteButtonHtml = `<a href="${siteUrl}" target="_blank" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">🎮 접속</a>`;
+                } else {
+                    openSiteButtonHtml = `<a href="${siteUrl}" target="_blank" class="btn btn-sm btn-ghost" onclick="event.stopPropagation()">🌐 접속</a>`;
+                }
+            }
 
             return `
         <div class="dash-project-row" style="display:flex; flex-direction:column; align-items:stretch; gap:12px; padding:16px;" onclick="openProject(${p.id})">
@@ -279,7 +333,15 @@ async function openProject(id) {
 
 function renderProjectOverview() {
     const p = currentProject;
-    if (!p) return;
+    if (!p) {
+        document.getElementById('overview-content').innerHTML = `
+            <div style="text-align:center; padding:100px 20px; color:var(--text-muted);">
+                <span class="icon" style="font-size:48px; display:block; margin-bottom:16px;">🔍</span>
+                <p>좌측 상단에서 프로젝트를 선택해주세요.</p>
+            </div>
+        `;
+        return;
+    }
     const localUrl = `http://${serverHost}:${p.port}`;
     let siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || localUrl);
     let urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
@@ -290,20 +352,49 @@ function renderProjectOverview() {
         urlLabel = `🎮 Pixel Streaming`;
     }
 
+    const isDatabase = p.type === 'db_postgres' || p.type === 'db_redis';
+    const isWorker = p.type === 'worker';
+
+    let dbConnectionString = '';
+    if (isDatabase) {
+        if (p.type === 'db_postgres') {
+            dbConnectionString = `postgresql://${p.env_vars?.POSTGRES_USER || 'orbitron_user'}:${p.env_vars?.POSTGRES_PASSWORD || 'orbitron_db_pass'}@orbitron-${p.subdomain}:${p.port || 5432}/${p.env_vars?.POSTGRES_DB || 'orbitron_db'}`;
+        } else if (p.type === 'db_redis') {
+            dbConnectionString = `redis://orbitron-${p.subdomain}:${p.port || 6379}`;
+        }
+    }
+
     document.getElementById('overview-content').innerHTML = `
     ${p.status === 'running' ? `
     <div style="background:linear-gradient(135deg,rgba(63,185,80,0.15),rgba(88,166,255,0.1));border:1px solid var(--success);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
+      ${isDatabase ? `
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">🔒 구동 중인 내부 네트워크 전용 접속 문자열 (orbitron_internal)</div>
+      <div style="background:rgba(0,0,0,0.3); padding:16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-family:monospace; color:var(--success); font-size:16px; word-break:break-all; user-select:all; margin-top:12px;">
+        ${dbConnectionString}
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">같은 Orbitron 환경에 배포된 다른 서비스에서만 위 주소로 연결할 수 있습니다.</div>
+      <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
+        <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 컨테이너 재시작</button>
+      </div>
+      ` : isWorker ? `
+      <div style="font-size:13px;color:var(--success);margin-bottom:8px;font-weight:600;">⚙️ 백그라운드 워커 실행 중</div>
+      <div style="font-size:16px;color:var(--text-primary);font-weight:600;">${p.name} 워커가 백그라운드에서 가동 중입니다.</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">이 컨테이너는 외부로 개방된 포트가 없으며 논스톱 프로세스만 처리합니다.</div>
+      <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
+        <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 워커 재시작</button>
+      </div>
+      ` : `
       <div style="font-size:13px;color:var(--success);margin-bottom:8px;font-weight:600;">🟢 사이트 실행 중</div>
       <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:22px;font-weight:700;text-decoration:none; word-break: break-all;">${urlLabel}</a>
       ${p.custom_domain ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">터널: ${p.tunnel_url || 'N/A'}</div>` : ''}
       <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
         <a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">${isPixelStreaming ? '🎮 게임 시작' : '🌐 사이트 열기'}</a>
         <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 재배포</button>
-      </div>
+      </div>`}
     </div>` : `
     <div style="background:rgba(139,148,158,0.1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">⏹ 중지됨</div>
-      <button class="btn btn-success" onclick="openDeployOptions(${p.id})">▶ 배포 시작</button>
+      <button class="btn btn-success" onclick="openDeployOptions(${p.id})">▶ 배포/시작</button>
     </div>`}
     <div id="resource-monitor"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
@@ -311,10 +402,17 @@ function renderProjectOverview() {
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">상태</div>
         <span class="badge badge-${p.status}" style="font-size:14px;padding:4px 12px;">${statusLabel(p.status)}</span>
       </div>
+      ${(isDatabase || isWorker) ? `
+      <div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">네트워크 환경</div>
+        <span style="color:var(--accent);">🔒 내부망 전용 (orbitron_internal)</span>
+      </div>
+      ` : `
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">사이트 URL</div>
         <a href="${siteUrl}" target="_blank" style="color:var(--accent);">${urlLabel}</a>
       </div>
+      `}
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">소스</div>
         ${p.source_type === 'upload' ? `
@@ -338,7 +436,7 @@ function renderProjectOverview() {
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">포트</div>
-        <span>${p.port}</span>
+        <span>${isWorker ? '-' : p.port}</span>
       </div>
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">생성일</div>
@@ -384,7 +482,14 @@ function renderProjectOverview() {
 
 function renderSettings() {
     const p = currentProject;
-    if (!p) return;
+    if (!p) {
+        document.getElementById('settings-content').innerHTML = `
+            <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
+                프로젝트를 먼저 선택하세요.
+            </div>
+        `;
+        return;
+    }
     const webhookUrl = `${window.location.origin}/api/webhooks/github`;
     document.getElementById('settings-content').innerHTML = `
     <div class="form-group"><label>프로젝트 이름</label><input type="text" id="set-name" value="${escapeHtml(p.name)}"></div>
@@ -463,16 +568,23 @@ function switchSourceTab(tab) {
     currentSourceTab = tab;
     document.getElementById('tab-github').classList.toggle('active', tab === 'github');
     document.getElementById('tab-upload').classList.toggle('active', tab === 'upload');
-    document.getElementById('tab-unreal').classList.toggle('active', tab === 'unreal');
+    const tabDb = document.getElementById('tab-database');
+    if (tabDb) tabDb.classList.toggle('active', tab === 'database');
+    const tabWorker = document.getElementById('tab-worker');
+    if (tabWorker) tabWorker.classList.toggle('active', tab === 'worker');
 
     document.getElementById('form-github-source').style.display = tab === 'github' ? 'block' : 'none';
     document.getElementById('form-upload-source').style.display = tab === 'upload' ? 'block' : 'none';
-    document.getElementById('form-unreal-source').style.display = tab === 'unreal' ? 'block' : 'none';
+    const formDb = document.getElementById('form-database-source');
+    if (formDb) formDb.style.display = tab === 'database' ? 'block' : 'none';
+    const formWorker = document.getElementById('form-worker-source');
+    if (formWorker) formWorker.style.display = tab === 'worker' ? 'block' : 'none';
 
     const createBtn = document.getElementById('btn-create-project');
     if (createBtn) {
-        if (tab === 'unreal') createBtn.textContent = '게임 서버 빌드';
-        else if (tab === 'upload') createBtn.textContent = '업로드 & 배포';
+        if (tab === 'upload') createBtn.textContent = '업로드 & 배포';
+        else if (tab === 'database') createBtn.textContent = '데이터베이스 생성';
+        else if (tab === 'worker') createBtn.textContent = '워커 생성';
         else createBtn.textContent = '프로젝트 생성';
     }
 }
@@ -483,7 +595,9 @@ function handleFileSelect(input, dropzoneId) {
         selectedUploadFile = file;
         const content = document.getElementById(`${dropzoneId}-content`);
         const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-        const icon = dropzoneId === 'unreal-dropzone' ? '🎮' : '✅';
+        let icon = '✅';
+        if (dropzoneId === 'unreal-dropzone') icon = '🎮';
+        if (dropzoneId === 'unity-dropzone') icon = '🎲';
         content.innerHTML = `
             <div class="upload-icon">${icon}</div>
             <div class="upload-text">${escapeHtml(file.name)}</div>
@@ -496,9 +610,51 @@ function handleFileSelect(input, dropzoneId) {
 async function createProject() {
     if (currentSourceTab === 'upload') {
         return createUploadProject('upload');
-    } else if (currentSourceTab === 'unreal') {
-        return createUploadProject('pixel_streaming');
     }
+
+    if (currentSourceTab === 'database') {
+        const name = document.getElementById('db-name').value.trim();
+        const type = document.getElementById('db-type').value;
+        if (!name) { toast('데이터베이스 이름은 필수입니다.', 'error'); return; }
+
+        try {
+            const res = await fetch(`${API}/projects`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, type })
+            });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+            const project = await res.json();
+            toast('데이터베이스 컨테이너가 생성 및 시작 중입니다.', 'success');
+            closeModal();
+            loadProjects();
+            openDeployModal(project.id);
+            res.json().catch(() => { }); // Ignore further reads if needed, wait, already parsed await res.json() inline
+        } catch (error) { toast(error.message, 'error'); }
+        return;
+    }
+
+    if (currentSourceTab === 'worker') {
+        const name = document.getElementById('worker-name').value.trim();
+        const github_url = document.getElementById('worker-github').value.trim();
+        const branch = document.getElementById('worker-branch').value.trim() || 'main';
+        const build_command = document.getElementById('worker-build').value.trim();
+        const start_command = document.getElementById('worker-start').value.trim();
+        if (!name || !github_url) { toast('워커 이름과 GitHub URL은 필수입니다.', 'error'); return; }
+        const auto_deploy = document.getElementById('worker-autodeploy')?.checked ?? true;
+
+        try {
+            const res = await fetch(`${API}/projects`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, github_url, branch, build_command, start_command, auto_deploy, type: 'worker' })
+            });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+            toast('백그라운드 워커가 생성되었습니다!', 'success');
+            closeModal();
+            loadProjects();
+        } catch (error) { toast(error.message, 'error'); }
+        return;
+    }
+
     const name = document.getElementById('input-name').value.trim();
     const github_url = document.getElementById('input-github').value.trim();
     const branch = document.getElementById('input-branch').value.trim() || 'main';
@@ -521,7 +677,10 @@ async function createProject() {
 }
 
 async function createUploadProject(projectType = 'upload') {
-    const nameInputId = projectType === 'pixel_streaming' ? 'unreal-name' : 'upload-name';
+    let nameInputId = 'upload-name';
+    if (projectType === 'pixel_streaming') nameInputId = 'unreal-name';
+    if (projectType === 'unity_webgl') nameInputId = 'unity-name';
+
     const name = document.getElementById(nameInputId).value.trim();
     if (!name) { toast('프로젝트 이름은 필수입니다.', 'error'); return; }
     if (!selectedUploadFile) { toast('ZIP 파일을 선택해주세요.', 'error'); return; }
@@ -535,6 +694,12 @@ async function createUploadProject(projectType = 'upload') {
         // Pixel streaming defaults
         formData.append('build_command', 'echo PixelStreaming');
         formData.append('start_command', 'echo Matchmaker');
+        formData.append('subdomain', name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''));
+    } else if (projectType === 'unity_webgl') {
+        // Unity WebGL defaults (Static Nginx)
+        formData.append('build_command', 'echo UnityWebGL');
+        formData.append('start_command', 'echo Nginx');
+        formData.append('port', '80');
         formData.append('subdomain', name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''));
     } else {
         formData.append('build_command', document.getElementById('upload-build').value.trim());
@@ -556,14 +721,36 @@ async function createUploadProject(projectType = 'upload') {
         if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
         const project = await res.json();
         toast('프로젝트가 업로드되었습니다! 빌드를 시작합니다.', 'success');
+
+        // Reset the form values
+        document.getElementById(nameInputId).value = '';
+        selectedUploadFile = null;
+        const dropzoneId = projectType === 'pixel_streaming' ? 'unreal-dropzone' : (projectType === 'unity_webgl' ? 'unity-dropzone' : 'upload-dropzone');
+        const content = document.getElementById(`${dropzoneId}-content`);
+        const icon = projectType === 'pixel_streaming' ? '🎮' : (projectType === 'unity_webgl' ? '🎲' : '📦');
+        content.innerHTML = `
+            <div class="upload-icon">${icon}</div>
+            <div class="upload-text">파일을 드래그하거나 클릭하여 선택</div>
+            <div class="upload-hint">업로드할 ZIP 파일을 선택해주세요.</div>
+        `;
+        document.getElementById(dropzoneId).classList.remove('has-file');
+
         closeModal();
-        loadProjects();
         openDeployModal(project.id);
+
+        // Switch to the new project overview page
+        await loadProjects();
+        const selectEl = document.getElementById('global-project-select');
+        if (selectEl) {
+            selectEl.value = project.id;
+        }
+        await onGlobalProjectSelect(project.id);
+
     } catch (error) {
         toast(error.message, 'error');
     } finally {
         createBtn.disabled = false;
-        createBtn.textContent = currentSourceTab === 'unreal' ? '게임 서버 빌드' : '업로드 & 배포';
+        createBtn.textContent = projectType === 'pixel_streaming' ? '게임 서버 빌드' : (projectType === 'unity_webgl' ? '웹 서버 배포' : '업로드 & 배포');
     }
 }
 
@@ -635,7 +822,14 @@ async function deleteProject(id) {
 // ============ ENV VARS ============
 
 function renderEnvVars() {
-    if (!currentProject) return;
+    if (!currentProject) {
+        document.getElementById('env-content').innerHTML = `
+            <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
+                프로젝트를 먼저 선택하세요.
+            </div>
+        `;
+        return;
+    }
     const envVars = currentProject.env_vars || {};
     const container = document.getElementById('env-content');
     const entries = Object.entries(envVars);
@@ -754,7 +948,10 @@ function copyWebhookUrl() {
 // ============ LOGS & DEPLOYMENTS ============
 
 async function refreshLogs() {
-    if (!currentProject) return;
+    if (!currentProject) {
+        document.getElementById('log-content').textContent = '프로젝트를 먼저 선택하세요.';
+        return;
+    }
     try {
         const res = await fetch(`${API}/deployments/${currentProject.id}/logs`);
         const data = await res.json();
@@ -765,7 +962,14 @@ async function refreshLogs() {
 }
 
 async function loadDeployments() {
-    if (!currentProject) return;
+    if (!currentProject) {
+        document.getElementById('deployments-content').innerHTML = `
+            <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
+                프로젝트를 먼저 선택하세요.
+            </div>
+        `;
+        return;
+    }
     try {
         const res = await fetch(`${API}/deployments/${currentProject.id}`);
         const deployments = await res.json();

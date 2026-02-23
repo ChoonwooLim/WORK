@@ -85,80 +85,109 @@ class Deployer extends EventEmitter {
             }
             project.env_vars = envVars; // Important: Update the project object so dockerService sees decrypted vars!
 
-            // Step 1: Clone or pull (skip for upload projects)
-            if (project.source_type === 'upload') {
-                this.emitProgress(project.id, 'clone', '업로드된 소스 코드 사용 중...');
-                logs += '\n--- Using uploaded source code ---\n';
-                this.emitProgress(project.id, 'clone', '업로드된 소스 코드 준비 완료');
-            } else {
-                this.emitProgress(project.id, 'clone', '소스 코드를 가져오는 중...');
-                logs += await this.cloneOrPull(project, projectDir, commitHash);
-                logs += '\n--- Clone/Pull complete ---\n';
-                this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
-            }
-
-            // Step 1.5: Auto media backup to DATA drive
-            try {
-                const backupResult = mediaBackup.backupMedia(project);
-                logs += `\n📁 미디어 백업: ${backupResult.fileCount}개 파일 (${backupResult.totalSizeFormatted}) → ${backupResult.backupDir}\n`;
-                if (backupResult.copiedCount > 0) {
-                    logs += `   새로/변경된 파일 ${backupResult.copiedCount}개 복사, ${backupResult.skippedCount}개 스킵\n`;
-                }
-            } catch (e) {
-                logs += `\n⚠️ 미디어 백업 건너뜀: ${e.message}\n`;
-            }
-
-            // Step 2: Build Docker image
-            this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 중...');
-            logs += '\nBuilding Docker image...\n';
-            const buildResult = await dockerService.buildImage(project);
-            logs += buildResult.logs;
-            logs += '\n--- Build complete ---\n';
-            this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 완료');
-
-            const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
             let containerId = null;
             let tunnelUrl = null;
 
-            if (isPixelStreaming) {
-                // For Pixel Streaming, the Matchmaker handles dynamic containers and ports.
-                this.emitProgress(project.id, 'container', '매치메이커 시스템에 등록 준비 중...');
-                logs += '\nSkipping explicit container start, nginx, and tunnels (Pixel Streaming Project).\n';
-                this.emitProgress(project.id, 'container', '독립 실행형 컨테이너 생성을 건너뜀 (매치메이커가 관리)');
-                this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (매치메이커가 통신 관리)');
-                this.emitProgress(project.id, 'tunnel', '외부 접속 터널 지정됨 (매치메이커 게임 게이트웨이)');
-                // No containerId, No tunnelUrl -> Matchmaker handles web routing!
+            const isDatabase = project.type === 'db_postgres' || project.type === 'db_redis';
+
+            if (isDatabase) {
+                this.emitProgress(project.id, 'clone', '소스 코드 가져오기 건너뜀 (매니지드 DB)');
+                this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 건너뜀 (공식 DB 이미지 사용)');
+
+                this.emitProgress(project.id, 'container', '데이터베이스 컨테이너 시작 중...');
+                logs += '\nStarting Database container...\n';
+                containerId = await dockerService.startDatabaseContainer(project);
+                logs += `Database container started: ${containerId}\n`;
+                this.emitProgress(project.id, 'container', '데이터베이스 컨테이너 시작 완료');
+
+                this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (내부 네트워크 통신)');
+                this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (프라이빗 네트워크)');
             } else {
-                // Step 3: Start container
-                this.emitProgress(project.id, 'container', '컨테이너 시작 중...');
-                logs += '\nStarting container...\n';
-                containerId = await dockerService.startContainer(project);
-                logs += `Container started: ${containerId}\n`;
-                this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
-
-                // Step 4: Update nginx config
-                this.emitProgress(project.id, 'nginx', '프록시 설정 중...');
-                logs += '\nUpdating nginx config...\n';
-                nginxService.addProject(project);
-                logs += 'nginx reloaded.\n';
-                this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
-
-                // Step 5: Reuse existing tunnel or create new one
-                const tunnelKey = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-                tunnelUrl = tunnelService.getTunnelUrl(tunnelKey);
-                if (tunnelUrl) {
-                    logs += `\n🌐 Reusing existing tunnel: ${tunnelUrl}\n`;
-                    this.emitProgress(project.id, 'tunnel', `기존 터널 유지: ${tunnelUrl}`);
+                // Step 1: Clone or pull (skip for upload projects)
+                if (project.source_type === 'upload') {
+                    this.emitProgress(project.id, 'clone', '업로드된 소스 코드 사용 중...');
+                    logs += '\n--- Using uploaded source code ---\n';
+                    this.emitProgress(project.id, 'clone', '업로드된 소스 코드 준비 완료');
                 } else {
-                    this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 중...');
-                    logs += '\nCreating tunnel for external access...\n';
-                    tunnelUrl = await tunnelService.startTunnel(project);
+                    this.emitProgress(project.id, 'clone', '소스 코드를 가져오는 중...');
+                    logs += await this.cloneOrPull(project, projectDir, commitHash);
+                    logs += '\n--- Clone/Pull complete ---\n';
+                    this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
+                }
+
+                // Step 1.5: Auto media backup to DATA drive
+                try {
+                    const backupResult = mediaBackup.backupMedia(project);
+                    logs += `\n📁 미디어 백업: ${backupResult.fileCount}개 파일 (${backupResult.totalSizeFormatted}) → ${backupResult.backupDir}\n`;
+                    if (backupResult.copiedCount > 0) {
+                        logs += `   새로/변경된 파일 ${backupResult.copiedCount}개 복사, ${backupResult.skippedCount}개 스킵\n`;
+                    }
+                } catch (e) {
+                    logs += `\n⚠️ 미디어 백업 건너뜀: ${e.message}\n`;
+                }
+
+                // Step 2: Build Docker image
+                this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 중...');
+                logs += '\nBuilding Docker image...\n';
+                const buildResult = await dockerService.buildImage(project);
+                logs += buildResult.logs;
+                logs += '\n--- Build complete ---\n';
+                this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 완료');
+
+                const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
+                const isWorker = project.type === 'worker';
+
+                if (isPixelStreaming) {
+                    // For Pixel Streaming, the Matchmaker handles dynamic containers and ports.
+                    this.emitProgress(project.id, 'container', '매치메이커 시스템에 등록 준비 중...');
+                    logs += '\nSkipping explicit container start, nginx, and tunnels (Pixel Streaming Project).\n';
+                    this.emitProgress(project.id, 'container', '독립 실행형 컨테이너 생성을 건너뜀 (매치메이커가 관리)');
+                    this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (매치메이커가 통신 관리)');
+                    this.emitProgress(project.id, 'tunnel', '외부 접속 터널 지정됨 (매치메이커 게임 게이트웨이)');
+                    // No containerId, No tunnelUrl -> Matchmaker handles web routing!
+                } else if (isWorker) {
+                    // Worker containers run natively, attached to network but no ports exposed
+                    this.emitProgress(project.id, 'container', '백그라운드 워커 시작 중...');
+                    logs += '\nStarting Background Worker container...\n';
+                    containerId = await dockerService.startContainer(project);
+                    logs += `Container started: ${containerId}\n`;
+                    this.emitProgress(project.id, 'container', '백그라운드 워커 시작 완료');
+
+                    // Skip the public Nginx configs and Tunnels entirely
+                    this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (백그라운드 워커)');
+                    this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (백그라운드 워커)');
+                } else {
+                    // Step 3: Start container
+                    this.emitProgress(project.id, 'container', '컨테이너 시작 중...');
+                    logs += '\nStarting container...\n';
+                    containerId = await dockerService.startContainer(project);
+                    logs += `Container started: ${containerId}\n`;
+                    this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
+
+                    // Step 4: Update nginx config
+                    this.emitProgress(project.id, 'nginx', '프록시 설정 중...');
+                    logs += '\nUpdating nginx config...\n';
+                    nginxService.addProject(project);
+                    logs += 'nginx reloaded.\n';
+                    this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
+
+                    // Step 5: Reuse existing tunnel or create new one
+                    const tunnelKey = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    tunnelUrl = tunnelService.getTunnelUrl(tunnelKey);
                     if (tunnelUrl) {
-                        logs += `🌐 Tunnel URL: ${tunnelUrl}\n`;
-                        this.emitProgress(project.id, 'tunnel', `터널 생성 완료: ${tunnelUrl}`);
+                        logs += `\n🌐 Reusing existing tunnel: ${tunnelUrl}\n`;
+                        this.emitProgress(project.id, 'tunnel', `기존 터널 유지: ${tunnelUrl}`);
                     } else {
-                        logs += '⚠️ Tunnel creation skipped or failed\n';
-                        this.emitProgress(project.id, 'tunnel', '터널 생성 건너뜀');
+                        this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 중...');
+                        logs += '\nCreating tunnel for external access...\n';
+                        tunnelUrl = await tunnelService.startTunnel(project);
+                        if (tunnelUrl) {
+                            logs += `🌐 Tunnel URL: ${tunnelUrl}\n`;
+                            this.emitProgress(project.id, 'tunnel', `터널 생성 완료: ${tunnelUrl}`);
+                        } else {
+                            logs += '⚠️ Tunnel creation skipped or failed\n';
+                            this.emitProgress(project.id, 'tunnel', '터널 생성 건너뜀');
+                        }
                     }
                 }
             }

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orbitron - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="icon">🪐</span>
+      <span>Orbitron</span>
+    </div>
+
+    <div style="padding: 0 16px 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+      <label for="global-project-select"
+        style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase; margin-bottom:4px; display:block;">선택된
+        프로젝트</label>
+      <select id="global-project-select" onchange="onGlobalProjectSelect(this.value)"
+        style="width:100%; padding:8px; border-radius:6px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); font-size:13px; outline:none; height: 34px;">
+        <option value="" disabled selected>프로젝트 정보를 불러오는 중...</option>
+      </select>
+    </div>
+    <div style="padding: 16px 16px 0 16px;">
+      <button class="btn btn-primary" style="width:100%; font-weight: bold;" onclick="openNewProjectModal()">+ New
+        Project</button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">대시보드 홈</div>
+      <a class="nav-item active" onclick="navigateTo('dashboard')" id="nav-dashboard">
+        <span class="nav-icon">📊</span>
+        <span>오버뷰</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('projects')" id="nav-projects">
+        <span class="nav-icon">📦</span>
+        <span>프로젝트 목록</span>
+      </a>
+
+      <div class="nav-section-label" id="nav-project-section">현재 프로젝트 작업</div>
+      <div id="nav-project-items">
+        <a class="nav-item sub" onclick="navigateTo('project-overview')" id="nav-project-overview">
+          <span class="nav-icon">📋</span>
+          <span>개요</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-logs')" id="nav-project-logs">
+          <span class="nav-icon">📄</span>
+          <span>로그</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-deployments')" id="nav-project-deployments">
+          <span class="nav-icon">🔄</span>
+          <span>배포 이력</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-env')" id="nav-project-env">
+          <span class="nav-icon">🔧</span>
+          <span>환경변수</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-console')" id="nav-project-console">
+          <span class="nav-icon">🖥</span>
+          <span>콘솔</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-settings')" id="nav-project-settings">
+          <span class="nav-icon">⚙️</span>
+          <span>설정</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-ai')" id="nav-project-ai"
+          style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.05); padding-top:12px;">
+          <span class="nav-icon" style="color:#bd93f9;">💬</span>
+          <span style="color:#bd93f9; font-weight:600;">AI 어시스턴트</span>
+        </a>
+      </div>
+
+      <div class="nav-section-label">전용 배포</div>
+      <a class="nav-item" onclick="navigateTo('deploy-unreal')" id="nav-deploy-unreal">
+        <span class="nav-icon">🎮</span>
+        <span>Unreal Engine 배포</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('deploy-unity')" id="nav-deploy-unity">
+        <span class="nav-icon">🎲</span>
+        <span>Unity WebGL 배포</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer" style="display:flex; gap:8px;">
+      <button class="btn btn-outline"
+        style="width:100%; border-color:rgba(255,255,255,0.1); color:var(--text-secondary);" onclick="logout()">⏏
+        로그아웃</button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-title" id="topbar-title">📊 대시보드</div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </header>
+
+    <main class="main-content" id="main-content">
+
+      <!-- Dashboard Page -->
+      <div class="page active" id="page-dashboard">
+        <div class="stats" id="stats">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-total">0</div>
+            <div class="stat-label">전체 프로젝트</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--success)" id="stat-running">0</div>
+            <div class="stat-label">실행 중</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--danger)" id="stat-stopped">0</div>
+            <div class="stat-label">중지됨</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--warning)" id="stat-building">0</div>
+            <div class="stat-label">빌드 중</div>
+          </div>
+        </div>
+        <h3 style="margin-bottom:16px;">최근 프로젝트</h3>
+        <div class="project-list" id="dashboard-project-list"></div>
+      </div>
+
+      <!-- Projects Page -->
+      <div class="page" id="page-projects">
+        <div class="project-list" id="project-list">
+          <div class="empty-state">
+            <div class="icon">📦</div>
+            <h3>프로젝트가 없습니다</h3>
+            <p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project Detail Pages -->
+      <div class="page" id="page-project-overview">
+        <div id="overview-content"></div>
+      </div>
+      <div class="page" id="page-project-logs">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+          <span style="font-size:14px;color:var(--text-secondary)">컨테이너 로그</span>
+          <button class="btn btn-sm btn-ghost" onclick="refreshLogs()">🔄 새로고침</button>
+        </div>
+        <div class="log-viewer" id="log-content">로딩 중...</div>
+      </div>
+      <div class="page" id="page-project-deployments">
+        <div id="deployments-content">로딩 중...</div>
+      </div>
+      <div class="page" id="page-project-env">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h3>환경변수</h3>
+          <button class="btn btn-sm btn-ghost" onclick="openBulkImport()">📋 Bulk Import (.env)</button>
+        </div>
+        <div id="env-content"></div>
+        <button class="btn btn-sm btn-ghost" onclick="addEnvRow()" style="margin-top:12px;">+ 변수 추가</button>
+        <div style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary" onclick="saveEnvVars()">환경변수 저장</button>
+          <span id="env-changed-badge"
+            style="display:none;font-size:12px;color:var(--warning);background:rgba(210,153,34,0.15);padding:2px 8px;border-radius:12px;">⚠
+            재배포 필요</span>
+        </div>
+      </div>
+      <div class="page" id="page-project-console">
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">🖥 컨테이너 내부에서 명령을 실행합니다</div>
+        <div class="console-viewer" id="console-output">$ 명령어를 입력하세요...
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <input type="text" id="console-input" placeholder="ls -la" class="console-input"
+            onkeypress="if(event.key==='Enter') execCommand()">
+          <button class="btn btn-primary" onclick="execCommand()">실행</button>
+        </div>
+      </div>
+      <div class="page" id="page-project-settings">
+        <div id="settings-content"></div>
+      </div>
+      <div class="page" id="page-project-ai" style="display:none; flex-direction:column; height:calc(100vh - 120px);">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div>
+            <h3 style="margin:0; color:#bd93f9; display:flex; align-items:center; gap:8px;"><span>💬</span> AI 어시스턴트
+            </h3>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">현재 프로젝트의 코드와 배포 상태에 대해 무엇이든 물어보세요.
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="clearAiChat()" title="대화 기록 초기화">🧹 대화 초기화</button>
+        </div>
+
+        <div id="ai-chat-messages"
+          style="flex:1; overflow-y:auto; padding-right:8px; display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
+          <div style="text-align:center; padding:40px; color:var(--text-muted);">
+            로딩 중...
+          </div>
+        </div>
+
+        <div
+          style="display:flex; gap:8px; background:var(--surface); padding:12px; border:1px solid var(--border); border-radius:8px;">
+          <input type="text" id="ai-chat-input" placeholder="어떤 부분이 궁금하신가요?"
+            style="flex:1; background:transparent; border:none; outline:none; color:var(--text-primary); font-size:14px; padding:0 8px;"
+            onkeypress="if(event.key==='Enter') sendAiChat()">
+          <button class="btn btn-primary" onclick="sendAiChat()" id="btn-ai-chat-send"
+            style="background:#bd93f9; color:#0d1117; border:none; padding:8px 16px;">전송</button>
+        </div>
+      </div>
+
+      <!-- Unreal Deploy Page -->
+      <div class="page" id="page-deploy-unreal">
+        <div style="max-width: 600px; margin: 0 auto; padding-top: 40px;">
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px;">
+            <h2 style="margin-top:0; margin-bottom: 24px;">🎮 Unreal 게임 서버 배포</h2>
+            <div class="form-group">
+              <label>게임 이름 *</label>
+              <input type="text" id="unreal-name" placeholder="MyGame">
+              <div class="form-hint">알파벳과 숫자만 허용됩니다. 매치메이커 게임 URL로 사용됩니다.</div>
+            </div>
+            <div class="form-group">
+              <label>Linux Server 패키징 ZIP 파일 *</label>
+              <div class="upload-dropzone" id="unreal-dropzone">
+                <input type="file" id="unreal-file" accept=".zip" style="display:none;"
+                  onchange="handleFileSelect(this, 'unreal-dropzone')">
+                <div class="upload-dropzone-content" id="unreal-dropzone-content">
+                  <div class="upload-icon">🎮</div>
+                  <div class="upload-text">Linux Server ZIP 파일을 드래그하거나 클릭하여 선택</div>
+                  <div class="upload-hint">언리얼 엔진에서 리눅스 서버 타겟으로 빌드된 결과 폴더를 압축해서 올려주세요.</div>
+                </div>
+              </div>
+            </div>
+            <div style="text-align: right; margin-top: 24px;">
+              <button class="btn btn-primary" onclick="createUploadProject('pixel_streaming')">게임 서버 생성 및 배포</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unity Deploy Page -->
+      <div class="page" id="page-deploy-unity">
+        <div style="max-width: 600px; margin: 0 auto; padding-top: 40px;">
+          <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px;">
+            <h2 style="margin-top:0; margin-bottom: 24px;">🎲 Unity WebGL 웹 배포</h2>
+            <div class="form-group">
+              <label>프로젝트 이름 *</label>
+              <input type="text" id="unity-name" placeholder="my-unity-game">
+              <div class="form-hint">접속할 서브도메인이 자동으로 생성됩니다.</div>
+            </div>
+            <div class="form-group">
+              <label>WebGL 빌드 폴더 ZIP 파일 *</label>
+              <div class="upload-dropzone" id="unity-dropzone">
+                <input type="file" id="unity-file" accept=".zip" style="display:none;"
+                  onchange="handleFileSelect(this, 'unity-dropzone')">
+                <div class="upload-dropzone-content" id="unity-dropzone-content">
+                  <div class="upload-icon">🎲</div>
+                  <div class="upload-text">WebGL 빌드 폴더를 ZIP으로 압축하여 드래그하거나 클릭</div>
+                  <div class="upload-hint">index.html (또는 index.htm)이 포함된 최상위 폴더를 압축해주세요.</div>
+                </div>
+              </div>
+            </div>
+            <div style="text-align: right; margin-top: 24px;">
+              <button class="btn btn-primary" onclick="createUploadProject('unity_webgl')">웹 서버 생성 및 배포</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="login-modal" style="z-index:9999; background:var(--bg-primary)">
+    <div class="modal auth-modal" style="width: 420px; margin-top: 15vh;">
+      <div class="auth-logo">
+        <span class="auth-logo-icon">🪐</span>
+        <span class="auth-logo-text">Orbitron</span>
+        <p class="auth-subtitle">프로젝트를 궤도에 올리세요</p>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">로그인</button>
+        <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">회원가입</button>
+      </div>
+      <div class="modal-body">
+        <!-- Login Form -->
+        <div id="form-login">
+          <div class="form-group">
+            <label>이메일</label>
+            <input type="email" id="input-login-email" placeholder="name@example.com"
+              onkeypress="if(event.key==='Enter') login()">
+          </div>
+          <div class="form-group">
+            <label>비밀번호</label>
+            <input type="password" id="input-login-password" placeholder="비밀번호 입력"
+              onkeypress="if(event.key==='Enter') login()">
+          </div>
+          <div id="login-error" class="auth-error"></div>
+          <button class="btn btn-primary auth-submit" onclick="login()">로그인</button>
+        </div>
+        <!-- Register Form -->
+        <div id="form-register" style="display:none;">
+          <div class="form-group">
+            <label>사용자명</label>
+            <input type="text" id="input-reg-username" placeholder="사용자명 (영문, 숫자)"
+              onkeypress="if(event.key==='Enter') register()">
+          </div>
+          <div class="form-group">
+            <label>이메일</label>
+            <input type="email" id="input-reg-email" placeholder="name@example.com"
+              onkeypress="if(event.key==='Enter') register()">
+          </div>
+          <div class="form-group">
+            <label>비밀번호</label>
+            <input type="password" id="input-reg-password" placeholder="비밀번호 (4자 이상)"
+              onkeypress="if(event.key==='Enter') register()">
+          </div>
+          <div class="form-group">
+            <label>비밀번호 확인</label>
+            <input type="password" id="input-reg-confirm" placeholder="비밀번호 다시 입력"
+              onkeypress="if(event.key==='Enter') register()">
+          </div>
+          <div id="register-error" class="auth-error"></div>
+          <button class="btn btn-primary auth-submit" onclick="register()">회원가입</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Project Modal -->
+  <div class="modal-overlay" id="new-project-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🆕 새 프로젝트</h2>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Source Type Tabs -->
+        <div class="source-tabs"
+          style="display:flex; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:20px;">
+          <button class="source-tab active" id="tab-github" onclick="switchSourceTab('github')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">🔗
+            GitHub</button>
+          <button class="source-tab" id="tab-upload" onclick="switchSourceTab('upload')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">📁
+            일반 앱 업로드</button>
+          <button class="source-tab" id="tab-database" onclick="switchSourceTab('database')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">🗄
+            데이터베이스</button>
+          <button class="source-tab" id="tab-worker" onclick="switchSourceTab('worker')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">⚙️
+            백그라운드 워커</button>
+        </div>
+
+        <!-- GitHub Mode -->
+        <div id="form-github-source">
+          <div class="form-group">
+            <label>프로젝트 이름 *</label>
+            <input type="text" id="input-name" placeholder="my-awesome-app">
+          </div>
+          <div class="form-group">
+            <label>GitHub URL *</label>
+            <input type="text" id="input-github" placeholder="https://github.com/user/repo">
+          </div>
+          <div class="form-group">
+            <label>Branch</label>
+            <input type="text" id="input-branch" placeholder="main" value="main">
+          </div>
+          <div class="form-group">
+            <label>빌드 명령어</label>
+            <input type="text" id="input-build" placeholder="npm install && npm run build" value="npm install">
+          </div>
+          <div class="form-group">
+            <label>시작 명령어</label>
+            <input type="text" id="input-start" placeholder="npm start" value="npm start">
+          </div>
+          <div class="form-group">
+            <label>포트</label>
+            <input type="number" id="input-port" placeholder="자동 할당">
+            <div class="form-hint">비우면 자동으로 할당됩니다</div>
+          </div>
+          <div class="form-group">
+            <label>서브도메인</label>
+            <input type="text" id="input-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
+            <div class="form-hint">{서브도메인}.localhost 로 접속됩니다</div>
+          </div>
+          <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;">
+            <label>🔄 배포 모드</label>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+              <label class="toggle-switch">
+                <input type="checkbox" id="input-autodeploy" checked>
+                <span class="toggle-slider"></span>
+              </label>
+              <span style="font-size:14px;color:var(--text-secondary);">자동 배포 (GitHub push 시 자동 재배포)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload Mode -->
+        <div id="form-upload-source" style="display:none;">
+          <div class="form-group">
+            <label>프로젝트 이름 *</label>
+            <input type="text" id="upload-name" placeholder="my-awesome-app">
+          </div>
+          <div class="form-group">
+            <label>프로젝트 ZIP 파일 *</label>
+            <div class="upload-dropzone" id="upload-dropzone">
+              <input type="file" id="upload-file" accept=".zip" style="display:none;"
+                onchange="handleFileSelect(this, 'upload-dropzone')">
+              <div class="upload-dropzone-content" id="upload-dropzone-content">
+                <div class="upload-icon">📦</div>
+                <div class="upload-text">ZIP 파일을 드래그하거나 클릭하여 선택</div>
+                <div class="upload-hint">프로젝트 폴더를 ZIP으로 압축하여 업로드하세요 (최대 500MB)</div>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>빌드 명령어</label>
+            <input type="text" id="upload-build" placeholder="npm install && npm run build" value="npm install">
+          </div>
+          <div class="form-group">
+            <label>시작 명령어</label>
+            <input type="text" id="upload-start" placeholder="npm start" value="npm start">
+          </div>
+          <div class="form-group">
+            <label>포트</label>
+            <input type="number" id="upload-port" placeholder="자동 할당">
+            <div class="form-hint">비우면 자동으로 할당됩니다</div>
+          </div>
+          <div class="form-group">
+            <label>서브도메인</label>
+            <input type="text" id="upload-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
+          </div>
+        </div>
+
+        <!-- Database Mode -->
+        <div id="form-database-source" style="display:none;">
+          <div class="form-group">
+            <label>데이터베이스 엔진 *</label>
+            <select id="db-type"
+              style="width:100%; padding:10px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; outline:none;">
+              <option value="db_postgres">PostgreSQL 15</option>
+              <option value="db_redis">Redis 7</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>데이터베이스 이름 (식별용) *</label>
+            <input type="text" id="db-name" placeholder="my-postgres-db">
+            <div class="form-hint">서브도메인이 이름 기반으로 자동 생성됩니다. 웹 서버는 내부망(orbitron_internal)에서 이 이름(서브도메인)으로 연결할 수 있습니다.
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" id="btn-create-project" onclick="createProject()">프로젝트 생성</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deploy Options Modal -->
+  <div class="modal-overlay" id="deploy-options-modal">
+    <div class="modal" style="width: 500px;">
+      <div class="modal-header">
+        <h2>🔄 배포 옵션 선택</h2>
+        <button class="modal-close" onclick="closeDeployOptions()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:13px; font-weight:500; color:var(--text-secondary); margin-bottom:8px;">배포할 커밋 (버전)을 선택하세요
+        </div>
+        <div id="deploy-options-list"
+          style="margin-top:8px; max-height:300px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px; background:var(--surface);">
+          <div style="text-align:center; padding:20px; color:var(--text-secondary);">커밋 목록을 불러오는 중...</div>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">특정 커밋을 선택하면 해당 시점의 코드로 롤백/배포됩니다. 기본값은 최신
+          브랜치 상태입니다.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeDeployOptions()">취소</button>
+        <button class="btn btn-primary" onclick="confirmDeploySelect()">배포 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deploy Monitor Modal -->
+  <div class="modal-overlay" id="deploy-modal">
+    <div class="modal" style="width: 640px;">
+      <div class="modal-header">
+        <h2 id="deploy-modal-title">🚀 배포 진행 중...</h2>
+        <button class="modal-close" onclick="closeDeployModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="deploy-progress-bar">
+          <div class="deploy-progress-fill" id="deploy-progress-fill" style="width: 0%"></div>
+        </div>
+        <div class="deploy-progress-label" id="deploy-progress-label">준비 중...</div>
+        <div class="deploy-steps" id="deploy-steps"></div>
+        <div class="deploy-log-header">
+          <span>📋 실시간 로그</span>
+          <button class="btn btn-sm btn-ghost" onclick="toggleDeployLog()">펼치기/접기</button>
+        </div>
+        <div class="deploy-log-viewer" id="deploy-log-viewer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Import Modal -->
+  <div class="modal-overlay" id="bulk-import-modal">
+    <div class="modal" style="width:500px;">
+      <div class="modal-header">
+        <h2>📋 Bulk Import (.env)</h2>
+        <button class="modal-close" onclick="closeBulkImport()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>.env 형식으로 붙여넣기</label>
+          <textarea id="bulk-env-input" rows="10"
+            placeholder="KEY=value&#10;DATABASE_URL=postgresql://...&#10;NODE_ENV=production"
+            style="font-family:'JetBrains Mono',monospace;font-size:13px;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeBulkImport()">취소</button>
+        <button class="btn btn-primary" onclick="applyBulkImport()">적용</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+
+</html>

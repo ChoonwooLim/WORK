@@ -72,10 +72,16 @@ router.get('/:id', async (req, res) => {
 // POST /api/projects - Create a new project
 router.post('/', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, ai_model } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, ai_model, type } = req.body;
 
-        if (!name || !github_url) {
-            return res.status(400).json({ error: 'name and github_url are required' });
+        if (!name) {
+            return res.status(400).json({ error: 'name is required' });
+        }
+
+        // For web services github_url is required, for databases it is not.
+        const projectType = type || 'web';
+        if (projectType === 'web' && !github_url) {
+            return res.status(400).json({ error: 'github_url is required for web apps' });
         }
 
         // Generate a valid subdomain: use provided subdomain, or sanitize the name,
@@ -84,8 +90,8 @@ router.post('/', async (req, res) => {
         if (!projectSubdomain) {
             let sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
             if (!sanitized) {
-                // Name had no ASCII chars (e.g. Korean) — extract repo name from GitHub URL
-                const repoMatch = github_url.match(/\/([^\/]+?)(\.git)?$/);
+                // Name had no ASCII chars (e.g. Korean) — extract repo name from GitHub URL or use timestamp
+                const repoMatch = github_url ? github_url.match(/\/([^\/]+?)(\.git)?$/) : null;
                 sanitized = repoMatch ? repoMatch[1].toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : `project-${Date.now()}`;
             }
             projectSubdomain = sanitized;
@@ -101,13 +107,13 @@ router.post('/', async (req, res) => {
         // Encrypt environment variables and wrap in double quotes for JSONB column
         const encryptedEnvVars = '"' + encrypt(JSON.stringify(env_vars || {})) + '"';
 
-        // Include ai_model in insertion
+        // Include ai_model and type in insertion
         const project = await db.queryOne(
             `INSERT INTO projects (
                 user_id, name, github_url, branch, build_command, start_command, 
-                port, subdomain, env_vars, auto_deploy, source_type, ai_model
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'github', $11) RETURNING *`,
-            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false, ai_model || 'claude-4-6-opus-20260205']
+                port, subdomain, env_vars, auto_deploy, source_type, ai_model, type
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'github', $11, $12) RETURNING *`,
+            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false, ai_model || 'claude-4-6-opus-20260205', projectType]
         );
 
         res.status(201).json(project);
@@ -507,10 +513,12 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
 
         const projectPort = port ? parseInt(port) : (3000 + Math.floor(Math.random() * 1000));
 
-        // Handle project_type for Pixel Streaming
+        // Handle project_type for Pixel Streaming & Unity WebGL
         let env_vars = {};
         if (project_type === 'pixel_streaming') {
             env_vars.PROJECT_TYPE = 'pixel_streaming';
+        } else if (project_type === 'unity_webgl') {
+            env_vars.PROJECT_TYPE = 'unity_webgl';
         }
         const encryptedEnvVars = '"' + encrypt(JSON.stringify(env_vars)) + '"';
 

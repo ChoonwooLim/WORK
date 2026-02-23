@@ -60,6 +60,9 @@ DO $$ BEGIN
     
     -- Make user_id NOT NULL after assigning defaults
     ALTER TABLE projects ALTER COLUMN user_id SET NOT NULL;
+
+    -- Add project type (e.g. web, db_postgres)
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'web';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

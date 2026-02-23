@@ -81,10 +81,10 @@ app.get('/api/server-info', async (req, res) => {
     }
 });
 
-// SPA fallback - serve index.html for any non-API route
+// SPA fallback - serve app.html for any non-API route (app routing)
 app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api')) {
-        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+        res.sendFile(path.join(__dirname, 'public', 'app.html'));
     } else {
         next();
     }
