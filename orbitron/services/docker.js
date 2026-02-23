@@ -34,7 +34,12 @@ class DockerService {
     }
 
     // Detect project type and generate appropriate Dockerfile
-    detectProjectType(projectDir) {
+    detectProjectType(projectDir, project = null) {
+        // Quick override for Pixel Streaming projects
+        if (project && project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming') {
+            return { type: 'pixel_streaming', subdir: null };
+        }
+
         // Check root directory first
         if (fs.existsSync(path.join(projectDir, 'package.json'))) {
             const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf-8'));
@@ -70,10 +75,61 @@ class DockerService {
     }
 
     generateDockerfile(project, projectDir) {
-        const detected = this.detectProjectType(projectDir);
+        const detected = this.detectProjectType(projectDir, project);
         const port = project.port || 3000;
         const { type, subdir } = detected;
         const copyFrom = subdir ? `${subdir}/` : '.';
+
+        if (type === 'pixel_streaming') {
+            // Find the executable script (.sh file containing "Server" or just grabbing the first .sh)
+            let startScript = 'start_server.sh'; // fallback
+            try {
+                const files = fs.readdirSync(projectDir);
+                const shFiles = files.filter(f => f.endsWith('.sh') && !!(fs.statSync(path.join(projectDir, f)).mode & 0o111));
+                if (shFiles.length > 0) {
+                    const serverSh = shFiles.find(f => f.toLowerCase().includes('server')) || shFiles[0];
+                    startScript = serverSh;
+                }
+            } catch (e) {
+                console.warn(`Could not detect start script for ${project.name}: ${e.message}`);
+            }
+
+            return `FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+RUN apt-get update && apt-get install -y \\
+    xserver-xorg-core \\
+    xserver-xorg-video-dummy \\
+    pulseaudio \\
+    vulkan-tools \\
+    libvulkan1 \\
+    sudo \\
+    wget \\
+    curl \\
+    jq \\
+    dbus-x11 \\
+    pciutils \\
+    kmod \\
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash unreal && \\
+    echo "unreal ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+WORKDIR /home/unreal/project
+COPY --chown=unreal:unreal . .
+
+# Ensure scripts are executable
+RUN chmod +x *.sh || true
+
+USER unreal
+
+EXPOSE 80 8888 8889 8890 8891 8892 8893 19302/udp 19303/udp
+
+CMD [ "bash", "-c", "./${startScript} -RenderOffscreen -PixelStreamingURL=ws://127.0.0.1:8888" ]
+`;
+        }
 
         if (type === 'nextjs') {
             // Multi-stage Next.js build

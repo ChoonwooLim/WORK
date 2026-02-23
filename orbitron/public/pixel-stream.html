@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron Pixel Streaming</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body {
+            background-color: #0f172a;
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .stream-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        #stream-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: none;
+            background: #000;
+        }
+
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* A subtle grid background for the holding screen */
+        .grid-bg {
+            background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+    </style>
+</head>
+
+<body class="grid-bg">
+    <nav class="navbar navbar-dark bg-dark px-3 shadow-sm" style="z-index: 10;">
+        <a class="navbar-brand d-flex align-items-center" href="/">
+            🪐 <span class="fw-bold ms-2">Orbitron</span> <span class="badge bg-primary ms-2 rounded-pill">Pixel
+                Streaming</span>
+        </a>
+        <div>
+            <span id="session-info" class="text-muted small me-3 fw-bold"></span>
+            <button id="disconnect-btn" class="btn btn-sm btn-outline-danger shadow-sm" style="display: none;">End
+                Session</button>
+        </div>
+    </nav>
+
+    <div class="stream-container">
+        <div id="connect-panel" class="text-center p-5 rounded-4"
+            style="background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); max-width: 500px;">
+            <div class="mb-4">
+                <span style="font-size: 3rem;">🎮</span>
+            </div>
+            <h2 class="mb-3 fw-bold">Unreal Engine Matchmaker</h2>
+            <p class="text-secondary mb-4">Click below to allocate a dedicated GPU slot and spawn your interactive 3D
+                container.</p>
+            <button id="connect-btn" class="btn btn-lg btn-primary px-5 py-3 fs-5 shadow-lg rounded-pill"
+                style="transition: all 0.3s;">Connect to GPU Server</button>
+            <div id="loader" class="loader mx-auto mt-4"></div>
+            <div id="status-msg" class="text-info mt-3 small fw-bold" style="display: none;">Warming up UE Container...
+            </div>
+            <div id="error-msg" class="text-danger mt-3 fw-bold"></div>
+        </div>
+        <iframe id="stream-frame" allow="autoplay; fullscreen; microphone; camera; vr" allowfullscreen></iframe>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentSessionId = null;
+
+        document.getElementById('connect-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('connect-btn');
+            const loader = document.getElementById('loader');
+            const errorMsg = document.getElementById('error-msg');
+            const statusMsg = document.getElementById('status-msg');
+
+            btn.style.display = 'none';
+            loader.style.display = 'block';
+            errorMsg.innerText = '';
+            statusMsg.style.display = 'block';
+
+            try {
+                // Get project name from URL if it exists
+                const urlParams = new URLSearchParams(window.location.search);
+                const projectParam = urlParams.get('project');
+                const queryStr = projectParam ? `?project=${projectParam}` : '';
+
+                // Fetch to Matchmaker API
+                const res = await fetch(`/api/pixel-streaming/match${queryStr}`, { method: 'POST' });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to match session');
+                }
+
+                currentSessionId = data.session.id;
+
+                // Allow container time to boot up the signaling server
+                statusMsg.innerText = 'Routing signaling WebSocket...';
+
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                    document.getElementById('connect-panel').style.display = 'none';
+                    statusMsg.style.display = 'none';
+
+                    const frame = document.getElementById('stream-frame');
+                    frame.style.display = 'block';
+
+                    // Simple URL routing (assume local host or same subdomain mapping)
+                    // If running via Cloudflare Tunnel, we would need to map the subdomains
+                    frame.src = `http://${window.location.hostname}:${data.session.port}`;
+
+                    document.getElementById('disconnect-btn').style.display = 'inline-block';
+                    document.getElementById('session-info').innerText = `🔥 GPU: ${data.session.gpu} | PORT: ${data.session.port}`;
+                }, 4000); // 4 sec warmup
+
+            } catch (err) {
+                loader.style.display = 'none';
+                statusMsg.style.display = 'none';
+                btn.style.display = 'inline-block';
+                errorMsg.innerText = err.message;
+            }
+        });
+
+        document.getElementById('disconnect-btn').addEventListener('click', async () => {
+            if (!currentSessionId) return;
+
+            // Send kill signal to API
+            await fetch('/api/pixel-streaming/disconnect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: currentSessionId })
+            });
+
+            window.location.reload();
+        });
+
+        // Cleanup on page abandon
+        window.addEventListener('beforeunload', () => {
+            if (currentSessionId) {
+                // Beacon ensures the POST is sent even if tab is instantly closed
+                const data = new FormData();
+                const blob = new Blob([JSON.stringify({ sessionId: currentSessionId })], { type: 'application/json' });
+                navigator.sendBeacon('/api/pixel-streaming/disconnect', blob);
+            }
+        });
+    </script>
+</body>
+
+</html>

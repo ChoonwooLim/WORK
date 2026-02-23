@@ -116,36 +116,50 @@ class Deployer extends EventEmitter {
             logs += '\n--- Build complete ---\n';
             this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 완료');
 
-            // Step 3: Start container
-            this.emitProgress(project.id, 'container', '컨테이너 시작 중...');
-            logs += '\nStarting container...\n';
-            const containerId = await dockerService.startContainer(project);
-            logs += `Container started: ${containerId}\n`;
-            this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
+            const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
+            let containerId = null;
+            let tunnelUrl = null;
 
-            // Step 4: Update nginx config
-            this.emitProgress(project.id, 'nginx', '프록시 설정 중...');
-            logs += '\nUpdating nginx config...\n';
-            nginxService.addProject(project);
-            logs += 'nginx reloaded.\n';
-            this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
-
-            // Step 5: Reuse existing tunnel or create new one
-            const tunnelKey = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-            let tunnelUrl = tunnelService.getTunnelUrl(tunnelKey);
-            if (tunnelUrl) {
-                logs += `\n🌐 Reusing existing tunnel: ${tunnelUrl}\n`;
-                this.emitProgress(project.id, 'tunnel', `기존 터널 유지: ${tunnelUrl}`);
+            if (isPixelStreaming) {
+                // For Pixel Streaming, the Matchmaker handles dynamic containers and ports.
+                this.emitProgress(project.id, 'container', '매치메이커 시스템에 등록 준비 중...');
+                logs += '\nSkipping explicit container start, nginx, and tunnels (Pixel Streaming Project).\n';
+                this.emitProgress(project.id, 'container', '독립 실행형 컨테이너 생성을 건너뜀 (매치메이커가 관리)');
+                this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (매치메이커가 통신 관리)');
+                this.emitProgress(project.id, 'tunnel', '외부 접속 터널 지정됨 (매치메이커 게임 게이트웨이)');
+                // No containerId, No tunnelUrl -> Matchmaker handles web routing!
             } else {
-                this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 중...');
-                logs += '\nCreating tunnel for external access...\n';
-                tunnelUrl = await tunnelService.startTunnel(project);
+                // Step 3: Start container
+                this.emitProgress(project.id, 'container', '컨테이너 시작 중...');
+                logs += '\nStarting container...\n';
+                containerId = await dockerService.startContainer(project);
+                logs += `Container started: ${containerId}\n`;
+                this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
+
+                // Step 4: Update nginx config
+                this.emitProgress(project.id, 'nginx', '프록시 설정 중...');
+                logs += '\nUpdating nginx config...\n';
+                nginxService.addProject(project);
+                logs += 'nginx reloaded.\n';
+                this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
+
+                // Step 5: Reuse existing tunnel or create new one
+                const tunnelKey = project.subdomain || project.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                tunnelUrl = tunnelService.getTunnelUrl(tunnelKey);
                 if (tunnelUrl) {
-                    logs += `🌐 Tunnel URL: ${tunnelUrl}\n`;
-                    this.emitProgress(project.id, 'tunnel', `터널 생성 완료: ${tunnelUrl}`);
+                    logs += `\n🌐 Reusing existing tunnel: ${tunnelUrl}\n`;
+                    this.emitProgress(project.id, 'tunnel', `기존 터널 유지: ${tunnelUrl}`);
                 } else {
-                    logs += '⚠️ Tunnel creation skipped or failed\n';
-                    this.emitProgress(project.id, 'tunnel', '터널 생성 건너뜀');
+                    this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 중...');
+                    logs += '\nCreating tunnel for external access...\n';
+                    tunnelUrl = await tunnelService.startTunnel(project);
+                    if (tunnelUrl) {
+                        logs += `🌐 Tunnel URL: ${tunnelUrl}\n`;
+                        this.emitProgress(project.id, 'tunnel', `터널 생성 완료: ${tunnelUrl}`);
+                    } else {
+                        logs += '⚠️ Tunnel creation skipped or failed\n';
+                        this.emitProgress(project.id, 'tunnel', '터널 생성 건너뜀');
+                    }
                 }
             }
 
@@ -221,9 +235,13 @@ class Deployer extends EventEmitter {
 
     // Stop a project
     async stop(project) {
-        await dockerService.stopContainer(`orbitron-${project.subdomain}`);
-        await nginxService.removeProject(project.subdomain);
-        await tunnelService.deleteTunnel(project.subdomain);
+        const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
+
+        if (!isPixelStreaming) {
+            await dockerService.stopContainer(`orbitron-${project.subdomain}`);
+            await nginxService.removeProject(project.subdomain);
+            await tunnelService.deleteTunnel(project.subdomain);
+        }
         await db.query(`UPDATE projects SET status = 'stopped', container_id = NULL, tunnel_url = NULL WHERE id = $1`, [project.id]);
     }
 

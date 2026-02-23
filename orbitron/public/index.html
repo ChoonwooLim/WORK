@@ -253,9 +253,17 @@
       </div>
       <div class="modal-body">
         <!-- Source Type Tabs -->
-        <div class="source-tabs">
-          <button class="source-tab active" id="tab-github" onclick="switchSourceTab('github')">🔗 GitHub Clone</button>
-          <button class="source-tab" id="tab-upload" onclick="switchSourceTab('upload')"> 📁 폴더 업로드</button>
+        <div class="source-tabs"
+          style="display:flex; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:20px;">
+          <button class="source-tab active" id="tab-github" onclick="switchSourceTab('github')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">🔗
+            GitHub Clone</button>
+          <button class="source-tab" id="tab-upload" onclick="switchSourceTab('upload')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">
+            📁 폴더 업로드</button>
+          <button class="source-tab" id="tab-unreal" onclick="switchSourceTab('unreal')"
+            style="flex:1; padding:12px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-weight:600; font-size:14px;">
+            🎮 Unreal Engine</button>
         </div>
 
         <!-- GitHub Mode -->
@@ -311,7 +319,8 @@
           <div class="form-group">
             <label>프로젝트 ZIP 파일 *</label>
             <div class="upload-dropzone" id="upload-dropzone">
-              <input type="file" id="upload-file" accept=".zip" style="display:none;" onchange="handleFileSelect(this)">
+              <input type="file" id="upload-file" accept=".zip" style="display:none;"
+                onchange="handleFileSelect(this, 'upload-dropzone')">
               <div class="upload-dropzone-content" id="upload-dropzone-content">
                 <div class="upload-icon">📦</div>
                 <div class="upload-text">ZIP 파일을 드래그하거나 클릭하여 선택</div>
@@ -335,6 +344,27 @@
           <div class="form-group">
             <label>서브도메인</label>
             <input type="text" id="upload-subdomain" placeholder="자동 생성 (프로젝트 이름 기반)">
+          </div>
+        </div>
+
+        <!-- Unreal Engine Mode -->
+        <div id="form-unreal-source" style="display:none;">
+          <div class="form-group">
+            <label>게임 이름 *</label>
+            <input type="text" id="unreal-name" placeholder="MyGame">
+            <div class="form-hint">알파벳과 숫자만 허용됩니다. 매치메이커 게임 URL로 사용됩니다.</div>
+          </div>
+          <div class="form-group">
+            <label>Linux Server 패키징 ZIP 파일 *</label>
+            <div class="upload-dropzone" id="unreal-dropzone">
+              <input type="file" id="unreal-file" accept=".zip" style="display:none;"
+                onchange="handleFileSelect(this, 'unreal-dropzone')">
+              <div class="upload-dropzone-content" id="unreal-dropzone-content">
+                <div class="upload-icon">🎮</div>
+                <div class="upload-text">Linux Server ZIP 파일을 드래그하거나 클릭하여 선택</div>
+                <div class="upload-hint">언리얼 엔진에서 리눅스 서버 타겟으로 빌드된 결과 폴더를 압축해서 올려주세요.</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -486,7 +486,7 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
         }
         tmpPath = req.file.path;
 
-        const { name, build_command, start_command, port, subdomain } = req.body;
+        const { name, build_command, start_command, port, subdomain, project_type } = req.body;
         if (!name) {
             return res.status(400).json({ error: '프로젝트 이름은 필수입니다.' });
         }
@@ -507,11 +507,18 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
 
         const projectPort = port ? parseInt(port) : (3000 + Math.floor(Math.random() * 1000));
 
+        // Handle project_type for Pixel Streaming
+        let env_vars = {};
+        if (project_type === 'pixel_streaming') {
+            env_vars.PROJECT_TYPE = 'pixel_streaming';
+        }
+        const encryptedEnvVars = '"' + encrypt(JSON.stringify(env_vars)) + '"';
+
         // Create project in DB
         const project = await db.queryOne(
-            `INSERT INTO projects (user_id, name, github_url, branch, source_type, build_command, start_command, port, subdomain, auto_deploy)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false) RETURNING *`,
-            [req.user.userId, name, null, 'main', 'upload', build_command || 'npm install', start_command || 'npm start', projectPort, projectSubdomain]
+            `INSERT INTO projects (user_id, name, github_url, branch, source_type, build_command, start_command, port, subdomain, auto_deploy, env_vars)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10) RETURNING *`,
+            [req.user.userId, name, null, 'main', 'upload', build_command || 'npm install', start_command || 'npm start', projectPort, projectSubdomain, encryptedEnvVars]
         );
 
         // Extract ZIP to deployments dir
@@ -522,7 +529,7 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
         zip.extractAllTo(projectDir, true);
 
         // If ZIP contains a single root folder, move contents up
-        const entries = fs.readdirSync(projectDir).filter(e => !e.startsWith('.'));
+        const entries = fs.readdirSync(projectDir).filter(e => !e.startsWith('.') && e !== 'Dockerfile');
         if (entries.length === 1) {
             const singleDir = path.join(projectDir, entries[0]);
             if (fs.statSync(singleDir).isDirectory()) {

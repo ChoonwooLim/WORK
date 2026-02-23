@@ -247,9 +247,9 @@ function renderProjects(projects) {
               <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openDeployOptions(${p.id})">🔄 재배포</button>
               ${p.status === 'running' ? `
                 <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹ 중지</button>
-                <a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank" onclick="event.stopPropagation()">🌐 열기</a>
+                ${openSiteButtonHtml}
               ` : `
-                <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); openDeployOptions(${p.id})">▶ 시작</button>
+                ${openSiteButtonHtml}
               `}
             </div>
           </div>
@@ -281,8 +281,14 @@ function renderProjectOverview() {
     const p = currentProject;
     if (!p) return;
     const localUrl = `http://${serverHost}:${p.port}`;
-    const siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || localUrl);
-    const urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
+    let siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || localUrl);
+    let urlLabel = p.custom_domain || (p.tunnel_url ? p.tunnel_url.replace('https://', '') : `${serverHost}:${p.port}`);
+
+    const isPixelStreaming = p.env_vars && p.env_vars.PROJECT_TYPE === 'pixel_streaming';
+    if (isPixelStreaming) {
+        siteUrl = `/pixel-stream.html?project=${p.subdomain}`;
+        urlLabel = `🎮 Pixel Streaming`;
+    }
 
     document.getElementById('overview-content').innerHTML = `
     ${p.status === 'running' ? `
@@ -291,7 +297,7 @@ function renderProjectOverview() {
       <a href="${siteUrl}" target="_blank" style="color:var(--accent);font-size:22px;font-weight:700;text-decoration:none; word-break: break-all;">${urlLabel}</a>
       ${p.custom_domain ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">터널: ${p.tunnel_url || 'N/A'}</div>` : ''}
       <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
-        <a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">🌐 사이트 열기</a>
+        <a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">${isPixelStreaming ? '🎮 게임 시작' : '🌐 사이트 열기'}</a>
         <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 재배포</button>
       </div>
     </div>` : `
@@ -457,30 +463,41 @@ function switchSourceTab(tab) {
     currentSourceTab = tab;
     document.getElementById('tab-github').classList.toggle('active', tab === 'github');
     document.getElementById('tab-upload').classList.toggle('active', tab === 'upload');
+    document.getElementById('tab-unreal').classList.toggle('active', tab === 'unreal');
+
     document.getElementById('form-github-source').style.display = tab === 'github' ? 'block' : 'none';
     document.getElementById('form-upload-source').style.display = tab === 'upload' ? 'block' : 'none';
+    document.getElementById('form-unreal-source').style.display = tab === 'unreal' ? 'block' : 'none';
+
     const createBtn = document.getElementById('btn-create-project');
-    if (createBtn) createBtn.textContent = tab === 'upload' ? '업로드 & 배포' : '프로젝트 생성';
+    if (createBtn) {
+        if (tab === 'unreal') createBtn.textContent = '게임 서버 빌드';
+        else if (tab === 'upload') createBtn.textContent = '업로드 & 배포';
+        else createBtn.textContent = '프로젝트 생성';
+    }
 }
 
-function handleFileSelect(input) {
+function handleFileSelect(input, dropzoneId) {
     const file = input.files[0];
     if (file) {
         selectedUploadFile = file;
-        const content = document.getElementById('upload-dropzone-content');
+        const content = document.getElementById(`${dropzoneId}-content`);
         const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        const icon = dropzoneId === 'unreal-dropzone' ? '🎮' : '✅';
         content.innerHTML = `
-            <div class="upload-icon">✅</div>
+            <div class="upload-icon">${icon}</div>
             <div class="upload-text">${escapeHtml(file.name)}</div>
             <div class="upload-hint">${sizeMB} MB · 클릭하여 다른 파일 선택</div>
         `;
-        document.getElementById('upload-dropzone').classList.add('has-file');
+        document.getElementById(dropzoneId).classList.add('has-file');
     }
 }
 
 async function createProject() {
     if (currentSourceTab === 'upload') {
-        return createUploadProject();
+        return createUploadProject('upload');
+    } else if (currentSourceTab === 'unreal') {
+        return createUploadProject('pixel_streaming');
     }
     const name = document.getElementById('input-name').value.trim();
     const github_url = document.getElementById('input-github').value.trim();
@@ -503,18 +520,28 @@ async function createProject() {
     } catch (error) { toast(error.message, 'error'); }
 }
 
-async function createUploadProject() {
-    const name = document.getElementById('upload-name').value.trim();
+async function createUploadProject(projectType = 'upload') {
+    const nameInputId = projectType === 'pixel_streaming' ? 'unreal-name' : 'upload-name';
+    const name = document.getElementById(nameInputId).value.trim();
     if (!name) { toast('프로젝트 이름은 필수입니다.', 'error'); return; }
     if (!selectedUploadFile) { toast('ZIP 파일을 선택해주세요.', 'error'); return; }
 
     const formData = new FormData();
     formData.append('zipfile', selectedUploadFile);
     formData.append('name', name);
-    formData.append('build_command', document.getElementById('upload-build').value.trim());
-    formData.append('start_command', document.getElementById('upload-start').value.trim());
-    formData.append('port', document.getElementById('upload-port').value || '');
-    formData.append('subdomain', document.getElementById('upload-subdomain').value.trim());
+    formData.append('project_type', projectType);
+
+    if (projectType === 'pixel_streaming') {
+        // Pixel streaming defaults
+        formData.append('build_command', 'echo PixelStreaming');
+        formData.append('start_command', 'echo Matchmaker');
+        formData.append('subdomain', name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''));
+    } else {
+        formData.append('build_command', document.getElementById('upload-build').value.trim());
+        formData.append('start_command', document.getElementById('upload-start').value.trim());
+        formData.append('port', document.getElementById('upload-port').value || '');
+        formData.append('subdomain', document.getElementById('upload-subdomain').value.trim());
+    }
 
     const createBtn = document.getElementById('btn-create-project');
     createBtn.disabled = true;
@@ -528,7 +555,7 @@ async function createUploadProject() {
         });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
         const project = await res.json();
-        toast('프로젝트가 업로드되었습니다! 배포를 시작합니다.', 'success');
+        toast('프로젝트가 업로드되었습니다! 빌드를 시작합니다.', 'success');
         closeModal();
         loadProjects();
         openDeployModal(project.id);
@@ -536,7 +563,7 @@ async function createUploadProject() {
         toast(error.message, 'error');
     } finally {
         createBtn.disabled = false;
-        createBtn.textContent = '업로드 & 배포';
+        createBtn.textContent = currentSourceTab === 'unreal' ? '게임 서버 빌드' : '업로드 & 배포';
     }
 }
 

@@ -28,6 +28,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', authMiddleware, require('./routes/projects'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/deployments', authMiddleware, require('./routes/deployments'));
+app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 
 // Health check
 app.get('/api/health', (req, res) => {
