@@ -11,7 +11,8 @@ const tunnelService = require('./tunnel');
 const mediaBackup = require('./mediaBackup');
 const projectBackup = require('./projectBackup');
 const aiAnalyzer = require('./aiAnalyzer');
-const { decrypt } = require('../db/crypto');
+const { encrypt, decrypt } = require('../db/crypto');
+const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
 
@@ -113,6 +114,68 @@ class Deployer extends EventEmitter {
                     logs += await this.cloneOrPull(project, projectDir, commitHash);
                     logs += '\n--- Clone/Pull complete ---\n';
                     this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
+                }
+
+                // Step 1.2: Check for orbitron.yaml (Infra as Code)
+                const yamlPath = path.join(projectDir, 'orbitron.yaml');
+                if (fs.existsSync(yamlPath)) {
+                    this.emitProgress(project.id, 'clone', 'orbitron.yaml 감지됨 (IaC 적용)');
+                    logs += '\n--- Detected orbitron.yaml, applying Infrastructure-as-Code configurations ---\n';
+                    try {
+                        const fileContents = fs.readFileSync(yamlPath, 'utf8');
+                        const parsedYaml = yaml.load(fileContents);
+
+                        if (parsedYaml && parsedYaml.services && parsedYaml.services.web) {
+                            const webService = parsedYaml.services.web;
+                            let updates = [];
+                            let params = [];
+                            let valIndex = 1;
+
+                            if (webService.build_command !== undefined) {
+                                project.build_command = webService.build_command;
+                                updates.push(`build_command = $${valIndex++}`);
+                                params.push(project.build_command);
+                                logs += `  - Override build_command: ${project.build_command}\n`;
+                            }
+                            if (webService.start_command !== undefined) {
+                                project.start_command = webService.start_command;
+                                updates.push(`start_command = $${valIndex++}`);
+                                params.push(project.start_command);
+                                logs += `  - Override start_command: ${project.start_command}\n`;
+                            }
+                            if (webService.port !== undefined) {
+                                project.port = webService.port;
+                                updates.push(`port = $${valIndex++}`);
+                                params.push(project.port);
+                                logs += `  - Override port: ${project.port}\n`;
+                            }
+                            if (webService.env) {
+                                const newEnv = { ...project.env_vars };
+                                webService.env.forEach(envStr => {
+                                    const splitIdx = envStr.indexOf('=');
+                                    if (splitIdx > 0) {
+                                        const k = envStr.substring(0, splitIdx).trim();
+                                        const v = envStr.substring(splitIdx + 1).trim();
+                                        newEnv[k] = v;
+                                    }
+                                });
+                                project.env_vars = newEnv;
+                                // Need to encrypt to save mapping properly in DB JSONB column
+                                const encryptedEnvVars = '"' + encrypt(JSON.stringify(newEnv || {})) + '"';
+                                updates.push(`env_vars = $${valIndex++}`);
+                                params.push(encryptedEnvVars);
+                                logs += `  - Override env_vars: ${Object.keys(newEnv).length} keys securely applied\n`;
+                            }
+
+                            if (updates.length > 0) {
+                                params.push(project.id);
+                                await db.query(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${valIndex}`, params);
+                                logs += '  > Synced overrides to Dashboard Database.\n';
+                            }
+                        }
+                    } catch (e) {
+                        logs += `\n⚠️ Failed to parse or apply orbitron.yaml: ${e.message}\n`;
+                    }
                 }
 
                 // Step 1.5: Auto media backup to DATA drive

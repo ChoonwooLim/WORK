@@ -129,15 +129,13 @@ function navigateTo(page) {
     // Update topbar actions
     const actions = document.getElementById('topbar-actions');
     if (page.startsWith('project-') && currentProject) {
-        const siteUrl = currentProject.custom_domain ? `http://${currentProject.custom_domain}` : (currentProject.tunnel_url || `http://${serverHost}:${currentProject.port}`);
-        actions.innerHTML = `
-            ${currentProject.status === 'running' ? `<a class="btn btn-sm btn-primary" href="${siteUrl}" target="_blank">🌐 열기</a>` : ''}
-            <button class="btn btn-sm btn-ghost" onclick="openDeployOptions(${currentProject.id})">🔄 재배포</button>
-            ${currentProject.status === 'running' ? `<button class="btn btn-sm btn-ghost" onclick="stopProject(${currentProject.id})">⏹ 중지</button>` : ''}
-        `;
-    } else {
-        actions.innerHTML = '';
+        // Redundant project actions removed at user's request
     }
+
+    actions.innerHTML = `
+        <a class="btn btn-sm btn-ghost" href="/" style="text-decoration:none; display:flex; align-items:center; gap:6px;">🏠 홈</a>
+        <button class="btn btn-sm btn-ghost" onclick="logout()" style="display:flex; align-items:center; gap:6px;">⏏ 로그아웃</button>
+    `;
 
     // Remove dynamic show/hide of project sub-nav, it is now permanently visible
     // Update active state styling manually since both dashboard and project views are visible

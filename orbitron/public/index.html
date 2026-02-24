@@ -321,7 +321,7 @@
             <a href="#features">기능 소개</a>
             <a href="#manual">메뉴얼</a>
             <a href="/index-en.html">EN</a>
-            <a href="/dashboard" class="btn-login">대시보드 시작</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
         </div>
     </nav>
 
@@ -330,7 +330,7 @@
         <h1>프로젝트를<br>궤도에 올리세요.</h1>
         <p>Orbitron은 AI 에러 분석, 게임 엔진(Unreal/Unity) 자동 빌드, 그리고 GitHub CI/CD를 아우르는 하이엔드급 배포 자동화 플랫폼입니다. 클릭 단 몇 번으로 인프라의
             복잡함을 잊고 개발에만 집중하세요.</p>
-        <a href="/dashboard" class="btn-primary">Orbitron 시작하기 →</a>
+        <a href="/dashboard" class="btn-primary" id="hero-auth-btn">Orbitron 시작하기 →</a>
     </section>
 
     <section class="features" id="features">
@@ -368,6 +368,27 @@
                 <div class="card-icon">📁</div>
                 <h3>하이브리드 백업 스토리지</h3>
                 <p>데이터 유실을 완벽히 방어하기 위해 DATA 드라이브 하드웨어 마운트를 완벽히 지원하며, 클릭 한 번으로 모든 볼륨의 미디어 및 소스 코드를 아카이브 압축합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🗄</div>
+                <h3>매니지드 데이터베이스</h3>
+                <p>PostgreSQL과 Redis 엔진을 원클릭으로 가동합니다. 별도 설정 없이 랜덤 비밀번호와 안전한 Connection String을 즉시 발급받아 웹앱과 연동하세요.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔒</div>
+                <h3>프라이빗 네트워크</h3>
+                <p>배포되는 모든 인프라 자원을 `orbitron_internal` 전용 브릿지망에 자동 묶어, 외부 클라우드플레어 터널링 패스 없이 데이터베이스와 초고속 보안 통신을 보장합니다.
+                </p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚙️</div>
+                <h3>백그라운드 워커</h3>
+                <p>디스코드 봇, 크론(Cron) 스케줄러, 비동기 파이프라인 등 퍼블릭 포트 오픈이 필요 없는 무한 백그라운드 프로세스를 조용히 그리고 끈질기게 구동시킵니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📜</div>
+                <h3>Infrastructure-as-Code</h3>
+                <p>대시보드 조작 없이 레포지토리 내 정의된 단일 `orbitron.yaml` 코드를 시스템이 파싱하여 환경 변수, 포트 번호, 빌드 커맨드 설정을 즉각 덮어씌웁니다.</p>
             </div>
         </div>
     </section>
@@ -466,6 +487,22 @@
             const parent = el.parentElement;
             parent.classList.toggle('active');
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('orbitron_token');
+            const navBtn = document.getElementById('nav-auth-btn');
+            const heroBtn = document.getElementById('hero-auth-btn');
+
+            if (token) {
+                // User is authenticated
+                if (navBtn) navBtn.innerHTML = '대시보드 관리';
+                if (heroBtn) heroBtn.innerHTML = '내 프로젝트로 돌아가기 →';
+            } else {
+                // User is not authenticated
+                if (navBtn) navBtn.innerHTML = '로그인 · 회원가입';
+                if (heroBtn) heroBtn.innerHTML = 'Orbitron 가입하기 →';
+            }
+        });
     </script>
 </body>
 
