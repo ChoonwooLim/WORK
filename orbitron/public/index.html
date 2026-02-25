@@ -270,7 +270,37 @@
 
         .accordion-item.active .accordion-body {
             padding: 0 24px 24px 24px;
-            max-height: 500px;
+            max-height: 5000px;
+        }
+
+        .accordion-body pre {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 12px 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .accordion-body pre code {
+            background: none;
+            padding: 0;
+            color: #e6e6e6;
+            font-family: 'Fira Code', 'Consolas', monospace;
+        }
+
+        .accordion-body .yaml-comment {
+            color: #6a9955;
+        }
+
+        .accordion-body .sample-title {
+            color: var(--accent);
+            font-weight: 600;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            font-size: 15px;
         }
 
         .accordion-item.active .accordion-header h4 {
@@ -403,21 +433,23 @@
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>🚀 일반 앱 배포하기 (GitHub / ZIP 업로드)</h4>
+                        <h4>🔄 GitHub 무한 CI/CD 및 앱 배포 (일반 앱 / ZIP)</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <h4>1. GitHub 연결을 통한 배포</h4>
+                        <p><strong>💡 소개:</strong> 코드를 수정해서 GitHub에 올리기만 하면, 시스템이 그것을 감지해 자동으로 완전히 새로운 서비스로 교체해 주는 완전
+                            자동화 기능입니다. 공장의 스마트 컨베이어 벨트처럼 설계도만 수정하면 알아서 새 제품을 뚝딱 만들어냅니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 급하게 버그를 수정하고 코드를 한 줄 고쳤을 때, 터미널 명령어를 치거나 서버를 껐다 켤 필요 없이 `저장(Push)`만
+                            하면 1~2분 뒤 웹사이트가 자동으로 완벽히 업데이트됩니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
                         <p>1. 대시보드 로그인 후 <code>+ New Project</code> 버튼을 클릭합니다.<br>
                             2. "GitHub" 탭에서 레포지토리 URL을 입력하고 "자동 배포" 토글을 켭니다.<br>
                             3. <code>npm install && npm run build</code> 등의 빌드 커맨드를 지정하고 생성합니다.<br>
-                            4. 배포가 완료되면 대시보드 우측의 Webhook URL을 복사하여 GitHub 저장소 설정(Webhooks)에 등록하면, 향후 Push 발생 시 자동
-                            재배포됩니다.</p>
-
-                        <h4>2. 단일 폴더 (ZIP) 업로드 방식</h4>
-                        <p>1. 프로젝트 최상위 파일을 모두 선택하고 압축한 ZIP 파일을 준비합니다. (가장 바깥 폴더를 압축하지 말고 내용물 전체를 드래그해 압축)<br>
-                            2. "일반 앱 업로드" 모드에서 ZIP 파일을 드롭존에 넣습니다.<br>
-                            3. 포트를 비워두면 시스템이 가용 포트를 자동 할당하여 컨테이너를 구동합니다.</p>
+                            4. 배포 완료 후 대시보드 우측의 Webhook URL을 복사하여 GitHub 저장소 설정(Webhooks)에 등록하면, 향후 코드가 업데이트될 때마다 자동으로
+                            재배포됩니다.<br>
+                            * <strong>단일 폴더 (ZIP) 업로드 시:</strong> 컴퓨터 폴더 압축파일을 준비하여 "일반 앱 업로드" 탭에서 파일을 드래그 & 드롭으로 떨어뜨리기만
+                            하면 됩니다.</p>
                     </div>
                 </div>
 
@@ -427,50 +459,296 @@
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <p>Orbitron은 리눅스 기반 Unreal Matchmaker 배포 템플릿을 자동 생성합니다.</p>
-                        <h4>1. 패키징 요구사항</h4>
-                        <p>Unreal Engine 편집기에서 빌드 시, 타겟 플랫폼을 반드시 <code>Linux</code> > <code>Server</code>로 설정하여 패키징
-                            하십시오.</p>
-                        <h4>2. 대시보드 업로드</h4>
-                        <p>1. 좌측 사이드바 전용 배포 란에 있는 <code>Unreal Engine 배포</code>를 클릭합니다.<br>
-                            2. 게임의 영문 이름을 입력합니다. (예: <code>mygame</code>)<br>
-                            3. 방금 추출한 리눅스 서버 루트 폴더를 ZIP 파일로 압축하여 올립니다.<br>
-                            4. 백그라운드에서 Vulkan 도구가 셋업되고 GPU 포트 맵핑이 끝나면 "🎮 게임 시작" 버튼이 뜹니다. 해당 버튼 누를 시 외부 접속 지원 웹 매치메이커
-                            클라이언트로 이동하게 됩니다.</p>
+                        <p><strong>💡 소개:</strong> 고사양 3D 게임이나 시뮬레이션을 다른 사람들이 어떠한 설치 과정 없이 '웹 브라우저' 만으로 즐길 수 있게 해주는
+                            기능입니다. 넷플릭스가 고화질 영상을 실시간으로 쏴주는 것과 동일한 원리로, 듀얼 GPU 로드밸런싱이 자동 적용되어 낭비 없이 완벽하게 트래픽을 분산합니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 10GB에 육박하는 부동산 3D 메타버스 시연 모델하우스를 투자자나 고객에게 배포할 때, 고객이 고성능 PC나 다운로드
+                            과정 없이 스마트폰이나 저사양 노트북에서도 링크 클릭 즉시 3D 세계관을 체험할 수 있습니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. 언리얼 엔진 편집기 상단에서 타겟 플랫폼을 반드시 <code>Linux</code> > <code>Server</code>로 설정하여 패키징(추출)합니다.<br>
+                            2. 좌측 사이드바 전용 배포 란에 있는 <code>Unreal Engine 배포</code>를 클릭합니다.<br>
+                            3. 패키징된 리눅스 서버 루트 폴더 내용물 전체를 ZIP 파일로 압축하여 업로드 창에 올립니다.<br>
+                            4. 시스템이 Vulkan 도구와 가상 오디오 장치를 알아서 세팅한 뒤 수 분 내로 "🎮 게임 시작" 버튼이 나타납니다. 해당 버튼 누를 시 곧바로 게임 화면 웹
+                            뷰어(매치메이커) 로 이동합니다.</p>
                     </div>
                 </div>
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>🎲 Unity WebGL 퍼블리싱 가이드</h4>
+                        <h4>🎲 Unity WebGL 광속 호스팅 퍼블리싱</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <h4>1. WebGL 빌드 폴더 준비</h4>
-                        <p>유니티에서 WebGL로 빌드하면 나오는 <code>index.html</code>, <code>Build</code>, <code>TemplateData</code>
-                            폴더 전체를 선택하여 하나의 ZIP으로 압축합니다.</p>
-                        <h4>2. 원클릭 호스팅</h4>
-                        <p>1. 좌측 사이드바 <code>Unity WebGL 배포</code>를 클릭합니다.<br>
-                            2. 압축 파일을 올립니다. Orbitron의 내부 프로비저닝 로직은 이 프로젝트만을 위한 정적 특화 <code
-                                style="color:var(--accent)">Nginx Alpine</code> 컨테이너를 가동하여 사전 압축된 WebAssembly 메타를
-                            처리합니다.<br>
-                            3. 브라우저에서 Unity MIME 경고 없이 초고속으로 렌더링 됩니다.</p>
+                        <p><strong>💡 소개:</strong> Unity WebGL 콘텐츠를 로딩 대기 시간 없이 초고속으로 띄워주는 기능입니다. 게임 엔진 렌더링 파일을 진공
+                            압축팩(Gzip/Brotli)으로 꾹꾹 특별 압축 처리하여 사용자의 브라우저로 최단 시간 내에 날려 보냅니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 웹사이트 메인 화면에 인터랙티브한 3D 캐릭터나 미니 게임을 매립하고 싶을 때, 로딩이 무거워 사이트 이탈률이 높아지는
+                            것을 막고자 렌더링 성능이 특화된 이 전용 생태계를 사용합니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. 유니티에서 플랫폼을 <code>WebGL</code>로 하여 빌드 후 나오는 <code>index.html</code>, <code>Build</code>,
+                            <code>TemplateData</code> 폴더 전체를 선택해 하나의 ZIP으로 압축합니다.<br>
+                            2. Orbitron 사이드바의 <code>Unity WebGL 배포</code> 전용 탭으로 이동하여 압축 파일을 올립니다.<br>
+                            3. 시스템 내부 프로비저닝 로직이 Nginx Alpine 컨테이너를 가동해 복잡한 MIME 타입 경고 없이 알아서 완벽하게 초고속 웹 환경을 완성합니다.
+                        </p>
                     </div>
                 </div>
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>💬 AI 모델 키 연동 및 적용법</h4>
+                        <h4>🤖 AI 기반 에러 분석 및 챗봇 연동</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <p>Orbitron의 핵심 컴포넌트인 "에러 자동 분석 및 챗봇" 기능을 사용하시려면, AI API Key를 프로젝트별로 등록하셔야 합니다.</p>
-                        <p>1. 대시보드 -> 프로젝트 클릭 후 <code>설정(Settings)</code> 탭으로 이동<br>
-                            2. <code>🤖 AI 에러 분석 모델 설정</code>의 드롭다운 선택상자에서 사용할 모델 (Claude 4.6 시리즈 또는 Gemini 2.5/3.0 시리즈
-                            등)을 선택합니다.<br>
-                            3. <code>발급받기</code> 버튼을 눌러 Anthropic 콘솔 또는 Google AI Studio에서 무료 API Key를 확보합니다.<br>
-                            4. Key를 저장하면 이제 배포가 실패할 때마다 시스템이 로그를 읽고 원인을 추론하여 띄워주며, 사이드바의 <code>AI 어시스턴트</code> 탭에서 대화가
-                            가능해집니다.</p>
+                        <p><strong>💡 소개:</strong> 배포가 실패하거나 시스템이 멈췄을 때 붉게 출력되는 외계어 같은 로그를, 천재 개발자(Claude, Gemini)가 1초
+                            만에 분석하여 "이 부분에 패스워드가 틀렸으니 이 코드로 고치세요"라고 한글로 친절히 답변하고 과외해주는 인공지능 분석 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 코딩 초보자나 문제가 어디서 발생했는지 오리무중인 베테랑 모두, 구글에 에러 코드를 붙여넣기하며 허비하던 수많은 시간을
+                            클릭 한 번의 AI 가이드라인으로 해결하여 퇴근 시간을 앞당깁니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. 프로젝트 대시보드의 우측 상단 <code>설정(Settings)</code> 탭으로 이동합니다.<br>
+                            2. <code>🤖 AI 에러 분석 모델 설정</code>의 드롭다운 선택상자에서 사용할 언어 모델(Claude 3.5/Google Gemini)을 취향껏
+                            고릅니다.<br>
+                            3. 옆의 <code>발급받기</code> 버튼을 눌러 Anthropic 콘솔 또는 Google AI Studio에서 (다량 무료 제공되는) API Key를 복사해
+                            붙여넣습니다.<br>
+                            4. 이제부터 <strong>배포 실패 시</strong> 마다 에러 분석 리포트가 자동으로 생성되며, <code>💬 AI 어시스턴트</code> 탭에서 프로젝트
+                            환경에 대한 질문을 이어나갈 수 있습니다.</p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>🗄 매니지드 데이터베이스 (Managed DB)</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 서버에 검은 화면(터미널)을 열어 데이터베이스를 복잡하게 수동 설치할 필요 없이, 버튼 조작으로 즉각 PostgreSQL이나
+                            Redis 저장소를 발급받는 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 새로운 커뮤니티 사이트를 론칭하면서 회원들의 민감한 비밀번호나 결제 정보를 저장할 안전한 DB 그릇이 필요할 때, 클릭
+                            3번만으로 완벽히 세팅된 데이터베이스 서버를 가져다 씁니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. 대시보드의 <code>+ New Project</code> 버튼을 누른 후 상단 <code>🗄 데이터베이스</code> 탭을 선택합니다.<br>
+                            2. <code>PostgreSQL</code> 또는 <code>Redis</code>를 선택하고 프로젝트 생성을 누릅니다.<br>
+                            3. 완성된 후 프로젝트 개요 메인화면에 나타나는 <code>postgresql://devuser:devpass123@your-db:5432...</code> 형태의
+                            <strong>내부 접속 주소(Connection String)</strong>를 복사합니다.<br>
+                            4. 연결하고자 하는 다른 Orbitron 앱 설정(환경변수)에 해당 주소를 통째로 붙여넣어 사용하시면 됩니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>🔒 프라이빗 네트워크 (Private Network)</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 생성된 데이터베이스와 앱들이 외부 인터넷을 굳이 나갔다 들어오지 않고 <code>orbitron_internal</code>
+                            이라는 보이지 않는 성벽 안에서만 전용 샛길로 초고속 안전 통신을 하도록 묶어주는 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 앱과 데이터베이스 파이프 간의 해킹 위험을 원천 차단하고 싶을 때 알아서 이 철통 보안 네트워크에 자동으로 묶이게
+                            됩니다. 별도 설정이 필요 없습니다.</p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>⚙️ 백그라운드 워커 관리</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 사람들에게 도메인이나 웹사이트 주소가 부여되지 않은 채, 인터넷 상의 겉면 무대 뒤에서 365일 조용하고 끈질기게 특정
+                            작업(파이프라인)만을 묵묵히 수행해 내는 전용 알바생을 돌려두는 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 디스코드(Discord) 채널 상주 봇 프로그램, 또는 매일 밤 자정이 되면 사용자들에게 당일 결제 영수증 이메일을 대량
+                            발송하는 정기 크론(Cron) 스케줄러 등을 무한히 띄워둘 때 활용합니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. 대시보드의 <code>+ New Project</code> 모달에서 상단의 세 번째 공간인 <code>⚙️ 백그라운드 워커</code> 탭을 선택합니다.<br>
+                            2. 무한 구동되는 여러분의 봇이나 스크립트 소스 코드(GitHub 주소 기반 등)를 올립니다.<br>
+                            3. 생성을 누르면 웹 주소 부여 단계가 생략된 채, 시스템 뒤의 안전한 고립 환경에서 <code>npm start</code> 만 강력하게 유지시킵니다.</p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>🌐 Cloudflare 인그레스 보안</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 내 서비스가 인터넷에 드러날 때, 아무런 주소로 나가는 것이 아니라 글로벌 방화벽인 Cloudflare의 보안 파이프 터널을
+                            통해서만 세상에 안전하게 고정 URL을 받아 노출되는 기술입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 공유기 포트포워딩(포트 개방) 방법을 전혀 몰라도, 시스템이 배포 즉시
+                            <code>https://my-app.twinverse.org</code> 같은 https 도메인을 발급해 주고, 디도스(DDoS) 해킹 핑도 전부 방어막으로 튕겨
+                            내줍니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>📁 하이브리드 백업 스토리지</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 프로젝트 운영 중 발생하는 미디어나 소스 코드 파일의 유실을 막기 위해, 주기적으로 물리적 DATA 드라이브에 전부 압축하여
+                            안전히 백업 저장(아카이브) 해두는 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 대규모 코드 업데이트 전이나, 사용자가 올려놓은 수천 장의 이미지가 날아갈까 봐 두려울 때 사이드바의
+                            <code>백업하기</code> 버튼 한 번 클릭으로 방공호에 스냅샷을 만들어 대비합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>📜 Infrastructure-as-Code (orbitron.yaml 완전 가이드)</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 프로젝트 루트에 <code>orbitron.yaml</code> 파일 하나만 넣으면, 대시보드 조작 없이 빌드 커맨드,
+                            포트, 환경변수, 풀스택 구성까지 모든 배포 설정을 코드로 관리할 수 있습니다. 대시보드 수동 설정보다 YAML 선언이 <strong>항상
+                                우선</strong>됩니다.</p>
+
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+
+                        <p class="sample-title">📌 기본 구조 (모든 프로젝트 공통)</p>
+                        <pre><code><span class="yaml-comment"># orbitron.yaml — 프로젝트 루트에 위치</span>
+services:
+  web:
+    build_command: "npm install && npm run build"
+    start_command: "npm start"
+    port: 3000
+    env:
+      - "NODE_ENV=production"
+      - "API_KEY=my-secret-key-123"</code></pre>
+                        <p>⬆ <code>services.web</code> 아래에 빌드/시작 커맨드, 포트, 환경변수를 선언하면 대시보드 설정을 자동 덮어씌웁니다.</p>
+
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+
+                        <p class="sample-title">🔥 샘플 1: React (Vite) + FastAPI 풀스택</p>
+                        <pre><code><span class="yaml-comment"># React 프론트엔드 + Python 백엔드 프로젝트</span>
+<span class="yaml-comment"># 폴더 구조: MyApp/frontend/ + MyApp/backend/</span>
+type: fullstack
+
+frontend:
+  path: MyApp/frontend       <span class="yaml-comment"># package.json이 있는 폴더</span>
+  build: npm run build        <span class="yaml-comment"># 빌드 명령어 (기본값: npm run build)</span>
+  output: dist                <span class="yaml-comment"># 빌드 결과물 폴더 (기본값: dist)</span>
+
+backend:
+  path: MyApp/backend         <span class="yaml-comment"># requirements.txt가 있는 폴더</span>
+  runtime: python             <span class="yaml-comment"># python 또는 node</span>
+  start: uvicorn main:app     <span class="yaml-comment"># 시작 명령어</span>
+
+spa: true                     <span class="yaml-comment"># SPA 라우팅 자동 처리 (기본값: true)</span></code></pre>
+                        <p>⬆ Orbitron이 자동으로: ① Node.js로 프론트엔드 빌드 → ② Python 백엔드에 정적 파일 복사 → ③ SPA 라우팅 래퍼 생성 → ④
+                            <code>localhost</code> API URL 자동 제거</p>
+
+                        <p class="sample-title">🔥 샘플 2: Vue + Express 풀스택</p>
+                        <pre><code>type: fullstack
+
+frontend:
+  path: client
+  build: npm run build
+  output: dist
+
+backend:
+  path: server
+  runtime: node
+  start: node index.js</code></pre>
+
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+
+                        <p class="sample-title">📦 샘플 3: Next.js 프로젝트</p>
+                        <pre><code>services:
+  web:
+    build_command: "npm install && npx prisma generate && npx next build"
+    start_command: "npx next start -p 3000"
+    port: 3000
+    env:
+      - "DATABASE_URL=postgresql://user:pass@orbitron-mydb:5432/mydb"
+      - "NEXTAUTH_SECRET=my-auth-secret"
+      - "NEXTAUTH_URL=https://myapp.twinverse.org"</code></pre>
+
+                        <p class="sample-title">🐍 샘플 4: Python (Django) 프로젝트</p>
+                        <pre><code>services:
+  web:
+    build_command: "pip install -r requirements.txt"
+    start_command: "gunicorn myproject.wsgi --bind 0.0.0.0:8000"
+    port: 8000
+    env:
+      - "DJANGO_SETTINGS_MODULE=myproject.settings.production"
+      - "SECRET_KEY=django-insecure-change-me"
+      - "ALLOWED_HOSTS=*"</code></pre>
+
+                        <p class="sample-title">🐍 샘플 5: Python (FastAPI) 단독 API 서버</p>
+                        <pre><code>services:
+  web:
+    build_command: "pip install -r requirements.txt"
+    start_command: "uvicorn main:app --host 0.0.0.0 --port 8000"
+    port: 8000
+    env:
+      - "DATABASE_URL=postgresql://user:pass@orbitron-mydb:5432/appdb"
+      - "JWT_SECRET_KEY=super-secret-jwt-key"</code></pre>
+
+                        <p class="sample-title">🌐 샘플 6: 정적 HTML/CSS/JS 사이트</p>
+                        <pre><code><span class="yaml-comment"># 정적 사이트는 orbitron.yaml 없이도 자동 감지됩니다.</span>
+<span class="yaml-comment"># 필요 시 포트만 지정:</span>
+services:
+  web:
+    port: 8080</code></pre>
+
+                        <p class="sample-title">⚙️ 샘플 7: 백그라운드 워커 (Discord Bot 등)</p>
+                        <pre><code>services:
+  web:
+    build_command: "npm install"
+    start_command: "node bot.js"
+    env:
+      - "DISCORD_TOKEN=MTk4NjI..."
+      - "BOT_PREFIX=!"</code></pre>
+
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+
+                        <p class="sample-title">🧠 자동 감지 vs orbitron.yaml 우선순위</p>
+                        <pre><code><span class="yaml-comment"># Orbitron 배포 시 처리 순서:</span>
+<span class="yaml-comment">#</span>
+<span class="yaml-comment"># 1순위: orbitron.yaml이 있으면 → 그 설정대로 배포</span>
+<span class="yaml-comment"># 2순위: # CUSTOM 마크가 있는 Dockerfile → 그대로 사용</span>
+<span class="yaml-comment"># 3순위: 자동 감지 (폴더 구조 분석)</span>
+<span class="yaml-comment">#        ├── frontend/ + backend/ → 풀스택 자동 빌드</span>
+<span class="yaml-comment">#        ├── package.json (next) → Next.js 빌드</span>
+<span class="yaml-comment">#        ├── package.json → Node.js 빌드</span>
+<span class="yaml-comment">#        ├── requirements.txt → Python 빌드</span>
+<span class="yaml-comment">#        └── index.html → 정적 사이트 (Nginx)</span></code></pre>
+
+                        <p class="sample-title">📂 풀스택 자동 감지가 동작하는 폴더 구조 예시</p>
+                        <pre><code><span class="yaml-comment"># 패턴 A: 루트에 frontend/ + backend/</span>
+my-project/
+├── frontend/          <span class="yaml-comment"># package.json 필수</span>
+│   ├── package.json
+│   └── src/
+├── backend/           <span class="yaml-comment"># requirements.txt 또는 package.json 필수</span>
+│   ├── requirements.txt
+│   └── main.py
+└── orbitron.yaml      <span class="yaml-comment"># 선택사항 (없어도 자동 감지)</span>
+
+<span class="yaml-comment"># 패턴 B: 하위 폴더에 frontend/ + backend/ (SodamFN 패턴)</span>
+my-project/
+└── SodamApp/
+    ├── frontend/
+    │   ├── package.json
+    │   └── src/
+    └── backend/
+        ├── requirements.txt
+        └── main.py</code></pre>
+                        <p>⬆ <code>frontend</code>, <code>client</code>, <code>web</code>, <code>app</code> 이름의 폴더에서
+                            프론트엔드를, <code>backend</code>, <code>server</code>, <code>api</code> 이름의 폴더에서 백엔드를 자동으로 찾습니다.
+                        </p>
+
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+
+                        <h4>🛠 사용 방법 요약:</h4>
+                        <p>1. 프로젝트 루트에 <code>orbitron.yaml</code> 파일 생성 (풀스택 자동 감지 시 생략 가능)<br>
+                            2. 위 샘플 중 프로젝트 유형에 맞는 것을 복사하여 값만 수정<br>
+                            3. Git에 커밋 & Push → Orbitron이 자동으로 YAML을 읽고 배포 설정 적용<br>
+                            4. 대시보드에서 확인: 배포 로그에 "<code>orbitron.yaml 감지됨</code>" 메시지 표시</p>
                     </div>
                 </div>
 

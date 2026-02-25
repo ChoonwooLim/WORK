@@ -165,13 +165,20 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// DELETE /api/projects/:id - Delete a project
+// DELETE /api/projects/:id - Delete a project (with name confirmation)
 router.delete('/:id', async (req, res) => {
     try {
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
+        // Safety check: require confirm_name to match the project name
+        const { confirm_name } = req.body || {};
+        if (!confirm_name || confirm_name !== project.name) {
+            return res.status(400).json({ error: '프로젝트 이름 확인이 일치하지 않습니다. 삭제가 취소되었습니다.' });
+        }
+
         await deployer.deleteProject(project);
+        await db.query('DELETE FROM deployments WHERE project_id = $1', [req.params.id]);
         await db.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
 
         res.json({ message: 'Project deleted' });
@@ -684,6 +691,65 @@ router.post('/:id/project-restore', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// POST /api/projects/:id/db-backup - Backup PostgreSQL database
+router.post('/:id/db-backup', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        // Decrypt env_vars before sending to service
+        if (project.env_vars && typeof project.env_vars === 'string') {
+            try {
+                const decrypted = require('../utils/crypto').decrypt(project.env_vars);
+                project.env_vars = decrypted ? JSON.parse(decrypted) : {};
+            } catch (e) { project.env_vars = {}; }
+        }
+
+        const dbBackup = require('../services/dbBackup');
+        const result = dbBackup.backupDatabase(project);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/projects/:id/db-restore - Restore PostgreSQL database
+router.post('/:id/db-restore', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        // Decrypt env_vars before sending to service
+        if (project.env_vars && typeof project.env_vars === 'string') {
+            try {
+                const decrypted = require('../utils/crypto').decrypt(project.env_vars);
+                project.env_vars = decrypted ? JSON.parse(decrypted) : {};
+            } catch (e) { project.env_vars = {}; }
+        }
+
+        const dbBackup = require('../services/dbBackup');
+        const result = dbBackup.restoreDatabase(project);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/projects/:id/db-backup/status - Get PostgreSQL database backup status
+router.get('/:id/db-backup/status', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const dbBackup = require('../services/dbBackup');
+        const result = dbBackup.getBackupStatus(project);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 
 // GET /api/projects/:id/chat - Get AI chat history
 router.get('/:id/chat', async (req, res) => {

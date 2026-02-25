@@ -125,6 +125,23 @@ class Deployer extends EventEmitter {
                         const fileContents = fs.readFileSync(yamlPath, 'utf8');
                         const parsedYaml = yaml.load(fileContents);
 
+                        // Handle fullstack type from orbitron.yaml
+                        if (parsedYaml && parsedYaml.type === 'fullstack' && parsedYaml.frontend && parsedYaml.backend) {
+                            logs += '  📦 Fullstack configuration detected in orbitron.yaml\n';
+                            // Store fullstack config in env_vars so docker.js can read it
+                            project.env_vars = project.env_vars || {};
+                            project.env_vars._ORBITRON_FULLSTACK = JSON.stringify({
+                                frontend: parsedYaml.frontend,
+                                backend: parsedYaml.backend,
+                                spa: parsedYaml.spa !== false
+                            });
+                            logs += `  - Frontend: ${parsedYaml.frontend.path} (build: ${parsedYaml.frontend.build || 'npm run build'})\n`;
+                            logs += `  - Backend: ${parsedYaml.backend.path} (runtime: ${parsedYaml.backend.runtime || 'auto'})\n`;
+                            if (parsedYaml.backend.port) {
+                                project.port = parsedYaml.backend.port;
+                            }
+                        }
+
                         if (parsedYaml && parsedYaml.services && parsedYaml.services.web) {
                             const webService = parsedYaml.services.web;
                             let updates = [];
@@ -189,13 +206,80 @@ class Deployer extends EventEmitter {
                     logs += `\n⚠️ 미디어 백업 건너뜀: ${e.message}\n`;
                 }
 
+                // ── Feature 4: Monorepo detection ──
+                const monorepoFiles = ['turbo.json', 'nx.json', 'pnpm-workspace.yaml', 'lerna.json'];
+                for (const mf of monorepoFiles) {
+                    if (fs.existsSync(path.join(projectDir, mf))) {
+                        logs += `\n📦 Monorepo 감지 (${mf}): 워크스페이스 빌드가 자동 적용됩니다.\n`;
+                        break;
+                    }
+                }
+
+                // ── Feature 6: Environment variable validation ──
+                const envVars = project.env_vars || {};
+                const reqFiles = {
+                    'requirements.txt': ['DATABASE_URL'],
+                    'package.json': ['DATABASE_URL'],
+                    'prisma': ['DATABASE_URL'],
+                };
+                const warnings = [];
+                for (const [marker, requiredVars] of Object.entries(reqFiles)) {
+                    const markerPaths = [
+                        path.join(projectDir, marker),
+                        ...fs.readdirSync(projectDir, { withFileTypes: true })
+                            .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+                            .flatMap(d => [path.join(projectDir, d.name, marker)])
+                    ];
+                    for (const mp of markerPaths) {
+                        try {
+                            if (fs.existsSync(mp)) {
+                                const content = fs.statSync(mp).isDirectory() ? '' : fs.readFileSync(mp, 'utf-8');
+                                if (marker === 'prisma' || content.includes('psycopg') || content.includes('asyncpg') || content.includes('prisma') || content.includes('sequelize') || content.includes('typeorm')) {
+                                    for (const rv of requiredVars) {
+                                        if (!envVars[rv]) {
+                                            warnings.push(rv);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch { }
+                    }
+                }
+                if (warnings.length > 0) {
+                    const uniqueWarnings = [...new Set(warnings)];
+                    logs += `\n⚠️ 환경변수 경고: ${uniqueWarnings.join(', ')} 미설정 — DB 연결에 필요할 수 있습니다.\n`;
+                }
+
+                // ── Feature 8: Save previous image for rollback ──
+                let previousImageId = null;
+                try {
+                    const { stdout } = await execAsync(`docker images -q orbitron-${project.subdomain} 2>/dev/null`);
+                    previousImageId = stdout.trim() || null;
+                } catch { }
+
                 // Step 2: Build Docker image
                 this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 중...');
                 logs += '\nBuilding Docker image...\n';
-                const buildResult = await dockerService.buildImage(project);
-                logs += buildResult.logs;
-                logs += '\n--- Build complete ---\n';
-                this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 완료');
+                try {
+                    const buildResult = await dockerService.buildImage(project);
+                    logs += buildResult.logs;
+                    logs += '\n--- Build complete ---\n';
+                    this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 완료');
+                } catch (buildError) {
+                    // ── Feature 8: Rollback to previous image on build failure ──
+                    if (previousImageId) {
+                        logs += `\n🔄 빌드 실패 — 이전 이미지(${previousImageId.substring(0, 12)})로 롤백 시도...\n`;
+                        try {
+                            await execAsync(`docker tag ${previousImageId} orbitron-${project.subdomain}`);
+                            logs += `✅ 롤백 성공: 이전 이미지로 컨테이너를 시작합니다.\n`;
+                        } catch (rollbackErr) {
+                            logs += `❌ 롤백 실패: ${rollbackErr.message}\n`;
+                            throw buildError;
+                        }
+                    } else {
+                        throw buildError;
+                    }
+                }
 
                 const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
                 const isWorker = project.type === 'worker';
@@ -264,6 +348,75 @@ class Deployer extends EventEmitter {
                 `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,
                 [logs, deploymentId]
             );
+
+            // ── Feature 5: Auto DB migration ──
+            if (containerId) {
+                const containerName = `orbitron-${project.subdomain}`;
+                try {
+                    // Detect and run Prisma migrations
+                    const { stdout: hasPrisma } = await execAsync(`docker exec ${containerName} test -d /app/prisma 2>/dev/null && echo yes || true`);
+                    if (hasPrisma.trim() === 'yes') {
+                        logs += '\n🗄 Prisma DB 마이그레이션 실행 중...\n';
+                        try {
+                            const { stdout: migrateOut } = await execAsync(`docker exec ${containerName} npx prisma db push --skip-generate 2>&1`, { timeout: 30000 });
+                            logs += `  ✅ Prisma: ${migrateOut.trim().split('\n').pop()}\n`;
+                        } catch (e) {
+                            logs += `  ⚠️ Prisma 마이그레이션 건너뜀: ${e.message.split('\n')[0]}\n`;
+                        }
+                    }
+
+                    // Detect and run Alembic migrations
+                    const { stdout: hasAlembic } = await execAsync(`docker exec ${containerName} test -d /app/alembic 2>/dev/null && echo yes || true`);
+                    if (hasAlembic.trim() === 'yes') {
+                        logs += '\n🗄 Alembic DB 마이그레이션 실행 중...\n';
+                        try {
+                            const { stdout: migrateOut } = await execAsync(`docker exec ${containerName} alembic upgrade head 2>&1`, { timeout: 30000 });
+                            logs += `  ✅ Alembic: ${migrateOut.trim().split('\n').pop()}\n`;
+                        } catch (e) {
+                            logs += `  ⚠️ Alembic 마이그레이션 건너뜀: ${e.message.split('\n')[0]}\n`;
+                        }
+                    }
+
+                    // Detect and run Django migrations
+                    const { stdout: hasDjango } = await execAsync(`docker exec ${containerName} test -f /app/manage.py 2>/dev/null && echo yes || true`);
+                    if (hasDjango.trim() === 'yes') {
+                        logs += '\n🗄 Django DB 마이그레이션 실행 중...\n';
+                        try {
+                            const { stdout: migrateOut } = await execAsync(`docker exec ${containerName} python manage.py migrate --noinput 2>&1`, { timeout: 30000 });
+                            logs += `  ✅ Django: 마이그레이션 완료\n`;
+                        } catch (e) {
+                            logs += `  ⚠️ Django 마이그레이션 건너뜀: ${e.message.split('\n')[0]}\n`;
+                        }
+                    }
+                } catch { }
+            }
+
+            // ── Feature 7: Health check ──
+            if (containerId && tunnelUrl) {
+                logs += '\n🏥 Health check 실행 중...\n';
+                let healthy = false;
+                for (let i = 0; i < 6; i++) {
+                    await new Promise(r => setTimeout(r, 5000)); // 5초 대기
+                    try {
+                        const port = project.port || 3000;
+                        const { stdout } = await execAsync(`curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:${port}/ 2>/dev/null || echo 000`);
+                        const code = parseInt(stdout.trim());
+                        if (code >= 200 && code < 500) {
+                            logs += `  ✅ Health check 통과 (HTTP ${code}, ${(i + 1) * 5}초 경과)\n`;
+                            healthy = true;
+                            break;
+                        }
+                    } catch { }
+                }
+                if (!healthy) {
+                    logs += `  ⚠️ Health check 시간 초과 (30초) — 앱이 시작 중일 수 있습니다.\n`;
+                }
+            }
+
+            // ── Feature 9: SSL status ──
+            if (tunnelUrl && tunnelUrl.startsWith('https://')) {
+                logs += `\n🔒 SSL: Cloudflare Edge 터널을 통한 자동 HTTPS 적용 완료\n`;
+            }
 
             // Auto backup project to DATA drive
             try {

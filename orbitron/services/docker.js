@@ -17,13 +17,22 @@ class DockerService {
         const projectDir = path.join(PROJECTS_DIR, project.subdomain);
         const imageName = `orbitron-${project.subdomain}`;
 
-        // Always regenerate Dockerfile to match current project type
+        // Check if a custom Dockerfile exists (marked with "# CUSTOM" on first line)
         const dockerfilePath = path.join(projectDir, 'Dockerfile');
-        const dockerfile = this.generateDockerfile(project, projectDir);
-        fs.writeFileSync(dockerfilePath, dockerfile);
+        let useCustom = false;
+        if (fs.existsSync(dockerfilePath)) {
+            const firstLine = fs.readFileSync(dockerfilePath, 'utf-8').split('\n')[0].trim();
+            if (firstLine.startsWith('# CUSTOM')) {
+                useCustom = true;
+            }
+        }
+        if (!useCustom) {
+            const dockerfile = this.generateDockerfile(project, projectDir);
+            fs.writeFileSync(dockerfilePath, dockerfile);
+        }
 
         return new Promise((resolve, reject) => {
-            exec(`docker build -t ${imageName} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+            exec(`docker build --no-cache -t ${imageName} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Build failed: ${stderr}`));
                 } else {
@@ -44,6 +53,10 @@ class DockerService {
                 return { type: 'unity_webgl', subdir: null };
             }
         }
+
+        // ── Fullstack detection: scan for frontend + backend in subdirectories ──
+        const fullstack = this._detectFullstack(projectDir);
+        if (fullstack) return fullstack;
 
         // Check root directory first
         if (fs.existsSync(path.join(projectDir, 'package.json'))) {
@@ -79,11 +92,239 @@ class DockerService {
         return { type: 'static', subdir: null };
     }
 
+    // ── Fullstack auto-detection: find frontend + backend pair ──
+    _detectFullstack(projectDir) {
+        const frontendMarkers = ['package.json'];
+        const backendMarkers = { python: 'requirements.txt', node: 'package.json' };
+        const frontendHints = ['frontend', 'client', 'web', 'app'];
+        const backendHints = ['backend', 'server', 'api'];
+
+        // Helper: detect frontend framework from package.json
+        const detectFrontendFramework = (pkgPath) => {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+                if (deps['vite'] || deps['@vitejs/plugin-react']) return 'vite';
+                if (deps['react-scripts']) return 'cra';
+                if (deps['vue']) return 'vue';
+                if (deps['next']) return 'next';
+                // Check if it has a build script producing static files
+                if (pkg.scripts?.build) return 'generic';
+                return null;
+            } catch { return null; }
+        };
+
+        // Helper: detect Python backend entry point
+        const detectPythonEntry = (backendDir) => {
+            // FastAPI / Uvicorn
+            if (fs.existsSync(path.join(backendDir, 'main.py'))) {
+                try {
+                    const src = fs.readFileSync(path.join(backendDir, 'main.py'), 'utf-8');
+                    if (src.includes('FastAPI')) return { framework: 'fastapi', module: 'main:app' };
+                    if (src.includes('Flask')) return { framework: 'flask', module: 'main:app' };
+                } catch { }
+                return { framework: 'python', module: 'main:app' };
+            }
+            if (fs.existsSync(path.join(backendDir, 'app.py'))) {
+                return { framework: 'python', module: 'app:app' };
+            }
+            if (fs.existsSync(path.join(backendDir, 'manage.py'))) {
+                return { framework: 'django', module: null };
+            }
+            return null;
+        };
+
+        // Scan: check 1-depth and 2-depth subdirectories
+        const scanDirs = [projectDir];
+        try {
+            const topDirs = fs.readdirSync(projectDir, { withFileTypes: true })
+                .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules' && d.name !== 'dist');
+            for (const d of topDirs) {
+                scanDirs.push(path.join(projectDir, d.name));
+            }
+        } catch { }
+
+        for (const scanRoot of scanDirs) {
+            let frontendDir = null, backendDir = null;
+            let frontendRelPath = null, backendRelPath = null;
+            let frontendFramework = null, backendInfo = null;
+
+            try {
+                const children = fs.readdirSync(scanRoot, { withFileTypes: true })
+                    .filter(d => d.isDirectory() && !d.name.startsWith('.'));
+
+                for (const child of children) {
+                    const childPath = path.join(scanRoot, child.name);
+                    const relPath = path.relative(projectDir, childPath);
+                    const nameLower = child.name.toLowerCase();
+
+                    // Detect frontend
+                    if (frontendHints.some(h => nameLower.includes(h))) {
+                        const pkgPath = path.join(childPath, 'package.json');
+                        if (fs.existsSync(pkgPath)) {
+                            const fw = detectFrontendFramework(pkgPath);
+                            if (fw) {
+                                frontendDir = childPath;
+                                frontendRelPath = relPath;
+                                frontendFramework = fw;
+                            }
+                        }
+                    }
+
+                    // Detect backend
+                    if (backendHints.some(h => nameLower.includes(h))) {
+                        const reqPath = path.join(childPath, 'requirements.txt');
+                        const pkgPath = path.join(childPath, 'package.json');
+
+                        if (fs.existsSync(reqPath)) {
+                            backendDir = childPath;
+                            backendRelPath = relPath;
+                            backendInfo = detectPythonEntry(childPath) || { framework: 'python', module: 'main:app' };
+                            backendInfo.runtime = 'python';
+                        } else if (fs.existsSync(pkgPath) && !frontendDir) {
+                            backendDir = childPath;
+                            backendRelPath = relPath;
+                            backendInfo = { runtime: 'node', framework: 'express', module: null };
+                        }
+                    }
+                }
+
+                // If we found both frontend and backend, return fullstack
+                if (frontendDir && backendDir) {
+                    console.log(`🔍 Fullstack detected: frontend=${frontendRelPath} (${frontendFramework}), backend=${backendRelPath} (${backendInfo.runtime}/${backendInfo.framework})`);
+                    return {
+                        type: 'fullstack',
+                        subdir: null,
+                        frontend: { path: frontendRelPath, framework: frontendFramework },
+                        backend: { path: backendRelPath, ...backendInfo }
+                    };
+                }
+            } catch { }
+        }
+
+        return null; // No fullstack pattern found
+    }
+
+    // ── Generate SPA wrapper script for Python backends ──
+    generateSpaWrapper(backendModule) {
+        const [moduleName, appName] = backendModule.split(':');
+        return `"""Auto-generated by Orbitron: SPA wrapper for fullstack deployment."""
+import os
+from ${moduleName} import ${appName} as app
+from fastapi import Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+STATIC = "/app/static"
+
+if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
+    # Mount known static subdirectories
+    for d in os.listdir(STATIC):
+        dp = os.path.join(STATIC, d)
+        if os.path.isdir(dp):
+            app.mount(f"/{d}", StaticFiles(directory=dp), name=f"static-{d}")
+
+    # Remove conflicting root route from original app
+    app.routes[:] = [
+        r for r in app.routes
+        if not (hasattr(r, 'path') and r.path == '/' and hasattr(r, 'methods') and 'GET' in r.methods)
+    ]
+
+    # Serve index.html at root
+    @app.get("/")
+    def _orbitron_serve_root():
+        return FileResponse(os.path.join(STATIC, "index.html"))
+
+    # 404 handler: serve static files or SPA fallback
+    @app.exception_handler(404)
+    async def _orbitron_spa_handler(request: Request, exc):
+        p = request.url.path
+        if (request.method == "GET" and
+            not p.startswith("/api/") and
+            not p.startswith("/uploads/") and
+            not p.startswith("/docs") and
+            not p.startswith("/openapi") and
+            not p.startswith("/redoc")):
+            static_file = os.path.join(STATIC, p.lstrip("/"))
+            if os.path.isfile(static_file):
+                return FileResponse(static_file)
+            return FileResponse(os.path.join(STATIC, "index.html"))
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+`;
+    }
+
     generateDockerfile(project, projectDir) {
         const detected = this.detectProjectType(projectDir, project);
         const port = project.port || 3000;
         const { type, subdir } = detected;
         const copyFrom = subdir ? `${subdir}/` : '.';
+
+        // ── Fullstack: multi-stage build (frontend + backend) ──
+        if (type === 'fullstack') {
+            const fe = detected.frontend;
+            const be = detected.backend;
+
+            if (be.runtime === 'python') {
+                const startModule = '_orbitron_spa:app';
+                // Detect if backend needs postgres (libpq-dev)
+                let reqContent = '';
+                try { reqContent = fs.readFileSync(path.join(projectDir, be.path, 'requirements.txt'), 'utf-8'); } catch { }
+                const needsPg = reqContent.includes('psycopg') || reqContent.includes('asyncpg');
+                const pgInstall = needsPg ? 'RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*\n\n' : '';
+
+                // Write SPA wrapper script
+                const spaWrapper = this.generateSpaWrapper(be.module || 'main:app');
+                fs.writeFileSync(path.join(projectDir, '_orbitron_spa.py'), spaWrapper);
+                console.log(`📝 Auto-generated _orbitron_spa.py for ${project.name}`);
+
+                return `# ===== AUTO-GENERATED by Orbitron (fullstack: ${fe.framework} + ${be.framework}) =====
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+COPY ${fe.path}/package*.json ./
+RUN npm ci
+COPY ${fe.path}/ ./
+ENV VITE_API_URL=""
+RUN npm run build && \\
+    find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
+
+FROM python:3.11-slim
+WORKDIR /app
+
+${pgInstall}COPY ${be.path}/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ${be.path}/ ./
+COPY _orbitron_spa.py ./
+
+COPY --from=frontend-build /build/dist /app/static
+
+EXPOSE \${PORT:-${port}}
+
+CMD ["sh", "-c", "uvicorn ${startModule} --host 0.0.0.0 --port \${PORT:-${port}}"]
+`;
+            }
+
+            // Node.js backend (Express etc.)
+            return `# ===== AUTO-GENERATED by Orbitron (fullstack: ${fe.framework} + node) =====
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+COPY ${fe.path}/package*.json ./
+RUN npm ci
+COPY ${fe.path}/ ./
+RUN npm run build && \\
+    find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
+
+FROM node:20-slim
+WORKDIR /app
+COPY ${be.path}/package*.json ./
+RUN npm install --production
+COPY ${be.path}/ ./
+COPY --from=frontend-build /build/dist /app/public
+
+EXPOSE \${PORT:-${port}}
+CMD ["node", "${be.module ? be.module.split(':')[0] + '.js' : 'server.js'}"]
+`;
+        }
 
         if (type === 'pixel_streaming') {
             // Find the executable script (.sh file containing "Server" or just grabbing the first .sh)
@@ -239,33 +480,64 @@ EXPOSE ${port}
     async startContainer(project) {
         const imageName = `orbitron-${project.subdomain}`;
         const containerName = `orbitron-${project.subdomain}`;
-        const port = project.port || 3000;
+        let port = project.port || 3000;
 
         // Stop existing container if any
         await this.stopContainer(containerName);
 
-        // Build env vars string
+        // Build env vars string (filter out internal Orbitron keys)
         const envVars = project.env_vars || {};
         const envFlags = Object.entries(envVars)
+            .filter(([k]) => !k.startsWith('_ORBITRON_'))
             .map(([k, v]) => `-e ${k}="${v}"`)
             .join(' ');
 
-        // Auto-mount persistent volumes if UPLOAD_DIR is defined
+        // ── Feature 1: Auto-mount persistent volumes ──
+        const hostBaseDir = path.join(PROJECTS_DIR, project.subdomain || project.id, '_volumes');
         let volumeFlags = '';
+
         if (envVars.UPLOAD_DIR) {
+            // Explicit UPLOAD_DIR from env
             const uploadPath = envVars.UPLOAD_DIR;
-            // Ensure host directory exists asynchronously
-            try {
-                await fs.promises.mkdir(uploadPath, { recursive: true });
-            } catch (e) { /* ignore */ }
+            try { await fs.promises.mkdir(uploadPath, { recursive: true }); } catch { }
             volumeFlags = `-v ${uploadPath}:${uploadPath}`;
+        } else {
+            // Auto-mount common upload/media/data directories
+            const PERSIST_DIRS = ['/app/uploads', '/app/media', '/app/data', '/app/public/uploads'];
+            const mounts = [];
+            for (const dir of PERSIST_DIRS) {
+                const dirName = dir.replace('/app/', '').replace(/\//g, '_');
+                const hostDir = path.join(hostBaseDir, dirName);
+                try { await fs.promises.mkdir(hostDir, { recursive: true }); } catch { }
+                mounts.push(`-v ${hostDir}:${dir}`);
+            }
+            volumeFlags = mounts.join(' ');
         }
 
+        // ── Feature 2: Port conflict auto-resolution ──
         const isWorker = project.type === 'worker';
+        if (!isWorker) {
+            const originalPort = port;
+            let attempts = 0;
+            while (attempts < 20) {
+                try {
+                    const { stdout } = await execAsync(`lsof -i :${port} -t 2>/dev/null || true`);
+                    if (!stdout.trim()) break;
+                    port++;
+                    attempts++;
+                } catch { break; }
+            }
+            if (port !== originalPort) {
+                console.log(`⚡ Port ${originalPort} in use → auto-assigned ${port} for ${project.name}`);
+            }
+        }
         const portFlags = isWorker ? '' : `-p ${port}:${port}`;
 
+        // ── Feature 3: Log rotation (prevent disk fill) ──
+        const logFlags = '--log-opt max-size=10m --log-opt max-file=3';
+
         return new Promise((resolve, reject) => {
-            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
+            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${logFlags} ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
             exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Start failed: ${stderr}`));

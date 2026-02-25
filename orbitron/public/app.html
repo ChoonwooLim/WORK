@@ -535,6 +535,55 @@
     </div>
   </div>
 
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="delete-confirm-modal">
+    <div class="modal delete-modal" style="width: 480px;">
+      <div class="modal-header delete-modal-header">
+        <h2>⚠️ 프로젝트 삭제</h2>
+        <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning-banner">
+          <div class="delete-warning-icon">🗑️</div>
+          <div class="delete-warning-text">
+            <strong>이 작업은 되돌릴 수 없습니다.</strong>
+            <p>아래 항목이 영구적으로 삭제됩니다.</p>
+          </div>
+        </div>
+        <div class="delete-impact-list">
+          <div class="delete-impact-item">
+            <span class="delete-impact-icon">🐳</span>
+            <span>Docker 컨테이너 중지 및 삭제</span>
+          </div>
+          <div class="delete-impact-item">
+            <span class="delete-impact-icon">💿</span>
+            <span>Docker 이미지 제거</span>
+          </div>
+          <div class="delete-impact-item">
+            <span class="delete-impact-icon">📁</span>
+            <span>배포된 소스 코드 파일 삭제</span>
+          </div>
+          <div class="delete-impact-item">
+            <span class="delete-impact-icon">🗄️</span>
+            <span>프로젝트 설정 및 배포 이력 삭제</span>
+          </div>
+        </div>
+        <div class="delete-confirm-input-area">
+          <label>확인을 위해 프로젝트 이름 <strong id="delete-project-name-display" style="color:var(--danger);"></strong>을(를)
+            입력하세요:</label>
+          <input type="text" id="delete-confirm-input" placeholder="프로젝트 이름을 정확히 입력" autocomplete="off"
+            oninput="validateDeleteInput()">
+          <div class="delete-input-hint" id="delete-input-hint">프로젝트 이름이 일치하지 않습니다.</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid rgba(248,81,73,0.2);">
+        <button class="btn btn-ghost" onclick="closeDeleteModal()">취소</button>
+        <button class="btn btn-danger" id="btn-confirm-delete" disabled onclick="confirmDeleteProject()">🗑️ 영구
+          삭제</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 

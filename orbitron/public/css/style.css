@@ -1282,3 +1282,146 @@ body {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* ===== DELETE CONFIRMATION MODAL ===== */
+.delete-modal {
+  border-color: rgba(248, 81, 73, 0.4) !important;
+}
+
+.delete-modal-header {
+  background: linear-gradient(135deg, rgba(248, 81, 73, 0.08), transparent);
+  border-bottom-color: rgba(248, 81, 73, 0.2) !important;
+}
+
+.delete-modal-header h2 {
+  color: var(--danger);
+}
+
+.delete-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: rgba(248, 81, 73, 0.08);
+  border: 1px solid rgba(248, 81, 73, 0.25);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.delete-warning-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.delete-warning-text strong {
+  color: var(--danger);
+  font-size: 15px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.delete-warning-text p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+
+.delete-impact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.delete-impact-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.delete-impact-item:hover {
+  background: rgba(248, 81, 73, 0.05);
+}
+
+.delete-impact-icon {
+  font-size: 16px;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.delete-confirm-input-area {
+  margin-bottom: 8px;
+}
+
+.delete-confirm-input-area label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+#delete-confirm-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+#delete-confirm-input:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.15);
+}
+
+#delete-confirm-input.matched {
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.15);
+}
+
+.delete-input-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  transition: color 0.2s;
+}
+
+.delete-input-hint.matched {
+  color: var(--success);
+}
+
+#btn-confirm-delete {
+  transition: all 0.25s;
+}
+
+#btn-confirm-delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+#btn-confirm-delete:not(:disabled) {
+  animation: deleteReady 0.3s ease;
+}
+
+@keyframes deleteReady {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}

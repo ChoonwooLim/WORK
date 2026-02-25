@@ -472,10 +472,28 @@ function renderProjectOverview() {
       <div id="project-backup-status" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:13px;color:var(--text-secondary);">
         백업 상태 확인 중...
       </div>
-    </div>`;
+    </div>
+    ${p.type === 'db_postgres' || (p.env_vars && p.env_vars.DATABASE_URL) ? `
+    <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">🗄️ 데이터베이스 백업 <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(DATA 드라이브)</span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-clone-backup" id="btn-db-backup" onclick="dbBackup(${p.id})" title="DATA 드라이브에 DB 덤프 백업">
+            <span class="btn-clone-icon">🗄️</span> 백업
+          </button>
+          <button class="btn-clone-backup" id="btn-db-restore" onclick="dbRestore(${p.id})" title="백업에서 DB 데이터 복원" style="border-color:var(--warning);color:var(--warning);">
+            <span class="btn-clone-icon">🔄</span> 복원
+          </button>
+        </div>
+      </div>
+      <div id="db-backup-status" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:13px;color:var(--text-secondary);">
+        백업 상태 확인 중...
+      </div>
+    </div>` : ''}`;
     if (p.status === 'running') loadResourceStats(p.id);
     loadMediaBackupStatus(p.id);
     loadProjectBackupStatus(p.id);
+    if (p.type === 'db_postgres' || (p.env_vars && p.env_vars.DATABASE_URL)) loadDbBackupStatus(p.id);
 }
 
 function renderSettings() {
@@ -547,7 +565,7 @@ function renderSettings() {
     </div>
     <button class="btn btn-primary" onclick="saveSettings()">설정 저장</button>
     <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:24px;">
-      <button class="btn btn-danger" onclick="deleteProject(${p.id})">🗑 프로젝트 삭제</button>
+      <button class="btn btn-danger" onclick="openDeleteModal(${p.id}, '${escapeHtml(p.name)}')">🗑 프로젝트 삭제</button>
     </div>`;
 }
 
@@ -806,15 +824,81 @@ async function stopProject(id) {
     } catch (error) { toast('중지 실패: ' + error.message, 'error'); }
 }
 
-async function deleteProject(id) {
-    if (!confirm('정말로 이 프로젝트를 삭제하시겠습니까?')) return;
+// ============ SAFE DELETE ============
+
+let deleteTargetId = null;
+let deleteTargetName = '';
+
+function openDeleteModal(id, name) {
+    deleteTargetId = id;
+    deleteTargetName = name;
+    const modal = document.getElementById('delete-confirm-modal');
+    modal.classList.add('active');
+    document.getElementById('delete-project-name-display').textContent = name;
+    document.getElementById('delete-confirm-input').value = '';
+    document.getElementById('btn-confirm-delete').disabled = true;
+    document.getElementById('delete-input-hint').textContent = '프로젝트 이름이 일치하지 않습니다.';
+    document.getElementById('delete-input-hint').classList.remove('matched');
+    document.getElementById('delete-confirm-input').classList.remove('matched');
+    setTimeout(() => document.getElementById('delete-confirm-input').focus(), 100);
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-confirm-modal').classList.remove('active');
+    deleteTargetId = null;
+    deleteTargetName = '';
+}
+
+function validateDeleteInput() {
+    const input = document.getElementById('delete-confirm-input');
+    const btn = document.getElementById('btn-confirm-delete');
+    const hint = document.getElementById('delete-input-hint');
+    const val = input.value.trim();
+
+    if (val === deleteTargetName) {
+        btn.disabled = false;
+        hint.textContent = '✅ 이름이 일치합니다. 삭제를 진행할 수 있습니다.';
+        hint.classList.add('matched');
+        input.classList.add('matched');
+    } else {
+        btn.disabled = true;
+        hint.textContent = val.length > 0 ? '⚠️ 프로젝트 이름이 일치하지 않습니다.' : '프로젝트 이름이 일치하지 않습니다.';
+        hint.classList.remove('matched');
+        input.classList.remove('matched');
+    }
+}
+
+async function confirmDeleteProject() {
+    if (!deleteTargetId || !deleteTargetName) return;
+    const btn = document.getElementById('btn-confirm-delete');
+    btn.disabled = true;
+    btn.textContent = '삭제 중...';
+
     try {
-        await fetch(`${API}/projects/${id}`, { method: 'DELETE' });
-        toast('프로젝트가 삭제되었습니다.', 'success');
+        const res = await fetch(`${API}/projects/${deleteTargetId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm_name: deleteTargetName })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '삭제 실패');
+
+        closeDeleteModal();
+        toast('프로젝트가 영구적으로 삭제되었습니다.', 'success');
         currentProject = null;
         navigateTo('projects');
         loadProjects();
-    } catch (error) { toast('삭제 실패: ' + error.message, 'error'); }
+    } catch (error) {
+        toast('삭제 실패: ' + error.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '🗑️ 영구 삭제';
+    }
+}
+
+// Legacy wrapper for backward compatibility
+async function deleteProject(id) {
+    const name = currentProject?.name || '';
+    openDeleteModal(id, name);
 }
 
 // ============ ENV VARS ============
@@ -1021,11 +1105,10 @@ function openDeployModal(projectId) {
         </div>`).join('');
 
     if (activeEventSource) activeEventSource.close();
-    const es = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
-    activeEventSource = es;
     let completedSteps = [];
 
-    es.onmessage = (event) => {
+    // Extract message handler as a standalone function so it can be reused across SSE retries
+    const handleMessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'connected') return;
         document.getElementById('deploy-progress-fill').style.width = data.progress + '%';
@@ -1050,7 +1133,8 @@ function openDeployModal(projectId) {
                 document.getElementById('deploy-progress-fill').classList.add('done');
                 document.getElementById('deploy-modal-title').textContent = '✅ 배포 완료!';
                 document.getElementById('deploy-log-viewer').textContent += '\n✅ 배포가 성공적으로 완료되었습니다!\n';
-                es.close(); activeEventSource = null; loadProjects();
+                if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
+                loadProjects();
                 if (currentProject?.id === projectId) openProject(projectId);
             } else if (data.status === 'failed') {
                 currentEl.className = 'deploy-step failed';
@@ -1058,7 +1142,8 @@ function openDeployModal(projectId) {
                 document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
                 document.getElementById('deploy-progress-fill').classList.add('done');
                 document.getElementById('deploy-modal-title').textContent = '❌ 배포 실패';
-                es.close(); activeEventSource = null; loadProjects();
+                if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
+                loadProjects();
             } else {
                 currentEl.className = 'deploy-step active';
                 currentEl.querySelector('.deploy-step-icon').textContent = '◉';
@@ -1077,38 +1162,21 @@ function openDeployModal(projectId) {
         }
 
         const logViewer = document.getElementById('deploy-log-viewer');
-        const timestamp = new Date(data.timestamp).toLocaleTimeString('ko-KR');
-
         logViewer.scrollTop = logViewer.scrollHeight;
     };
 
-    let sseRetried = false;
-    es.onerror = () => {
-        if (!sseRetried) {
-            sseRetried = true;
-            // Retry SSE once
-            setTimeout(() => {
-                if (activeEventSource === es) {
-                    es.close();
-                    const es2 = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
-                    activeEventSource = es2;
-                    es2.onmessage = es.onmessage;
-                    es2.onerror = es.onerror;
-                }
-            }, 2000);
-            return;
-        }
-        // SSE failed twice — fallback to polling
-        es.close(); activeEventSource = null;
+    // Polling fallback: check project status via API
+    const startPollingFallback = () => {
+        if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
         document.getElementById('deploy-progress-label').textContent = '빌드 진행 중... (상태 확인 중)';
-        const poll = setInterval(async () => {
+
+        const checkStatus = async () => {
             try {
                 const res = await fetch(`${API}/projects`);
                 const projects = await res.json();
                 const p = projects.find(x => x.id === projectId);
-                if (!p) { clearInterval(poll); return; }
+                if (!p) return true; // stop polling
                 if (p.status === 'running') {
-                    clearInterval(poll);
                     document.getElementById('deploy-progress-fill').style.width = '100%';
                     document.getElementById('deploy-progress-fill').classList.add('done');
                     document.getElementById('deploy-modal-title').textContent = '✅ 배포 완료!';
@@ -1119,17 +1187,54 @@ function openDeployModal(projectId) {
                     });
                     loadProjects();
                     if (currentProject?.id === projectId) openProject(projectId);
+                    return true; // stop polling
                 } else if (p.status === 'failed') {
-                    clearInterval(poll);
                     document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
                     document.getElementById('deploy-progress-fill').classList.add('done');
                     document.getElementById('deploy-modal-title').textContent = '❌ 배포 실패';
                     document.getElementById('deploy-progress-label').textContent = '배포에 실패했습니다.';
                     loadProjects();
+                    return true; // stop polling
                 }
             } catch (e) { /* keep polling */ }
-        }, 3000);
+            return false;
+        };
+
+        // Immediately check once first (deploy may already be done)
+        checkStatus().then(done => {
+            if (!done) {
+                const poll = setInterval(async () => {
+                    const finished = await checkStatus();
+                    if (finished) clearInterval(poll);
+                }, 3000);
+            }
+        });
     };
+
+    // Create SSE connection with proper error handling
+    let sseRetryCount = 0;
+    const createSSE = () => {
+        const es = new EventSource(`${API}/deploy-stream/${projectId}?token=${getToken() || ''}`);
+        activeEventSource = es;
+        es.onmessage = handleMessage;
+        es.onerror = () => {
+            sseRetryCount++;
+            if (sseRetryCount <= 2) {
+                // Retry SSE
+                setTimeout(() => {
+                    if (activeEventSource === es) {
+                        es.close();
+                        createSSE();
+                    }
+                }, 2000);
+            } else {
+                // SSE failed multiple times — fallback to polling
+                startPollingFallback();
+            }
+        };
+    };
+
+    createSSE();
 }
 
 function closeDeployModal() {
@@ -1531,6 +1636,85 @@ async function loadMediaBackupStatus(projectId) {
         container.innerHTML = '<span style="color:var(--danger);">백업 상태를 불러올 수 없습니다.</span>';
     }
 }
+
+// ============ DB BACKUP ============
+
+async function dbBackup(projectId) {
+    const btn = document.getElementById('btn-db-backup');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 백업 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/db-backup`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast(`✅ ${data.message}`, 'success');
+            loadDbBackupStatus(projectId);
+        } else {
+            toast(`❌ DB 백업 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ DB 백업 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">🗄️</span> 백업';
+        }
+    }
+}
+
+async function dbRestore(projectId) {
+    if (!confirm('경고: 백업된 DB 데이터로 복원하시겠습니까?\\n현재 동작 중인 데이터베이스 데이터가 덮어씌워지거나 삭제될 수 있습니다. 진행할까요?')) return;
+    const btn = document.getElementById('btn-db-restore');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-clone-spinner"></span> 복원 중...';
+    }
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/db-restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast(`✅ ${data.message}`, 'success');
+        } else {
+            toast(`❌ DB 복원 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+    } catch (e) {
+        toast(`❌ DB 복원 실패: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="btn-clone-icon">🔄</span> 복원';
+        }
+    }
+}
+
+async function loadDbBackupStatus(projectId) {
+    const container = document.getElementById('db-backup-status');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/db-backup/status`);
+        const status = await res.json();
+        if (status.exists) {
+            const backupTime = new Date(status.lastBackupTime).toLocaleString('ko-KR');
+            container.innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div>📅 마지막 백업: <strong>${backupTime}</strong></div>
+                    <div>💾 DB 덤프 크기: <strong>${status.fileSizeFormatted}</strong></div>
+                    <div style="grid-column: 1 / -1; font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${status.backupDir}">📂 ${status.backupDir}</div>
+                </div>`;
+        } else {
+            container.innerHTML = '<span style="color:var(--text-muted);">⚠️ 아직 DB 백업이 없습니다. 백업 버튼을 눌러 데이터를 안전하게 보관하세요.</span>';
+        }
+    } catch (e) {
+        container.innerHTML = '<span style="color:var(--danger);">백업 상태를 불러올 수 없습니다.</span>';
+    }
+}
+
 
 // ============ MODALS ============
 
