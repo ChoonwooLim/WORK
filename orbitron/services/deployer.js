@@ -11,6 +11,7 @@ const tunnelService = require('./tunnel');
 const mediaBackup = require('./mediaBackup');
 const projectBackup = require('./projectBackup');
 const aiAnalyzer = require('./aiAnalyzer');
+const aiAutoRepair = require('./aiAutoRepair');
 const { encrypt, decrypt } = require('../db/crypto');
 const yaml = require('js-yaml');
 
@@ -433,7 +434,95 @@ class Deployer extends EventEmitter {
         } catch (error) {
             logs += `\n❌ Error: ${error.message}\n`;
 
-            this.emitProgress(project.id, 'done', `오류 원인 분석 중...`, 'running');
+            // ── AI Auto-Repair Pipeline ──
+            const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
+            const isAutoRepairRetry = project._autoRepairAttempted;
+
+            if (!isAutoRepairRetry && fs.existsSync(projectDir)) {
+                this.emitProgress(project.id, 'done', '🤖 AI 자동 복구 시도 중...', 'running');
+                logs += '\n🤖 [AI Auto-Repair] 자동 복구를 시도합니다...\n';
+
+                try {
+                    // Step 1: AI generates patches
+                    const patchResult = await aiAutoRepair.analyzeAndGeneratePatch(
+                        logs, projectDir, project.ai_model, project.env_vars || {}
+                    );
+
+                    if (patchResult && patchResult.canFix && patchResult.patches.length > 0) {
+                        logs += `\n  📋 AI 분석: ${patchResult.summary}\n`;
+                        logs += `  📝 ${patchResult.patches.length}개 패치 생성됨\n`;
+
+                        // Step 2: Apply patches
+                        const applyResult = aiAutoRepair.applyPatches(projectDir, patchResult.patches);
+                        logs += `\n  패치 적용 결과: ${applyResult.applied}개 성공, ${applyResult.failed}개 실패\n`;
+                        logs += applyResult.details;
+
+                        if (applyResult.applied > 0) {
+                            // Step 3: Retry build & deploy
+                            logs += '\n  🔄 수정된 코드로 재빌드 시도...\n';
+                            this.emitProgress(project.id, 'done', '🔄 AI 수정 코드로 재빌드 중...', 'running');
+
+                            try {
+                                // Mark as retry to prevent infinite loop
+                                project._autoRepairAttempted = true;
+
+                                const retryResult = await this.deploy(project);
+
+                                if (retryResult.success) {
+                                    logs += '\n  ✅ AI 자동 복구 성공! 수정된 코드로 배포 완료.\n';
+
+                                    // Step 4: Create GitHub PR
+                                    this.emitProgress(project.id, 'done', '📤 GitHub PR 생성 중...', 'running');
+                                    const prResult = await aiAutoRepair.createGitHubPR(
+                                        project, projectDir, patchResult.patches, patchResult.summary
+                                    );
+
+                                    if (prResult.success) {
+                                        logs += `\n  📤 ${prResult.message}\n`;
+                                        if (prResult.prUrl) {
+                                            logs += `  🔗 PR: ${prResult.prUrl}\n`;
+                                        }
+                                        if (prResult.branch) {
+                                            logs += `  🌿 브랜치: ${prResult.branch}\n`;
+                                        }
+                                    } else {
+                                        logs += `\n  ⚠️ PR 생성 건너뜀: ${prResult.message}\n`;
+                                    }
+
+                                    // Save auto-repair info in deployment logs
+                                    const autoRepairInfo = {
+                                        summary: patchResult.summary,
+                                        patches: patchResult.patches,
+                                        prUrl: prResult.prUrl || null,
+                                        branch: prResult.branch || null,
+                                    };
+
+                                    await db.query(
+                                        `UPDATE deployments SET logs = $1, status = 'success' WHERE id = $2`,
+                                        [retryResult.logs + '\n\n🤖 [AI_AUTO_REPAIR_DATA]\n' + JSON.stringify(autoRepairInfo), deploymentId]
+                                    );
+
+                                    this.emitProgress(project.id, 'done', '🤖 AI 자동 복구 성공! 배포 완료.', 'success');
+                                    return retryResult;
+                                } else {
+                                    logs += '\n  ❌ AI 수정 후에도 빌드 실패 — 원본 복구 중...\n';
+                                    await aiAutoRepair.revertPatches(projectDir, project.branch || 'main');
+                                }
+                            } catch (retryError) {
+                                logs += `\n  ❌ 재빌드 에러: ${retryError.message}\n`;
+                                await aiAutoRepair.revertPatches(projectDir, project.branch || 'main');
+                            }
+                        }
+                    } else if (patchResult) {
+                        logs += `\n  ℹ️ AI 판단: ${patchResult.summary || '자동 수정 불가한 에러'}\n`;
+                    }
+                } catch (repairError) {
+                    logs += `\n  ⚠️ AI 자동 복구 중 오류: ${repairError.message}\n`;
+                }
+            }
+
+            // Fallback: normal AI error analysis
+            this.emitProgress(project.id, 'done', '오류 원인 분석 중...', 'running');
             const aiAnalysis = await aiAnalyzer.analyzeError(logs, project.ai_model, project.env_vars || {});
             if (aiAnalysis) {
                 logs += `\n\n🤖 [AI Error Analysis]\n${aiAnalysis}\n`;

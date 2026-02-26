@@ -123,6 +123,8 @@ function navigateTo(page) {
         'project-console': `🖥 ${currentProject?.name || ''} — 콘솔`,
         'project-settings': `⚙️ ${currentProject?.name || ''} — 설정`,
         'project-ai': `💬 ${currentProject?.name || ''} — AI 어시스턴트`,
+        'groups': '📂 프로젝트 그룹',
+        'group-overview': `📂 ${currentGroup?.name || ''} — 서비스 목록`,
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
 
@@ -156,6 +158,8 @@ function navigateTo(page) {
         const aiPage = document.getElementById('page-project-ai');
         if (aiPage) aiPage.style.display = 'none';
     }
+    if (page === 'groups') loadGroups();
+    if (page === 'group-overview') renderGroupOverview();
 }
 
 // ============ PROJECT LIST ============
@@ -1925,3 +1929,358 @@ async function init() {
 init();
 setInterval(loadProjects, 5000);
 setInterval(loadDashboardResourceStats, 5000);
+
+// ============ PROJECT GROUPS ============
+
+let currentGroup = null;
+
+async function loadGroups() {
+    try {
+        const res = await fetch(`${API}/groups`);
+        const groups = await res.json();
+        const container = document.getElementById('groups-list');
+        if (groups.length === 0) {
+            container.innerHTML = `<div class="empty-state"><div class="icon">📂</div><h3>프로젝트 그룹이 없습니다</h3><p>+ New Group 버튼을 눌러 첫 번째 그룹을 만드세요.</p></div>`;
+            return;
+        }
+        container.innerHTML = `<div class="selector-grid">${groups.map(g => {
+            const allRunning = g.service_count > 0 && parseInt(g.running_count) === parseInt(g.service_count);
+            const someRunning = parseInt(g.running_count) > 0;
+            const statusColor = allRunning ? '#3fb950' : someRunning ? '#d29922' : '#484f58';
+            return `
+            <div class="selector-card" onclick="openGroup(${g.id})" style="${allRunning ? 'box-shadow: 0 0 20px rgba(63,185,80,0.1);' : ''}">
+              <div class="selector-card-top">
+                <div class="selector-status-dot" style="background:${statusColor};"></div>
+                <span class="selector-status-label">${parseInt(g.running_count)}/${parseInt(g.service_count)} 실행 중</span>
+              </div>
+              <div class="selector-card-name">${escapeHtml(g.name)}</div>
+              <div class="selector-card-repo">${g.description ? escapeHtml(g.description) : '서비스 그룹'}</div>
+              <div class="selector-card-footer">
+                <div style="display:flex; justify-content:space-between; width:100%;">
+                  <span>서비스 ${g.service_count}개</span>
+                  <span>${timeAgo(g.updated_at)}</span>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}</div>`;
+    } catch (e) {
+        console.error('Failed to load groups:', e);
+    }
+}
+
+async function openGroup(id) {
+    try {
+        const res = await fetch(`${API}/groups/${id}`);
+        currentGroup = await res.json();
+        navigateTo('group-overview');
+    } catch (e) {
+        toast('그룹 로드 실패', 'error');
+    }
+}
+
+function renderGroupOverview() {
+    const g = currentGroup;
+    if (!g) {
+        document.getElementById('group-overview-content').innerHTML = `<div style="text-align:center; padding:80px 20px; color:var(--text-muted);"><p>그룹을 먼저 선택해주세요.</p></div>`;
+        return;
+    }
+    const services = g.services || [];
+    const typeIcons = { web: '🌐', db_postgres: '🗄', db_redis: '🗄', worker: '⚙️' };
+    const statusLabels = { running: '✅ Running', stopped: '⏹ Stopped', building: '🔨 Building', failed: '❌ Failed' };
+    const statusColors = { running: '#3fb950', stopped: '#8b949e', building: '#d29922', failed: '#f85149' };
+
+    document.getElementById('group-overview-content').innerHTML = `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; font-weight:600; letter-spacing:0.5px;">PROJECT</div>
+      <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
+        <h2 style="margin:0; font-size:28px;">${escapeHtml(g.name)}</h2>
+        <button class="btn btn-sm btn-ghost" onclick="deleteGroup(${g.id})" title="그룹 삭제" style="color:var(--danger);">🗑</button>
+      </div>
+      ${g.description ? `<div style="color:var(--text-secondary); margin-top:4px; font-size:14px;">${escapeHtml(g.description)}</div>` : ''}
+    </div>
+
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; border-bottom:2px solid var(--accent); padding-bottom:8px;">
+      <span style="font-weight:600; color:var(--accent); font-size:14px;">All (${services.length})</span>
+      <span style="color:var(--text-muted); font-size:14px;">Services (${services.length})</span>
+    </div>
+
+    <div class="group-services-table">
+      <div class="group-services-header">
+        <span>SERVICE NAME</span>
+        <span>STATUS</span>
+        <span>RUNTIME</span>
+        <span>UPDATED</span>
+        <span></span>
+      </div>
+      ${services.length === 0 ? `<div style="text-align:center; padding:40px; color:var(--text-muted);">아직 서비스가 없습니다.</div>` :
+            services.map(s => `
+        <div class="group-service-row" onclick="openProjectFromGroup(${s.id})">
+          <span style="display:flex; align-items:center; gap:8px; font-weight:500;">
+            <span>${typeIcons[s.type] || '🌐'}</span>
+            ${escapeHtml(s.name)}
+          </span>
+          <span><span style="color:${statusColors[s.status] || '#8b949e'}; font-size:13px;">${statusLabels[s.status] || s.status}</span></span>
+          <span><span class="group-runtime-badge">${s.runtime_label || 'Web'}</span></span>
+          <span style="color:var(--text-muted); font-size:13px;">${timeAgo(s.updated_at)}</span>
+          <span>
+            <button class="btn btn-sm btn-ghost group-remove-btn" data-group="${g.id}" data-project="${s.id}" data-name="${escapeHtml(s.name)}" onclick="event.stopPropagation(); confirmRemoveService(this)" title="그룹에서 제거" style="font-size:11px;">✕</button>
+          </span>
+        </div>
+      `).join('')}
+    </div>
+
+    <button class="btn btn-ghost" onclick="openAddServiceModal(${g.id})" style="margin-top:12px; font-size:13px;">+ 서비스 추가</button>
+
+    ${renderGroupDbConnections(services)}
+    `;
+}
+
+function renderGroupDbConnections(services) {
+    const dbServices = services.filter(s => s.type === 'db_postgres' && s.connection_info);
+    const dbUrlServices = services.filter(s => s.has_database_url && s.type !== 'db_postgres');
+    if (dbServices.length === 0 && dbUrlServices.length === 0) return '';
+
+    let html = '<div style="margin-top:32px; border-top:1px solid var(--border); padding-top:24px;">';
+    html += '<h3 style="margin-bottom:16px;">🔌 데이터베이스 연결 정보</h3>';
+
+    for (const s of dbServices) {
+        const c = s.connection_info;
+        html += `
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; margin-bottom:16px;">
+          <div style="font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">🗄 ${escapeHtml(s.name)}</div>
+          <div class="db-conn-grid">
+            ${dbConnRow('Hostname', c.hostname)}
+            ${dbConnRow('Port', String(c.port))}
+            ${dbConnRow('Database', c.database)}
+            ${dbConnRow('Username', c.username)}
+            ${dbConnRow('Password', c.password, true)}
+          </div>
+          <div style="margin-top:16px; display:flex; flex-direction:column; gap:12px;">
+            ${dbConnBlock('Internal Database URL', c.internal_url, true)}
+            ${dbConnBlock('External Database URL', c.external_url, true)}
+            ${dbConnBlock('PSQL Command', c.psql_command, true)}
+          </div>
+        </div>`;
+    }
+
+    for (const s of dbUrlServices) {
+        html += `
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; margin-bottom:16px;">
+          <div style="font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">🔗 ${escapeHtml(s.name)} — DATABASE_URL</div>
+          ${dbConnBlock('DATABASE_URL', s.database_url, true)}
+        </div>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function dbConnRow(label, value, masked = false) {
+    const id = 'dbconn-' + Math.random().toString(36).substring(7);
+    return `
+    <div class="db-conn-row">
+      <span class="db-conn-label">${label}</span>
+      <div class="db-conn-value-wrap">
+        <span class="db-conn-value" id="${id}">${masked ? '••••••••••' : escapeHtml(value)}</span>
+        <div class="db-conn-actions">
+          ${masked ? `<button class="btn-icon" onclick="event.stopPropagation(); toggleDbValue(this, '${id}', '${escapeHtml(value)}')" title="표시/숨기기">👁</button>` : ''}
+          <button class="btn-icon" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(value)}')" title="복사">📋</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function dbConnBlock(label, value, masked = false) {
+    const id = 'dbblock-' + Math.random().toString(36).substring(7);
+    const maskedValue = value.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:••••••@');
+    return `
+    <div>
+      <div style="font-size:12px; color:var(--text-muted); font-weight:600; margin-bottom:4px;">${label}</div>
+      <div class="db-conn-block">
+        <code id="${id}" style="flex:1; word-break:break-all;">${masked ? escapeHtml(maskedValue) : escapeHtml(value)}</code>
+        <div class="db-conn-actions">
+          ${masked ? `<button class="btn-icon" onclick="event.stopPropagation(); toggleDbBlock(this, '${id}', '${escapeHtml(value)}', '${escapeHtml(maskedValue)}')" title="표시/숨기기">👁</button>` : ''}
+          <button class="btn-icon" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(value)}')" title="복사">📋</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleDbValue(btn, elId, realValue) {
+    const el = document.getElementById(elId);
+    if (el.dataset.visible === 'true') {
+        el.textContent = '••••••••••';
+        el.dataset.visible = 'false';
+        btn.textContent = '👁';
+    } else {
+        el.textContent = realValue;
+        el.dataset.visible = 'true';
+        btn.textContent = '🙈';
+    }
+}
+
+function toggleDbBlock(btn, elId, realValue, maskedValue) {
+    const el = document.getElementById(elId);
+    if (el.dataset.visible === 'true') {
+        el.textContent = maskedValue;
+        el.dataset.visible = 'false';
+        btn.textContent = '👁';
+    } else {
+        el.textContent = realValue;
+        el.dataset.visible = 'true';
+        btn.textContent = '🙈';
+    }
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        toast('📋 복사 완료!', 'success');
+    }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('📋 복사 완료!', 'success');
+    });
+}
+
+async function openProjectFromGroup(projectId) {
+    try {
+        const res = await fetch(`${API}/projects/${projectId}`);
+        currentProject = await res.json();
+        const selectEl = document.getElementById('global-project-select');
+        if (selectEl) selectEl.value = projectId;
+        navigateTo('project-overview');
+    } catch (e) {
+        toast('프로젝트 로드 실패', 'error');
+    }
+}
+
+function openNewGroupModal() {
+    document.getElementById('new-group-modal').classList.add('active');
+    document.getElementById('input-group-name').value = '';
+    document.getElementById('input-group-desc').value = '';
+    document.getElementById('input-group-name').focus();
+}
+
+function closeGroupModal() {
+    document.getElementById('new-group-modal').classList.remove('active');
+}
+
+async function createGroup() {
+    const name = document.getElementById('input-group-name').value.trim();
+    const description = document.getElementById('input-group-desc').value.trim();
+    if (!name) { toast('그룹 이름은 필수입니다.', 'error'); return; }
+    try {
+        const res = await fetch(`${API}/groups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast('그룹이 생성되었습니다!', 'success');
+        closeGroupModal();
+        loadGroups();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteGroup(groupId) {
+    if (!confirm('이 그룹을 삭제하시겠습니까? (서비스는 유지됩니다)')) return;
+    try {
+        const res = await fetch(`${API}/groups/${groupId}`, { method: 'DELETE' });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast('그룹이 삭제되었습니다.', 'success');
+        currentGroup = null;
+        navigateTo('groups');
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+let addServiceGroupId = null;
+
+async function openAddServiceModal(groupId) {
+    addServiceGroupId = groupId;
+    document.getElementById('add-service-modal').classList.add('active');
+    const container = document.getElementById('unassigned-projects-list');
+    container.innerHTML = '로딩 중...';
+
+    try {
+        const res = await fetch(`${API}/groups/unassigned/projects`);
+        const projects = await res.json();
+        if (projects.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">모든 프로젝트가 이미 그룹에 할당되어 있습니다.</div>';
+            return;
+        }
+        const typeIcons = { web: '🌐', db_postgres: '🗄', db_redis: '🗄', worker: '⚙️' };
+        container.innerHTML = projects.map(p => `
+            <div class="group-unassigned-row" onclick="addServiceToGroup(${groupId}, ${p.id})">
+              <span>${typeIcons[p.type] || '🌐'} ${escapeHtml(p.name)}</span>
+              <span class="badge badge-${p.status}" style="font-size:11px;">${statusLabel(p.status)}</span>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<div style="color:var(--danger);">프로젝트 목록 로드 실패</div>';
+    }
+}
+
+function closeAddServiceModal() {
+    document.getElementById('add-service-modal').classList.remove('active');
+    addServiceGroupId = null;
+}
+
+async function addServiceToGroup(groupId, projectId) {
+    try {
+        const res = await fetch(`${API}/groups/${groupId}/services`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast('서비스가 그룹에 추가되었습니다!', 'success');
+        closeAddServiceModal();
+        // Refresh group overview
+        const groupRes = await fetch(`${API}/groups/${groupId}`);
+        currentGroup = await groupRes.json();
+        renderGroupOverview();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function confirmRemoveService(btn) {
+    if (btn.dataset.confirming === 'true') {
+        // Second click — do the removal
+        const groupId = btn.dataset.group;
+        const projectId = btn.dataset.project;
+        removeServiceFromGroup(groupId, projectId);
+        return;
+    }
+    // First click — show confirmation state
+    btn.dataset.confirming = 'true';
+    btn.textContent = '삭제?';
+    btn.style.color = 'var(--danger)';
+    btn.style.fontWeight = '600';
+    btn.style.fontSize = '12px';
+    // Auto-reset after 3 seconds
+    setTimeout(() => {
+        if (btn.dataset.confirming === 'true') {
+            btn.dataset.confirming = 'false';
+            btn.textContent = '✕';
+            btn.style.color = '';
+            btn.style.fontWeight = '';
+            btn.style.fontSize = '11px';
+        }
+    }, 3000);
+}
+
+async function removeServiceFromGroup(groupId, projectId) {
+    try {
+        const res = await fetch(`${API}/groups/${groupId}/services/${projectId}`, { method: 'DELETE' });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast('서비스가 그룹에서 제거되었습니다.', 'success');
+        // Refresh group overview
+        const groupRes = await fetch(`${API}/groups/${groupId}`);
+        currentGroup = await groupRes.json();
+        renderGroupOverview();
+    } catch (e) { toast(e.message, 'error'); }
+}

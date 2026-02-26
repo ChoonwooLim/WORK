@@ -76,49 +76,79 @@ ${recentLogs}
             return 'AI 에러 대화 기능을 사용할 수 없습니다. (API 키 누락)';
         }
 
+        const systemPrompt = "You are Orbitron's resident DevOps and Backend Expert AI. Help the developer troubleshoot their code or deployment issues.";
+
+        // Helper: wrap a promise with a timeout
+        const withTimeout = (promise, ms) => {
+            let timer;
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('TIMEOUT')), ms); })
+            ]).finally(() => clearTimeout(timer));
+        };
+
+        // Helper: call Gemini
+        const callGemini = async () => {
+            if (!geminiKey) return null;
+            console.log('[AI Chat] Falling back to Gemini...');
+            const geminiClient = new GoogleGenAI({ apiKey: geminiKey });
+            const fallbackModel = 'gemini-2.5-flash';
+            const formattedHistory = messagesArray.slice(0, -1).map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+            }));
+            const lastMessage = messagesArray[messagesArray.length - 1].content;
+            const chat = geminiClient.chats.create({
+                model: fallbackModel,
+                history: formattedHistory,
+                config: { systemInstruction: systemPrompt }
+            });
+            const response = await chat.sendMessage({ message: lastMessage });
+            return response.text;
+        };
+
         try {
             console.log(`[AI Chat] Routing chat to model: ${aiModel}`);
 
-            // Anthropic Claude
+            // Anthropic Claude (with 15s timeout + Gemini fallback)
             if (aiModel.startsWith('claude-') && anthropicKey) {
-                const anthropicClient = new Anthropic({ apiKey: anthropicKey });
-
-                // Extract system prompt if we want one
-                const systemPrompt = "You are Orbitron's resident DevOps and Backend Expert AI. Help the developer troubleshoot their code or deployment issues.";
-
-                const response = await anthropicClient.messages.create({
-                    model: aiModel,
-                    max_tokens: 1500,
-                    system: systemPrompt,
-                    messages: messagesArray.map(m => ({
-                        role: m.role === 'assistant' ? 'assistant' : 'user',
-                        content: m.content
-                    }))
-                });
-                return response.content[0].text;
+                try {
+                    const anthropicClient = new Anthropic({ apiKey: anthropicKey });
+                    const response = await withTimeout(
+                        anthropicClient.messages.create({
+                            model: aiModel,
+                            max_tokens: 1500,
+                            system: systemPrompt,
+                            messages: messagesArray.map(m => ({
+                                role: m.role === 'assistant' ? 'assistant' : 'user',
+                                content: m.content
+                            }))
+                        }),
+                        15000
+                    );
+                    return response.content[0].text;
+                } catch (claudeError) {
+                    console.warn(`[AI Chat] Claude failed (${claudeError.message}), trying Gemini fallback...`);
+                    const geminiResult = await callGemini();
+                    if (geminiResult) return `⚡ *Gemini 자동 전환 (Claude 서버 응답 없음)*\n\n${geminiResult}`;
+                    return `AI 서버가 현재 과부하 상태입니다. 잠시 후 다시 시도해주세요. (${claudeError.message})`;
+                }
             }
 
-            // Google Gemini
+            // Google Gemini (direct call)
             if (geminiKey) {
                 const geminiClient = new GoogleGenAI({ apiKey: geminiKey });
                 const fallbackModel = aiModel.startsWith('gemini-') ? aiModel : 'gemini-2.5-flash';
-
-                // Format history for Gemini SDK
-                // Gemini expects: [ { role: "user", parts: [{ text: "..." }] }, { role: "model", parts: [{ text: "..." }] } ]
                 const formattedHistory = messagesArray.slice(0, -1).map(m => ({
                     role: m.role === 'assistant' ? 'model' : 'user',
                     parts: [{ text: m.content }]
                 }));
                 const lastMessage = messagesArray[messagesArray.length - 1].content;
-
                 const chat = geminiClient.chats.create({
                     model: fallbackModel,
                     history: formattedHistory,
-                    config: {
-                        systemInstruction: "You are Orbitron's resident DevOps and Backend Expert AI. Help the developer troubleshoot their code or deployment issues."
-                    }
+                    config: { systemInstruction: systemPrompt }
                 });
-
                 const response = await chat.sendMessage({ message: lastMessage });
                 return response.text;
             }

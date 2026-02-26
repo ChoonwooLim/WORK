@@ -1,7 +1,8 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const path = require('path');
 const fs = require('fs');
 const db = require('./db/db');
 const { exec } = require('child_process');
@@ -28,6 +29,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', authMiddleware, require('./routes/projects'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/deployments', authMiddleware, require('./routes/deployments'));
+app.use('/api/groups', authMiddleware, require('./routes/groups'));
 app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 
 // Health check

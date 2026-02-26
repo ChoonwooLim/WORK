@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Project Groups table (Render.com "Project" concept) — must be created before projects.group_id FK
+CREATE TABLE IF NOT EXISTS project_groups (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Migration: add missing columns to existing projects table
 DO $$ BEGIN
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) DEFAULT 'github';
@@ -63,6 +73,9 @@ DO $$ BEGIN
 
     -- Add project type (e.g. web, db_postgres)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'web';
+
+    -- Project group support
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES project_groups(id) ON DELETE SET NULL;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

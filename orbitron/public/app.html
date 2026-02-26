@@ -43,6 +43,10 @@
         <span class="nav-icon">📦</span>
         <span>프로젝트 목록</span>
       </a>
+      <a class="nav-item" onclick="navigateTo('groups')" id="nav-groups">
+        <span class="nav-icon">📂</span>
+        <span>프로젝트 그룹</span>
+      </a>
 
       <div class="nav-section-label" id="nav-project-section">현재 프로젝트 작업</div>
       <div id="nav-project-items">
@@ -138,6 +142,20 @@
             <p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p>
           </div>
         </div>
+      </div>
+
+      <!-- Groups Page -->
+      <div class="page" id="page-groups">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h3 style="margin:0;">📂 프로젝트 그룹</h3>
+          <button class="btn btn-primary" onclick="openNewGroupModal()">+ New Group</button>
+        </div>
+        <div id="groups-list"></div>
+      </div>
+
+      <!-- Group Overview Page -->
+      <div class="page" id="page-group-overview">
+        <div id="group-overview-content"></div>
       </div>
 
       <!-- Project Detail Pages -->
@@ -580,6 +598,50 @@
         <button class="btn btn-ghost" onclick="closeDeleteModal()">취소</button>
         <button class="btn btn-danger" id="btn-confirm-delete" disabled onclick="confirmDeleteProject()">🗑️ 영구
           삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Group Modal -->
+  <div class="modal-overlay" id="new-group-modal">
+    <div class="modal" style="width:460px;">
+      <div class="modal-header">
+        <h2>📂 새 프로젝트 그룹</h2>
+        <button class="modal-close" onclick="closeGroupModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>그룹 이름 *</label>
+          <input type="text" id="input-group-name" placeholder="예: SodamFN"
+            onkeypress="if(event.key==='Enter') createGroup()">
+        </div>
+        <div class="form-group">
+          <label>설명 (선택)</label>
+          <input type="text" id="input-group-desc" placeholder="프로젝트에 대한 설명">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeGroupModal()">취소</button>
+        <button class="btn btn-primary" onclick="createGroup()">그룹 생성</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Service to Group Modal -->
+  <div class="modal-overlay" id="add-service-modal">
+    <div class="modal" style="width:460px;">
+      <div class="modal-header">
+        <h2>➕ 서비스 추가</h2>
+        <button class="modal-close" onclick="closeAddServiceModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>그룹에 추가할 프로젝트 선택</label>
+          <div id="unassigned-projects-list" style="max-height:300px; overflow-y:auto; margin-top:8px;">로딩 중...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAddServiceModal()">닫기</button>
       </div>
     </div>
   </div>
