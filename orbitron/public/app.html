@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.js"></script>
 </head>
 
 <body>
@@ -61,6 +62,10 @@
         <a class="nav-item sub" onclick="navigateTo('project-deployments')" id="nav-project-deployments">
           <span class="nav-icon">🔄</span>
           <span>배포 이력</span>
+        </a>
+        <a class="nav-item sub" onclick="navigateTo('project-editor')" id="nav-project-editor">
+          <span class="nav-icon">📝</span>
+          <span>소스 에디터</span>
         </a>
         <a class="nav-item sub" onclick="navigateTo('project-env')" id="nav-project-env">
           <span class="nav-icon">🔧</span>
@@ -171,6 +176,37 @@
       </div>
       <div class="page" id="page-project-deployments">
         <div id="deployments-content">로딩 중...</div>
+      </div>
+
+      <!-- Source Editor Page -->
+      <div class="page" id="page-project-editor"
+        style="display:none; flex-direction:column; height:calc(100vh - 80px);">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div>
+            <h3 style="margin:0; display:flex; align-items:center; gap:8px;"><span>📝</span> 소스 에디터</h3>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">프로젝트의 소스 코드를 탐색하고 직접 수정하세요.</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <span id="editor-status" style="font-size:12px; color:var(--text-muted); align-self:center;">명령 대기 중</span>
+            <button class="btn btn-primary btn-sm" onclick="saveCurrentFile()" id="btn-save-file" disabled>저장</button>
+          </div>
+        </div>
+        <div
+          style="display:flex; flex:1; overflow:hidden; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary);">
+          <div style="width:250px; border-right:1px solid var(--border); overflow-y:auto; padding:8px;">
+            <div
+              style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px; padding-left:4px;">
+              파일 탐색기</div>
+            <div id="editor-file-tree" style="font-size:13px;">로딩 중...</div>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; background:var(--surface);">
+            <div id="editor-current-file"
+              style="padding:8px 12px; font-size:12px; font-family:var(--font-mono); color:var(--text-secondary); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.2);">
+              파일을 선택하세요</div>
+            <div id="monaco-editor-container" style="flex:1; width:100%; height:100%;"></div>
+          </div>
+        </div>
       </div>
       <div class="page" id="page-project-env">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -642,6 +678,72 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeAddServiceModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Config Service Definition Modal -->
+  <div class="modal-overlay" id="config-service-modal">
+    <div class="modal" style="width:520px;">
+      <div class="modal-header">
+        <h2>🔧 서브 서비스 정의</h2>
+        <button class="modal-close" onclick="closeConfigServiceModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>서비스 키 (고유, 영문) *</label>
+          <input type="text" id="cfg-svc-key" placeholder="예: frontend, backend, database">
+        </div>
+        <div class="form-group">
+          <label>서비스 이름 *</label>
+          <input type="text" id="cfg-svc-name" placeholder="예: sodam-frontend">
+        </div>
+        <div class="form-group">
+          <label>타입</label>
+          <select id="cfg-svc-type">
+            <option value="web">Web Service</option>
+            <option value="static">Static Site</option>
+            <option value="db_postgres">PostgreSQL</option>
+            <option value="worker">Worker</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>런타임</label>
+          <input type="text" id="cfg-svc-runtime" placeholder="예: React + Vite, Python (FastAPI)">
+        </div>
+        <div class="form-group">
+          <label>Root Directory</label>
+          <input type="text" id="cfg-svc-rootdir" placeholder="예: SodamApp/frontend">
+        </div>
+        <div class="form-group">
+          <label>Build Command</label>
+          <input type="text" id="cfg-svc-build" placeholder="예: npm install && npm run build">
+        </div>
+        <div class="form-group">
+          <label>Start Command</label>
+          <input type="text" id="cfg-svc-start" placeholder="예: gunicorn main:app ...">
+        </div>
+        <div id="cfg-db-fields"
+          style="display:none; border-top:1px solid var(--border); margin-top:16px; padding-top:16px;">
+          <div class="form-group"><label>DB Hostname</label><input type="text" id="cfg-db-host"
+              placeholder="dev-postgres"></div>
+          <div class="form-group"><label>DB Port</label><input type="text" id="cfg-db-port" placeholder="5432"></div>
+          <div class="form-group"><label>Database Name</label><input type="text" id="cfg-db-name" placeholder="sodamfn">
+          </div>
+          <div class="form-group"><label>Username</label><input type="text" id="cfg-db-user" placeholder="devuser">
+          </div>
+          <div class="form-group"><label>Password</label><input type="text" id="cfg-db-pass" placeholder="devpass123">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>환경변수 (KEY=VALUE 형식, 줄바꿈 구분)</label>
+          <textarea id="cfg-svc-envvars" rows="3" placeholder="VITE_API_URL=http://localhost:8000&#10;SECRET_KEY=mykey"
+            style="font-family:'JetBrains Mono',monospace;font-size:13px;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeConfigServiceModal()">취소</button>
+        <button class="btn btn-primary" onclick="submitConfigService()">서비스 추가</button>
       </div>
     </div>
   </div>

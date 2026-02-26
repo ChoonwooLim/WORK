@@ -12,6 +12,7 @@ const mediaBackup = require('./mediaBackup');
 const projectBackup = require('./projectBackup');
 const aiAnalyzer = require('./aiAnalyzer');
 const aiAutoRepair = require('./aiAutoRepair');
+const notifier = require('./notifier');
 const { encrypt, decrypt } = require('../db/crypto');
 const yaml = require('js-yaml');
 
@@ -429,6 +430,17 @@ class Deployer extends EventEmitter {
 
             logs += '\n✅ Deployment successful!\n';
             this.emitProgress(project.id, 'done', '배포가 성공적으로 완료되었습니다!', 'success');
+
+            if (project.webhook_url) {
+                notifier.sendNotification(project.webhook_url, {
+                    title: '🚀 배포 성공',
+                    message: `프로젝트가 성공적으로 배포되었습니다.`,
+                    project: project.name,
+                    url: tunnelUrl || project.custom_domain,
+                    status: 'success'
+                });
+            }
+
             return { success: true, logs, deploymentId, tunnelUrl };
 
         } catch (error) {
@@ -503,6 +515,17 @@ class Deployer extends EventEmitter {
                                     );
 
                                     this.emitProgress(project.id, 'done', '🤖 AI 자동 복구 성공! 배포 완료.', 'success');
+
+                                    if (project.webhook_url) {
+                                        notifier.sendNotification(project.webhook_url, {
+                                            title: '🤖 AI 자동 복구 성공',
+                                            message: `AI가 에러를 분석하고 코드를 수정하여 재배포에 성공했습니다.\n\n**내용:** ${patchResult.summary}`,
+                                            project: project.name,
+                                            url: prResult.prUrl || '',
+                                            status: 'success'
+                                        });
+                                    }
+
                                     return retryResult;
                                 } else {
                                     logs += '\n  ❌ AI 수정 후에도 빌드 실패 — 원본 복구 중...\n';
@@ -537,6 +560,16 @@ class Deployer extends EventEmitter {
             }
 
             this.emitProgress(project.id, 'done', `배포 실패: ${error.message}`, 'failed');
+
+            if (project.webhook_url) {
+                notifier.sendNotification(project.webhook_url, {
+                    title: '❌ 배포 실패',
+                    message: `프로젝트 배포 과정 중 오류가 발생했습니다.\n\n\`\`\`\n${error.message}\n\`\`\``,
+                    project: project.name,
+                    status: 'error'
+                });
+            }
+
             return { success: false, logs, error: error.message };
         } finally {
             this.activeDeployments.delete(project.id);

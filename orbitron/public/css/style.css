@@ -1605,3 +1605,157 @@ body {
 .empty-state p {
   font-size: 14px;
 }
+
+/* Expandable Service Detail Panels */
+.group-service-detail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin-top: -4px;
+  margin-bottom: 4px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+
+  to {
+    opacity: 1;
+    max-height: 600px;
+  }
+}
+
+.group-service-row.expanded {
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom: 1px solid var(--accent);
+  background: var(--bg-hover);
+}
+
+.svc-detail-content {
+  padding: 16px 20px;
+}
+
+.svc-detail-section {
+  margin-bottom: 16px;
+}
+
+.svc-detail-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.svc-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.svc-detail-row:last-child {
+  border-bottom: none;
+}
+
+.svc-detail-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 140px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.svc-detail-code {
+  background: var(--bg-primary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* Config service modal */
+#config-service-modal .modal-body {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+#config-service-modal select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+#config-service-modal textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+/* ── AI Auto-Repair Card ── */
+.ai-repair-card {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(189, 147, 249, 0.08);
+  border: 1px solid rgba(189, 147, 249, 0.25);
+  border-radius: 10px;
+  font-family: var(--font-primary, sans-serif);
+}
+
+.ai-repair-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 700;
+  color: #bd93f9;
+  margin-bottom: 8px;
+}
+
+.ai-repair-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.ai-repair-patches {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.ai-repair-patch {
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.ai-repair-patch:last-child {
+  border-bottom: none;
+}
+
+.ai-repair-patch code {
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}

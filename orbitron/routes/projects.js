@@ -128,7 +128,7 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url } = req.body;
         if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
@@ -148,9 +148,10 @@ router.put('/:id', async (req, res) => {
         auto_deploy = COALESCE($9, auto_deploy),
         custom_domain = COALESCE($10, custom_domain),
         ai_model = COALESCE($11, ai_model),
+        webhook_url = COALESCE($12, webhook_url),
         updated_at = NOW()
-       WHERE id = $12 AND user_id = $13 RETURNING *`,
-            [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, req.params.id, req.user.userId]
+       WHERE id = $13 AND user_id = $14 RETURNING *`,
+            [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id, req.user.userId]
         );
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
@@ -701,7 +702,7 @@ router.post('/:id/db-backup', async (req, res) => {
         // Decrypt env_vars before sending to service
         if (project.env_vars && typeof project.env_vars === 'string') {
             try {
-                const decrypted = require('../utils/crypto').decrypt(project.env_vars);
+                const decrypted = require('../db/crypto').decrypt(project.env_vars);
                 project.env_vars = decrypted ? JSON.parse(decrypted) : {};
             } catch (e) { project.env_vars = {}; }
         }
@@ -723,7 +724,7 @@ router.post('/:id/db-restore', async (req, res) => {
         // Decrypt env_vars before sending to service
         if (project.env_vars && typeof project.env_vars === 'string') {
             try {
-                const decrypted = require('../utils/crypto').decrypt(project.env_vars);
+                const decrypted = require('../db/crypto').decrypt(project.env_vars);
                 project.env_vars = decrypted ? JSON.parse(decrypted) : {};
             } catch (e) { project.env_vars = {}; }
         }
@@ -767,13 +768,19 @@ router.get('/:id/chat', async (req, res) => {
     }
 });
 
-// POST /api/projects/:id/chat - Send a message to AI
+// POST /api/projects/:id/chat - Send a message to AI (enhanced with context + actions)
 router.post('/:id/chat', async (req, res) => {
     try {
         const { message } = req.body;
         if (!message) return res.status(400).json({ error: 'Message is required' });
 
-        const project = await db.queryOne('SELECT id, ai_model, env_vars, ai_chat_history FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        // Fetch full project data for context
+        const project = await db.queryOne(
+            `SELECT id, name, type, status, ai_model, env_vars, ai_chat_history,
+                    build_command, start_command, github_url, subdomain, branch, port, custom_domain
+             FROM projects WHERE id = $1 AND user_id = $2`,
+            [req.params.id, req.user.userId]
+        );
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         let history = [];
@@ -799,15 +806,115 @@ router.post('/:id/chat', async (req, res) => {
         }
 
         const aiAnalyzer = require('../services/aiAnalyzer');
-
-        // Ensure ai_model has a safe default if not selected
         const model = project.ai_model || 'claude-4-6-opus-20260205';
 
-        // Get AI response
-        const aiResponseText = await aiAnalyzer.chat(history, model, envVars);
+        // Build project context for AI
+        const projectContext = {
+            name: project.name,
+            type: project.type || 'web',
+            status: project.status,
+            build_command: project.build_command,
+            start_command: project.start_command,
+            github_url: project.github_url,
+            url: project.custom_domain || `${project.subdomain}.twinverse.org`,
+        };
+
+        // Get recent deploy logs
+        const lastDeployment = await db.queryOne(
+            'SELECT logs, status FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT 1',
+            [project.id]
+        );
+        if (lastDeployment && lastDeployment.logs) {
+            const logLines = lastDeployment.logs.split('\n');
+            projectContext.recentLogs = logLines.slice(-100).join('\n');
+        }
+
+        // Collect source context for AI (auto-detect key files)
+        const projectDir = path.join(__dirname, '..', 'deployments', project.subdomain);
+        if (fs.existsSync(projectDir)) {
+            try {
+                const { collectSourceContext } = require('./source');
+                projectContext.sourceContext = collectSourceContext(projectDir);
+            } catch (e) {
+                console.error('[AI Chat] Source collection failed:', e.message);
+            }
+        }
+
+        // Get AI response with full context
+        let aiResponseText = await aiAnalyzer.chat(history, model, envVars, projectContext);
+
+        // ── Parse and execute ACTION tags ──
+        const actions = [];
+        const actionResults = [];
+
+        // [ACTION:FIX_AND_DEPLOY]
+        if (aiResponseText.includes('[ACTION:FIX_AND_DEPLOY]')) {
+            actions.push('FIX_AND_DEPLOY');
+            try {
+                if (lastDeployment && lastDeployment.logs && fs.existsSync(projectDir)) {
+                    const aiAutoRepair = require('../services/aiAutoRepair');
+                    const patchResult = await aiAutoRepair.analyzeAndGeneratePatch(
+                        lastDeployment.logs, projectDir, model, envVars
+                    );
+                    if (patchResult && patchResult.canFix && patchResult.patches.length > 0) {
+                        const applyResult = aiAutoRepair.applyPatches(projectDir, patchResult.patches);
+                        if (applyResult.applied > 0) {
+                            // Trigger redeploy
+                            const deployer = require('../services/deployer');
+                            const fullProject = await db.queryOne('SELECT * FROM projects WHERE id = $1', [project.id]);
+                            deployer.deploy(fullProject).catch(err => console.error(`[AI AutoFix] Redeploy error: ${err.message}`));
+                            actionResults.push({
+                                action: 'FIX_AND_DEPLOY',
+                                success: true,
+                                message: `✅ ${applyResult.applied}개 파일 수정 완료. 재배포가 시작되었습니다.`,
+                                patches: patchResult.patches.map(p => ({ file: p.file, explanation: p.explanation })),
+                                summary: patchResult.summary,
+                            });
+                        } else {
+                            actionResults.push({ action: 'FIX_AND_DEPLOY', success: false, message: '⚠️ 패치를 적용하지 못했습니다.' });
+                        }
+                    } else {
+                        actionResults.push({
+                            action: 'FIX_AND_DEPLOY',
+                            success: false,
+                            message: `ℹ️ ${patchResult?.summary || '자동 수정할 수 있는 에러가 아닙니다.'}`
+                        });
+                    }
+                } else {
+                    actionResults.push({ action: 'FIX_AND_DEPLOY', success: false, message: '배포 로그 또는 소스 디렉토리가 없습니다.' });
+                }
+            } catch (e) {
+                actionResults.push({ action: 'FIX_AND_DEPLOY', success: false, message: `오류: ${e.message}` });
+            }
+        }
+
+        // [ACTION:REDEPLOY]
+        if (aiResponseText.includes('[ACTION:REDEPLOY]')) {
+            actions.push('REDEPLOY');
+            try {
+                const deployer = require('../services/deployer');
+                const fullProject = await db.queryOne('SELECT * FROM projects WHERE id = $1', [project.id]);
+                deployer.deploy(fullProject).catch(err => console.error(`[AI Redeploy] Error: ${err.message}`));
+                actionResults.push({ action: 'REDEPLOY', success: true, message: '🚀 재배포가 시작되었습니다.' });
+            } catch (e) {
+                actionResults.push({ action: 'REDEPLOY', success: false, message: `재배포 실패: ${e.message}` });
+            }
+        }
+
+        // Clean ACTION tags from displayed message
+        aiResponseText = aiResponseText
+            .replace(/\[ACTION:FIX_AND_DEPLOY\]/g, '')
+            .replace(/\[ACTION:REDEPLOY\]/g, '')
+            .replace(/\[ACTION:READ_SOURCE:[^\]]*\]/g, '')
+            .trim();
 
         // Add assistant message
-        const assistantMsg = { role: 'assistant', content: aiResponseText, timestamp: new Date().toISOString() };
+        const assistantMsg = {
+            role: 'assistant',
+            content: aiResponseText,
+            timestamp: new Date().toISOString(),
+            actions: actionResults.length > 0 ? actionResults : undefined,
+        };
         history.push(assistantMsg);
 
         // Save updated history to DB

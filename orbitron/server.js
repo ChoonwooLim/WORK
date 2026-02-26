@@ -30,6 +30,7 @@ app.use('/api/projects', authMiddleware, require('./routes/projects'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/deployments', authMiddleware, require('./routes/deployments'));
 app.use('/api/groups', authMiddleware, require('./routes/groups'));
+app.use('/api/projects', authMiddleware, require('./routes/source'));
 app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 
 // Health check

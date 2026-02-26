@@ -119,6 +119,7 @@ function navigateTo(page) {
         'project-overview': `📋 ${currentProject?.name || ''} — 개요`,
         'project-logs': `📄 ${currentProject?.name || ''} — 로그`,
         'project-deployments': `🔄 ${currentProject?.name || ''} — 배포 이력`,
+        'project-editor': `📝 ${currentProject?.name || ''} — 소스 에디터`,
         'project-env': `🔧 ${currentProject?.name || ''} — 환경변수`,
         'project-console': `🖥 ${currentProject?.name || ''} — 콘솔`,
         'project-settings': `⚙️ ${currentProject?.name || ''} — 설정`,
@@ -158,6 +159,16 @@ function navigateTo(page) {
         const aiPage = document.getElementById('page-project-ai');
         if (aiPage) aiPage.style.display = 'none';
     }
+
+    if (page === 'project-editor') {
+        document.getElementById('page-project-editor').style.display = 'flex'; // Ensure flex layout for 2-pane editor
+        if (!monacoEditor) initMonacoEditor();
+        loadProjectFileTree();
+    } else {
+        const editorPage = document.getElementById('page-project-editor');
+        if (editorPage) editorPage.style.display = 'none';
+    }
+
     if (page === 'groups') loadGroups();
     if (page === 'group-overview') renderGroupOverview();
 }
@@ -167,6 +178,10 @@ function navigateTo(page) {
 async function loadProjects() {
     try {
         const res = await fetch(`${API}/projects`);
+        if (!res.ok) {
+            if (res.status === 401) return; // Will be handled by the global fetch interceptor
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const projects = await res.json();
 
         // Update Sidebar Options
@@ -521,6 +536,11 @@ function renderSettings() {
       <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인</label>
       <input type="text" id="set-custom-domain" value="${escapeHtml(p.custom_domain || '')}" placeholder="예: myapp.example.com">
       <div class="form-hint">도메인의 DNS A 레코드를 이 서버 IP로 설정한 후 입력하세요</div>
+    </div>
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <label style="font-size:15px;font-weight:600;">📣 알림 Webhook URL</label>
+      <input type="text" id="set-webhook-url" value="${escapeHtml(p.webhook_url || '')}" placeholder="https://discord.com/api/webhooks/...">
+      <div class="form-hint">배포 결과 및 AI 자동 복구 알림을 받을 Discord 또는 Slack 웹훅 URL을 입력하세요.</div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🔄 배포 모드</label>
@@ -986,6 +1006,8 @@ async function saveSettings() {
         if (anthropicKey) { targetEnvVars.ANTHROPIC_API_KEY = anthropicKey; envVarsChanged = true; }
         if (geminiKey) { targetEnvVars.GEMINI_API_KEY = geminiKey; envVarsChanged = true; }
 
+        const webhook_url = document.getElementById('set-webhook-url')?.value?.trim() || null;
+
         const payload = {
             name: document.getElementById('set-name').value,
             github_url: document.getElementById('set-github').value,
@@ -994,7 +1016,8 @@ async function saveSettings() {
             start_command: document.getElementById('set-start').value,
             auto_deploy,
             custom_domain,
-            ai_model
+            ai_model,
+            webhook_url
         };
         if (envVarsChanged) {
             payload.env_vars = targetEnvVars;
@@ -1041,10 +1064,57 @@ async function refreshLogs() {
     try {
         const res = await fetch(`${API}/deployments/${currentProject.id}/logs`);
         const data = await res.json();
-        document.getElementById('log-content').textContent = data.logs || '로그가 없습니다.';
+        const logEl = document.getElementById('log-content');
+
+        if (!data.logs) { logEl.textContent = '로그가 없습니다.'; return; }
+
+        // Check for AI Auto-Repair data
+        const repairMarker = '🤖 [AI_AUTO_REPAIR_DATA]';
+        const markerIdx = data.logs.indexOf(repairMarker);
+
+        if (markerIdx !== -1) {
+            const logPart = data.logs.substring(0, markerIdx);
+            const jsonPart = data.logs.substring(markerIdx + repairMarker.length).trim();
+
+            // Format log text with AI highlights
+            logEl.innerHTML = formatDeployLogWithAI(logPart);
+
+            // Parse auto-repair data
+            try {
+                const repairData = JSON.parse(jsonPart);
+                const repairCard = document.createElement('div');
+                repairCard.className = 'ai-repair-card';
+                repairCard.innerHTML = `
+                    <div class="ai-repair-header">
+                        <span>🤖 AI 자동 복구 성공</span>
+                        ${repairData.prUrl ? `<a href="${escapeHtml(repairData.prUrl)}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:12px;">📤 GitHub PR 보기</a>` : ''}
+                    </div>
+                    <div class="ai-repair-summary">📋 ${escapeHtml(repairData.summary || '')}</div>
+                    ${repairData.patches ? '<div class="ai-repair-patches">' +
+                        repairData.patches.map(p => `<div class="ai-repair-patch">📝 <code>${escapeHtml(p.file)}</code> — ${escapeHtml(p.explanation)}</div>`).join('') +
+                        '</div>' : ''}
+                    ${repairData.branch ? `<div style="margin-top:6px; font-size:12px; color:var(--text-muted);">🌿 브랜치: ${escapeHtml(repairData.branch)}</div>` : ''}
+                `;
+                logEl.appendChild(repairCard);
+            } catch (e) {
+                logEl.textContent += '\n' + jsonPart;
+            }
+        } else {
+            logEl.innerHTML = formatDeployLogWithAI(data.logs);
+        }
     } catch (error) {
         document.getElementById('log-content').textContent = '로그를 불러올 수 없습니다.';
     }
+}
+
+function formatDeployLogWithAI(logText) {
+    return escapeHtml(logText)
+        .replace(/🤖.*$/gm, '<span style="color:#bd93f9;font-weight:600;">$&</span>')
+        .replace(/✅.*$/gm, '<span style="color:var(--success);">$&</span>')
+        .replace(/❌.*$/gm, '<span style="color:var(--danger);">$&</span>')
+        .replace(/⚠️.*$/gm, '<span style="color:#f59e0b;">$&</span>')
+        .replace(/\[AI Auto-Repair\].*$/gm, '<span style="color:#bd93f9;">$&</span>')
+        .replace(/\[AI Error Analysis\]/g, '<span style="color:#bd93f9;font-weight:700;">[AI Error Analysis]</span>');
 }
 
 async function loadDeployments() {
@@ -1365,7 +1435,149 @@ async function loadDashboardResourceStats() {
     }
 }
 
-// ============ AI CHAT ============
+// ============ WEB IDE (MONACO EDITOR) ============
+let monacoEditor = null;
+let currentSourceFile = null;
+
+function initMonacoEditor() {
+    if (monacoEditor) return;
+    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+        monacoEditor = monaco.editor.create(document.getElementById('monaco-editor-container'), {
+            value: "// ⬅ 좌측에서 파일을 선택하여 소스 코드를 편집하세요.\n",
+            language: 'javascript',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 14,
+            fontFamily: 'var(--font-mono)'
+        });
+
+        monacoEditor.onDidChangeModelContent(() => {
+            if (currentSourceFile) {
+                document.getElementById('btn-save-file').disabled = false;
+                document.getElementById('editor-status').textContent = '변경사항 있음';
+            }
+        });
+    });
+}
+
+function getLanguageFromExtension(ext) {
+    const map = {
+        '.js': 'javascript', '.jsx': 'javascript',
+        '.ts': 'typescript', '.tsx': 'typescript',
+        '.py': 'python',
+        '.json': 'json',
+        '.html': 'html',
+        '.css': 'css',
+        '.md': 'markdown',
+        '.yml': 'yaml', '.yaml': 'yaml',
+        '.sql': 'sql',
+        '.sh': 'shell'
+    };
+    return map[ext] || 'plaintext';
+}
+
+async function loadProjectFileTree() {
+    if (!currentProject) return;
+    const container = document.getElementById('editor-file-tree');
+    container.innerHTML = '<div style="color:var(--text-muted); padding:10px;">파일 목록을 불러오는 중...</div>';
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/source/tree`);
+        if (!res.ok) throw new Error('파일 트리를 불러올 수 없습니다.');
+        const data = await res.json();
+
+        if (!data.tree || data.tree.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-muted); padding:10px;">파일이 없습니다. (배포 후 확인 가능)</div>';
+            return;
+        }
+
+        container.innerHTML = renderFileTree(data.tree, 0);
+    } catch (e) {
+        container.innerHTML = `<div style="color:var(--danger); padding:10px;">오류: ${e.message}</div>`;
+    }
+}
+
+function renderFileTree(nodes, depth) {
+    let html = '';
+    nodes.forEach(node => {
+        const padding = depth * 12 + 4;
+        if (node.type === 'dir') {
+            html += `<div style="padding:4px ${padding}px; cursor:pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">📁 ${escapeHtml(node.name)}</div>`;
+            html += `<div style="display:none;">${renderFileTree(node.children, depth + 1)}</div>`;
+        } else {
+            html += `<div class="file-tree-item" style="padding:4px ${padding}px;" onclick="openSourceFile('${node.path}', '${node.name}', '${node.extension}')">📄 ${escapeHtml(node.name)}</div>`;
+        }
+    });
+    return html;
+}
+
+async function openSourceFile(filePath, fileName, ext) {
+    if (!currentProject || !monacoEditor) return;
+
+    document.getElementById('editor-status').textContent = '파일 불러오는 중...';
+    document.getElementById('btn-save-file').disabled = true;
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/source/file?path=${encodeURIComponent(filePath)}`);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || '파일을 읽을 수 없습니다.');
+        }
+        const data = await res.json();
+
+        currentSourceFile = filePath;
+        document.getElementById('editor-current-file').innerHTML = `📝 <strong style="color:var(--accent);">${escapeHtml(filePath)}</strong>`;
+
+        const lang = getLanguageFromExtension(data.extension);
+        monaco.editor.setModelLanguage(monacoEditor.getModel(), lang);
+        monacoEditor.setValue(data.content);
+
+        document.getElementById('editor-status').textContent = '읽기 전용 상태가 아님 (수정 가능)';
+    } catch (e) {
+        document.getElementById('editor-status').textContent = `오류: ${e.message}`;
+    }
+}
+
+async function saveCurrentFile() {
+    if (!currentProject || !currentSourceFile || !monacoEditor) return;
+
+    const content = monacoEditor.getValue();
+    const btn = document.getElementById('btn-save-file');
+    const status = document.getElementById('editor-status');
+
+    btn.disabled = true;
+    btn.textContent = '저장 중...';
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/source/file`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: currentSourceFile, content })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || '저장 실패');
+        }
+
+        status.textContent = '✅ 저장되었습니다!';
+        toast('파일이 서버에 즉각 저장되었습니다.', 'success');
+
+        setTimeout(() => {
+            if (status.textContent.includes('저장되었습니다')) {
+                status.textContent = '명령 대기 중';
+            }
+        }, 3000);
+    } catch (e) {
+        status.textContent = `❌ ${e.message}`;
+        btn.disabled = false;
+        toast(`저장 오류: ${e.message}`, 'error');
+    } finally {
+        if (btn.textContent === '저장 중...') btn.textContent = '저장';
+    }
+}
 function formatMarkdownLite(text) {
     if (!text) return '';
     return text
@@ -1384,12 +1596,39 @@ function renderAiMessage(msg, isSystem = false) {
     const textAlign = isUser ? 'right' : 'left';
     const icon = isUser ? '🧑‍💻' : (isSystem ? '⚙️' : '🤖');
 
+    // Render action results if present
+    let actionsHtml = '';
+    if (msg.actions && msg.actions.length > 0) {
+        actionsHtml = msg.actions.map(a => {
+            const statusIcon = a.success ? '✅' : '⚠️';
+            const statusColor = a.success ? 'var(--success)' : 'var(--warning, #f59e0b)';
+            const actionLabel = a.action === 'FIX_AND_DEPLOY' ? '🔧 자동 수정 & 재배포' :
+                a.action === 'REDEPLOY' ? '🚀 재배포' : a.action;
+            let patchesHtml = '';
+            if (a.patches && a.patches.length > 0) {
+                patchesHtml = '<div style="margin-top:8px; font-size:12px;">' +
+                    a.patches.map(p => `<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">📝 <code style="color:var(--accent);">${escapeHtml(p.file)}</code> — ${escapeHtml(p.explanation)}</div>`).join('') +
+                    '</div>';
+            }
+            return `<div class="ai-action-result" style="margin-top:8px; padding:10px 14px; border-radius:8px; background:rgba(0,0,0,0.3); border-left:3px solid ${statusColor};">
+                <div style="display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px;">
+                    <span>${statusIcon}</span>
+                    <span>${actionLabel}</span>
+                </div>
+                <div style="margin-top:4px; font-size:13px; color:var(--text-muted);">${escapeHtml(a.message)}</div>
+                ${a.summary ? '<div style="margin-top:4px; font-size:12px; color:var(--text-secondary);">📋 ' + escapeHtml(a.summary) + '</div>' : ''}
+                ${patchesHtml}
+            </div>`;
+        }).join('');
+    }
+
     return `
     <div style="display:flex; flex-direction:column; align-items:${align}; width:100%;">
         <div style="display:flex; flex-direction:${isUser ? 'row-reverse' : 'row'}; gap:8px; max-width:85%;">
             <div style="font-size:20px; margin-top:4px;">${icon}</div>
             <div style="background:${bg}; border:1px solid ${border}; border-radius:8px; padding:12px 16px; text-align:${textAlign}; line-height:1.6; font-size:14px;">
                 ${isUser ? escapeHtml(msg.content) : formatMarkdownLite(msg.content)}
+                ${actionsHtml}
             </div>
         </div>
     </div>`;
@@ -1407,7 +1646,7 @@ async function loadAiChatHistory() {
         if (data.history && data.history.length > 0) {
             container.innerHTML = data.history.map(msg => renderAiMessage(msg)).join('');
         } else {
-            container.innerHTML = renderAiMessage({ role: 'assistant', content: '안녕하세요! 저는 소스 코드 오류, 배포 실패 문제 등을 돕는 궤도 전용 AI 어시스턴트입니다.\n무엇을 도와드릴까요?' });
+            container.innerHTML = renderAiMessage({ role: 'assistant', content: '안녕하세요! 저는 Orbitron AI 엔지니어입니다.\n\n**제가 할 수 있는 것들:**\n- 🔍 소스코드 분석 및 에러 진단\n- 🔧 배포 오류 자동 수정 & 재배포\n- 🚀 코드 수정 후 자동 재배포\n- 📤 GitHub PR 자동 생성\n\n무엇을 도와드릴까요?' });
         }
         container.scrollTop = container.scrollHeight;
     } catch (e) {
@@ -1981,22 +2220,19 @@ async function openGroup(id) {
 function renderGroupOverview() {
     const g = currentGroup;
     if (!g) {
-        document.getElementById('group-overview-content').innerHTML = `<div style="text-align:center; padding:80px 20px; color:var(--text-muted);"><p>그룹을 먼저 선택해주세요.</p></div>`;
+        document.getElementById('group-overview-content').innerHTML = '<div style="text-align:center; padding:80px 20px; color:var(--text-muted);"><p>\uadf8\ub8f9\uc744 \uba3c\uc800 \uc120\ud0dd\ud574\uc8fc\uc138\uc694.</p></div>';
         return;
     }
     const services = g.services || [];
-    const typeIcons = { web: '🌐', db_postgres: '🗄', db_redis: '🗄', worker: '⚙️' };
-    const statusLabels = { running: '✅ Running', stopped: '⏹ Stopped', building: '🔨 Building', failed: '❌ Failed' };
-    const statusColors = { running: '#3fb950', stopped: '#8b949e', building: '#d29922', failed: '#f85149' };
 
     document.getElementById('group-overview-content').innerHTML = `
     <div style="margin-bottom:24px;">
       <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; font-weight:600; letter-spacing:0.5px;">PROJECT</div>
       <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
         <h2 style="margin:0; font-size:28px;">${escapeHtml(g.name)}</h2>
-        <button class="btn btn-sm btn-ghost" onclick="deleteGroup(${g.id})" title="그룹 삭제" style="color:var(--danger);">🗑</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteGroup(${g.id})" title="\uadf8\ub8f9 \uc0ad\uc81c" style="color:var(--danger);">\ud83d\uddd1</button>
       </div>
-      ${g.description ? `<div style="color:var(--text-secondary); margin-top:4px; font-size:14px;">${escapeHtml(g.description)}</div>` : ''}
+      ${g.description ? '<div style="color:var(--text-secondary); margin-top:4px; font-size:14px;">' + escapeHtml(g.description) + '</div>' : ''}
     </div>
 
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; border-bottom:2px solid var(--accent); padding-bottom:8px;">
@@ -2007,32 +2243,137 @@ function renderGroupOverview() {
     <div class="group-services-table">
       <div class="group-services-header">
         <span>SERVICE NAME</span>
-        <span>STATUS</span>
+        <span>TYPE</span>
         <span>RUNTIME</span>
-        <span>UPDATED</span>
+        <span>STATUS</span>
         <span></span>
       </div>
-      ${services.length === 0 ? `<div style="text-align:center; padding:40px; color:var(--text-muted);">아직 서비스가 없습니다.</div>` :
-            services.map(s => `
-        <div class="group-service-row" onclick="openProjectFromGroup(${s.id})">
-          <span style="display:flex; align-items:center; gap:8px; font-weight:500;">
-            <span>${typeIcons[s.type] || '🌐'}</span>
-            ${escapeHtml(s.name)}
-          </span>
-          <span><span style="color:${statusColors[s.status] || '#8b949e'}; font-size:13px;">${statusLabels[s.status] || s.status}</span></span>
-          <span><span class="group-runtime-badge">${s.runtime_label || 'Web'}</span></span>
-          <span style="color:var(--text-muted); font-size:13px;">${timeAgo(s.updated_at)}</span>
-          <span>
-            <button class="btn btn-sm btn-ghost group-remove-btn" data-group="${g.id}" data-project="${s.id}" data-name="${escapeHtml(s.name)}" onclick="event.stopPropagation(); confirmRemoveService(this)" title="그룹에서 제거" style="font-size:11px;">✕</button>
-          </span>
-        </div>
-      `).join('')}
+      ${services.length === 0 ? '<div style="text-align:center; padding:40px; color:var(--text-muted);">\uc544\uc9c1 \uc11c\ube44\uc2a4\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.</div>' :
+            services.map((s, i) => renderServiceRow(s, i, g)).join('')}
     </div>
 
-    <button class="btn btn-ghost" onclick="openAddServiceModal(${g.id})" style="margin-top:12px; font-size:13px;">+ 서비스 추가</button>
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn btn-ghost" onclick="openAddServiceModal(${g.id})" style="font-size:13px;">+ \uae30\uc874 \ud504\ub85c\uc81d\ud2b8 \uc5f0\uacb0</button>
+      <button class="btn btn-ghost" onclick="openConfigServiceModal(${g.id})" style="font-size:13px;">+ \uc11c\ube0c \uc11c\ube44\uc2a4 \uc815\uc758</button>
+    </div>
 
     ${renderGroupDbConnections(services)}
     `;
+}
+
+function renderServiceRow(s, idx, g) {
+    const typeIcons = { web: '\ud83c\udf10', static: '\ud83d\udcc4', db_postgres: '\ud83d\uddc4', db_redis: '\ud83d\uddc4', worker: '\u2699\ufe0f' };
+    const statusLabels = { running: '\u2705 Running', stopped: '\u23f9 Stopped', building: '\ud83d\udd28 Building', failed: '\u274c Failed' };
+    const statusColors = { running: '#3fb950', stopped: '#8b949e', building: '#d29922', failed: '#f85149' };
+    const isConfig = s.source === 'config';
+    const isLinked = s.source === 'linked';
+    const svcId = isConfig ? 'cfg-' + s.key : 'lnk-' + s.id;
+    const typeLabel = s.type === 'static' ? 'Static Site' : s.type === 'db_postgres' ? 'PostgreSQL' : s.type === 'worker' ? 'Worker' : 'Web Service';
+    const runtime = isConfig ? (s.runtime || typeLabel) : (s.runtime_label || 'Web');
+    const clickAction = isConfig ? "toggleServiceDetail('" + svcId + "')" : (isLinked ? "toggleServiceDetail('" + svcId + "')" : "");
+
+    var statusHtml;
+    if (isConfig) {
+        statusHtml = '<span style="color:#8b949e; font-size:13px;">\ud83d\udccb Config</span>';
+    } else {
+        statusHtml = '<span style="color:' + (statusColors[s.status] || '#8b949e') + '; font-size:13px;">' + (statusLabels[s.status] || s.status) + '</span>';
+    }
+
+    var removeBtn;
+    if (isLinked) {
+        removeBtn = '<button class="btn btn-sm btn-ghost group-remove-btn" data-group="' + g.id + '" data-project="' + s.id + '" onclick="event.stopPropagation(); confirmRemoveService(this)" title="\uadf8\ub8f9\uc5d0\uc11c \uc81c\uac70" style="font-size:11px;">\u2715</button>';
+    } else {
+        removeBtn = '<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); removeConfigService(' + g.id + ", '" + s.key + "')" + ' title="\uc11c\ube44\uc2a4 \uc81c\uac70" style="font-size:11px;">\u2715</button>';
+    }
+
+    return '<div class="group-service-row" onclick="' + clickAction + '" data-svc-id="' + svcId + '">' +
+        '<span style="display:flex; align-items:center; gap:8px; font-weight:500;">' +
+        '<span>' + (typeIcons[s.type] || '\ud83c\udf10') + '</span>' +
+        escapeHtml(s.name) +
+        (isLinked ? ' <span style="font-size:10px; color:var(--accent); border:1px solid var(--accent); padding:0 4px; border-radius:3px; margin-left:4px;">LINKED</span>' : '') +
+        '</span>' +
+        '<span>' + typeLabel + '</span>' +
+        '<span><span class="group-runtime-badge">' + runtime + '</span></span>' +
+        '<span>' + statusHtml + '</span>' +
+        '<span>' + removeBtn + '</span>' +
+        '</div>' +
+        '<div class="group-service-detail" id="detail-' + svcId + '" style="display:none;">' +
+        renderServiceDetail(s) +
+        '</div>';
+}
+
+function renderServiceDetail(s) {
+    if (s.type === 'db_postgres' && s.connection_info) {
+        var c = s.connection_info;
+        return '<div class="svc-detail-content"><div class="svc-detail-section"><h4>\ud83d\udd0c Connection Info</h4>' +
+            '<div class="db-conn-grid">' +
+            dbConnRow('Hostname', c.hostname) +
+            dbConnRow('Port', String(c.port)) +
+            dbConnRow('Database', c.database) +
+            dbConnRow('Username', c.username) +
+            dbConnRow('Password', c.password, true) +
+            '</div>' +
+            '<div style="margin-top:16px; display:flex; flex-direction:column; gap:12px;">' +
+            dbConnBlock('Internal Database URL', c.internal_url, true) +
+            dbConnBlock('External Database URL', c.external_url, true) +
+            dbConnBlock('PSQL Command', c.psql_command, true) +
+            '</div></div></div>';
+    }
+
+    var html = '';
+    if (s.root_dir) {
+        html += '<div class="svc-detail-row"><span class="svc-detail-label">Root Directory</span><code class="svc-detail-code">' + escapeHtml(s.root_dir) + '</code></div>';
+    }
+    if (s.build_command) {
+        html += '<div class="svc-detail-row"><span class="svc-detail-label">Build Command</span><code class="svc-detail-code">' + escapeHtml(s.build_command) + '</code></div>';
+    }
+    if (s.start_command) {
+        html += '<div class="svc-detail-row"><span class="svc-detail-label">Start Command</span><code class="svc-detail-code">' + escapeHtml(s.start_command) + '</code></div>';
+    }
+
+    var envVars = s.env_vars || {};
+    var envKeys = typeof envVars === 'object' ? Object.keys(envVars) : [];
+    if (envKeys.length > 0) {
+        html += '<div class="svc-detail-section"><h4>\ud83d\udd27 Environment Variables</h4>';
+        for (var i = 0; i < envKeys.length; i++) {
+            var key = envKeys[i];
+            var val = envVars[key];
+            var isSensitive = /password|secret|key|token|url/i.test(key);
+            html += dbConnRow(key, String(val), isSensitive);
+        }
+        html += '</div>';
+    }
+
+    if (s.has_database_url && s.database_url) {
+        html += '<div class="svc-detail-section"><h4>\ud83d\udd17 Database</h4>' + dbConnBlock('DATABASE_URL', s.database_url, true) + '</div>';
+    }
+
+    if (s.source === 'linked' && s.tunnel_url) {
+        html += '<div class="svc-detail-row"><span class="svc-detail-label">Tunnel URL</span><a href="' + s.tunnel_url + '" target="_blank" style="color:var(--accent);">' + s.tunnel_url + '</a></div>';
+    }
+
+    if (s.source === 'linked') {
+        html += '<div style="margin-top:12px;"><button class="btn btn-sm btn-primary" onclick="openProjectFromGroup(' + s.id + ')">\ud504\ub85c\uc81d\ud2b8 \uc0c1\uc138 \ud398\uc774\uc9c0 \u2192</button></div>';
+    }
+
+    if (!html) {
+        html = '<div style="color:var(--text-muted); padding:8px;">\uc0c1\uc138 \uc815\ubcf4\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
+    }
+
+    return '<div class="svc-detail-content">' + html + '</div>';
+}
+
+function toggleServiceDetail(svcId) {
+    var el = document.getElementById('detail-' + svcId);
+    if (!el) return;
+    var row = document.querySelector('[data-svc-id="' + svcId + '"]');
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+        if (row) row.classList.add('expanded');
+    } else {
+        el.style.display = 'none';
+        if (row) row.classList.remove('expanded');
+    }
 }
 
 function renderGroupDbConnections(services) {
@@ -2278,8 +2619,94 @@ async function removeServiceFromGroup(groupId, projectId) {
         const res = await fetch(`${API}/groups/${groupId}/services/${projectId}`, { method: 'DELETE' });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
         toast('서비스가 그룹에서 제거되었습니다.', 'success');
-        // Refresh group overview
         const groupRes = await fetch(`${API}/groups/${groupId}`);
+        currentGroup = await groupRes.json();
+        renderGroupOverview();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// --- Config Service Modal ---
+let configServiceGroupId = null;
+
+function openConfigServiceModal(groupId) {
+    configServiceGroupId = groupId;
+    document.getElementById('config-service-modal').classList.add('active');
+    // Reset fields
+    ['cfg-svc-key', 'cfg-svc-name', 'cfg-svc-runtime', 'cfg-svc-rootdir', 'cfg-svc-build', 'cfg-svc-start', 'cfg-svc-envvars',
+        'cfg-db-host', 'cfg-db-port', 'cfg-db-name', 'cfg-db-user', 'cfg-db-pass'].forEach(id => {
+            var el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+    document.getElementById('cfg-svc-type').value = 'web';
+    document.getElementById('cfg-db-fields').style.display = 'none';
+    // Add event listener for type change to show/hide DB fields
+    document.getElementById('cfg-svc-type').onchange = function () {
+        document.getElementById('cfg-db-fields').style.display = this.value === 'db_postgres' ? 'block' : 'none';
+    };
+}
+
+function closeConfigServiceModal() {
+    document.getElementById('config-service-modal').classList.remove('active');
+    configServiceGroupId = null;
+}
+
+async function submitConfigService() {
+    var key = document.getElementById('cfg-svc-key').value.trim();
+    var name = document.getElementById('cfg-svc-name').value.trim();
+    if (!key || !name) { toast('키와 이름은 필수입니다.', 'error'); return; }
+
+    var type = document.getElementById('cfg-svc-type').value;
+    var runtime = document.getElementById('cfg-svc-runtime').value.trim();
+    var root_dir = document.getElementById('cfg-svc-rootdir').value.trim();
+    var build_command = document.getElementById('cfg-svc-build').value.trim();
+    var start_command = document.getElementById('cfg-svc-start').value.trim();
+
+    // Parse env vars
+    var envVarsText = document.getElementById('cfg-svc-envvars').value.trim();
+    var env_vars = {};
+    if (envVarsText) {
+        envVarsText.split('\n').forEach(function (line) {
+            var eqIdx = line.indexOf('=');
+            if (eqIdx > 0) {
+                env_vars[line.substring(0, eqIdx).trim()] = line.substring(eqIdx + 1).trim();
+            }
+        });
+    }
+
+    // DB connection info for PostgreSQL type
+    var connection_info = null;
+    if (type === 'db_postgres') {
+        connection_info = {
+            hostname: document.getElementById('cfg-db-host').value.trim() || 'dev-postgres',
+            port: parseInt(document.getElementById('cfg-db-port').value.trim()) || 5432,
+            database: document.getElementById('cfg-db-name').value.trim() || 'sodamfn',
+            username: document.getElementById('cfg-db-user').value.trim() || 'devuser',
+            password: document.getElementById('cfg-db-pass').value.trim() || 'devpass123'
+        };
+    }
+
+    try {
+        var res = await fetch(API + '/groups/' + configServiceGroupId + '/config/service', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, name, type, runtime, root_dir, build_command, start_command, env_vars, connection_info })
+        });
+        if (!res.ok) { var err = await res.json(); throw new Error(err.error); }
+        toast(name + ' 서비스가 추가되었습니다.', 'success');
+        closeConfigServiceModal();
+        // Refresh group overview
+        var groupRes = await fetch(API + '/groups/' + configServiceGroupId);
+        currentGroup = await groupRes.json();
+        renderGroupOverview();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removeConfigService(groupId, key) {
+    try {
+        var res = await fetch(API + '/groups/' + groupId + '/config/service/' + key, { method: 'DELETE' });
+        if (!res.ok) { var err = await res.json(); throw new Error(err.error); }
+        toast('서비스가 제거되었습니다.', 'success');
+        var groupRes = await fetch(API + '/groups/' + groupId);
         currentGroup = await groupRes.json();
         renderGroupOverview();
     } catch (e) { toast(e.message, 'error'); }

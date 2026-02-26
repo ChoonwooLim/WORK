@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS projects (
     container_id VARCHAR(100),
     tunnel_url VARCHAR(500),
     custom_domain VARCHAR(500),
+    webhook_url VARCHAR(500),
     auto_deploy BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS project_groups (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(200) NOT NULL,
     description TEXT DEFAULT '',
+    services_config JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -76,6 +78,9 @@ DO $$ BEGIN
 
     -- Project group support
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES project_groups(id) ON DELETE SET NULL;
+
+    -- Services config for project groups
+    ALTER TABLE project_groups ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '[]'::jsonb;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
