@@ -89,6 +89,7 @@ class Deployer extends EventEmitter {
             project.env_vars = envVars; // Important: Update the project object so dockerService sees decrypted vars!
 
             let containerId = null;
+            let containerName = null;
             let tunnelUrl = null;
 
             const isDatabase = project.type === 'db_postgres' || project.type === 'db_redis';
@@ -259,14 +260,18 @@ class Deployer extends EventEmitter {
                     previousImageId = stdout.trim() || null;
                 } catch { }
 
-                // Step 2: Build Docker image
-                this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 중...');
-                logs += '\nBuilding Docker image...\n';
+                // Step 2: Build Docker image (or Compose service)
+                this.emitProgress(project.id, 'build', 'Docker 이미지(또는 Compose) 빌드 중...');
+                logs += '\nBuilding Docker image (or pulling Compose)...\n';
+                let isCompose = false;
                 try {
                     const buildResult = await dockerService.buildImage(project);
                     logs += buildResult.logs;
+                    if (buildResult.isCompose) {
+                        isCompose = true;
+                    }
                     logs += '\n--- Build complete ---\n';
-                    this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 완료');
+                    this.emitProgress(project.id, 'build', 'Docker 빌드 완료');
                 } catch (buildError) {
                     // ── Feature 8: Rollback to previous image on build failure ──
                     if (previousImageId) {
@@ -298,26 +303,39 @@ class Deployer extends EventEmitter {
                     // Worker containers run natively, attached to network but no ports exposed
                     this.emitProgress(project.id, 'container', '백그라운드 워커 시작 중...');
                     logs += '\nStarting Background Worker container...\n';
-                    containerId = await dockerService.startContainer(project);
-                    logs += `Container started: ${containerId}\n`;
+                    const startRes = await dockerService.startContainer(project);
+                    containerId = startRes.containerId;
+                    containerName = startRes.containerName;
+                    logs += `Container started: ${containerId} (${containerName})\n`;
                     this.emitProgress(project.id, 'container', '백그라운드 워커 시작 완료');
 
                     // Skip the public Nginx configs and Tunnels entirely
                     this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (백그라운드 워커)');
                     this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (백그라운드 워커)');
                 } else {
-                    // Step 3: Start container
+                    // Step 3: Start container (or Compose stack)
                     this.emitProgress(project.id, 'container', '컨테이너 시작 중...');
                     logs += '\nStarting container...\n';
-                    containerId = await dockerService.startContainer(project);
-                    logs += `Container started: ${containerId}\n`;
+
+                    let startRes;
+                    if (isCompose) {
+                        logs += 'Using docker compose up...\n';
+                        startRes = await dockerService.startCompose(project);
+                        if (startRes.logs) logs += startRes.logs + '\n';
+                    } else {
+                        startRes = await dockerService.startContainer(project);
+                    }
+
+                    containerId = startRes.containerId;
+                    containerName = startRes.containerName;
+                    logs += `Container started: ${containerId} (${containerName})\n`;
                     this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
 
-                    // Step 4: Update nginx config
-                    this.emitProgress(project.id, 'nginx', '프록시 설정 중...');
-                    logs += '\nUpdating nginx config...\n';
-                    nginxService.addProject(project);
-                    logs += 'nginx reloaded.\n';
+                    // Step 4: Update nginx config (Blue-Green Swap)
+                    this.emitProgress(project.id, 'nginx', '프록시 설정(Blue-Green Swap) 중...');
+                    logs += '\nUpdating nginx config for new container target...\n';
+                    await nginxService.addProject(project, containerName);
+                    logs += 'nginx reloaded to point to new container.\n';
                     this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
 
                     // Step 5: Reuse existing tunnel or create new one
@@ -344,7 +362,7 @@ class Deployer extends EventEmitter {
             // Step 6: Update DB
             await db.query(
                 `UPDATE projects SET status = 'running', container_id = $1, tunnel_url = $2, updated_at = NOW() WHERE id = $3`,
-                [containerId, tunnelUrl, project.id]
+                [containerName, tunnelUrl, project.id]
             );
             await db.query(
                 `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,
@@ -352,8 +370,7 @@ class Deployer extends EventEmitter {
             );
 
             // ── Feature 5: Auto DB migration ──
-            if (containerId) {
-                const containerName = `orbitron-${project.subdomain}`;
+            if (containerId && containerName) {
                 try {
                     // Detect and run Prisma migrations
                     const { stdout: hasPrisma } = await execAsync(`docker exec ${containerName} test -d /app/prisma 2>/dev/null && echo yes || true`);
@@ -429,6 +446,14 @@ class Deployer extends EventEmitter {
             }
 
             logs += '\n✅ Deployment successful!\n';
+
+            // Clean up old Blue-Green containers AFTER successful routing
+            if (containerName && !isWorker) {
+                logs += '\n🧹 이전 버전 컨테이너 정리 중...\n';
+                await dockerService.cleanupOldContainers(project.subdomain, containerName);
+                logs += '  ✅ 이전 컨테이너 정리 완료\n';
+            }
+
             this.emitProgress(project.id, 'done', '배포가 성공적으로 완료되었습니다!', 'success');
 
             if (project.webhook_url) {
@@ -603,9 +628,28 @@ class Deployer extends EventEmitter {
     // Stop a project
     async stop(project) {
         const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
+        const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
 
         if (!isPixelStreaming) {
+            // Check if this is a Docker Compose project
+            const isCompose = project.container_id && project.container_id.startsWith('compose-');
+            if (isCompose) {
+                try {
+                    await execAsync(`cd ${projectDir} && docker compose down`);
+                } catch (e) { }
+            }
+
+            // Stop the known container (Blue-Green name from DB)
+            if (project.container_id && !project.container_id.startsWith('compose-')) {
+                await dockerService.stopContainer(project.container_id);
+            }
+
+            // Also clean up any leftover hash-suffixed containers
+            await dockerService.cleanupOldContainers(project.subdomain, '__none__');
+
+            // Legacy: also try the old-style name just in case
             await dockerService.stopContainer(`orbitron-${project.subdomain}`);
+
             await nginxService.removeProject(project.subdomain);
             await tunnelService.deleteTunnel(project.subdomain);
         }

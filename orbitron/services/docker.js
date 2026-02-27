@@ -12,9 +12,23 @@ if (!fs.existsSync(PROJECTS_DIR)) {
 }
 
 class DockerService {
-    // Build a Docker image for a project
+    // Build a Docker image for a project (or skip if Compose)
     async buildImage(project) {
         const projectDir = path.join(PROJECTS_DIR, project.subdomain);
+
+        // --- Compose Check Bypass ---
+        if (fs.existsSync(path.join(projectDir, 'docker-compose.yml')) || fs.existsSync(path.join(projectDir, 'docker-compose.yaml'))) {
+            return new Promise((resolve, reject) => {
+                exec(`cd ${projectDir} && docker compose pull && docker compose build`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                    if (error) {
+                        reject(new Error(`Compose Build failed: ${stderr}`));
+                    } else {
+                        resolve({ isCompose: true, logs: stdout + stderr });
+                    }
+                });
+            });
+        }
+
         const imageName = `orbitron-${project.subdomain}`;
 
         // Check if a custom Dockerfile exists (marked with "# CUSTOM" on first line)
@@ -476,14 +490,13 @@ EXPOSE ${port}
 `;
     }
 
-    // Start a container for a project
+    // Start a container for a project (creates a new uniquely named container for Blue-Green deployment)
     async startContainer(project) {
         const imageName = `orbitron-${project.subdomain}`;
-        const containerName = `orbitron-${project.subdomain}`;
+        // Generate a unique suffix for Zero-Downtime Blue-Green deployment
+        const deployHash = Date.now().toString(36);
+        const containerName = `orbitron-${project.subdomain}-${deployHash}`;
         let port = project.port || 3000;
-
-        // Stop existing container if any
-        await this.stopContainer(containerName);
 
         // Build env vars string (filter out internal Orbitron keys)
         const envVars = project.env_vars || {};
@@ -542,7 +555,45 @@ EXPOSE ${port}
                 if (error) {
                     reject(new Error(`Start failed: ${stderr}`));
                 } else {
-                    resolve(stdout.trim());
+                    resolve({ containerId: stdout.trim(), containerName, port });
+                }
+            });
+        });
+    }
+
+    // Start a Docker Compose project
+    async startCompose(project) {
+        const projectDir = path.join(PROJECTS_DIR, project.subdomain);
+
+        // Down exact compose group first to avoid orphans
+        try {
+            await execAsync(`cd ${projectDir} && docker compose down`);
+        } catch (e) { }
+
+        const deployHash = Date.now().toString(36);
+
+        // Map Orbitron network to compose (optional, user defined in compose overrides usually)
+        // Here we just let standard compose up happen. We assume the web service exposes ports to host.
+        return new Promise((resolve, reject) => {
+            exec(`cd ${projectDir} && docker compose up -d`, { maxBuffer: 1024 * 1024 * 50 }, async (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Compose Start failed: ${stderr}`));
+                } else {
+                    // Try to guess the main web container name using docker compose ps
+                    let mainContainer = `orbitron-${project.subdomain}-compose-${deployHash}`;
+                    try {
+                        const { stdout: psOut } = await execAsync(`cd ${projectDir} && docker compose ps --services`);
+                        const services = psOut.trim().split('\n');
+                        const webService = services.find(s => s.includes('web') || s.includes('app') || s.includes('api')) || services[0];
+                        if (webService) {
+                            const { stdout: nameOut } = await execAsync(`cd ${projectDir} && docker compose ps -q ${webService} | xargs docker inspect -f '{{.Name}}' | sed 's|^/||'`);
+                            if (nameOut.trim()) {
+                                mainContainer = nameOut.trim();
+                            }
+                        }
+                    } catch (e) { }
+
+                    resolve({ containerId: 'compose-' + deployHash, containerName: mainContainer, port: project.port || 3000, logs: stdout + stderr });
                 }
             });
         });
@@ -606,6 +657,24 @@ EXPOSE ${port}
             await execAsync(`docker stop ${containerName} 2>/dev/null && docker rm ${containerName} 2>/dev/null`);
         } catch (e) {
             // Container doesn't exist or already stopped, that's fine
+        }
+    }
+
+    // Clean up old containers belonging to this project (except the active one)
+    async cleanupOldContainers(subdomain, keepContainerName) {
+        try {
+            // Find all containers starting with orbitron-subdomain
+            const { stdout } = await execAsync(`docker ps -a --format '{{.Names}}' | grep '^orbitron-${subdomain}-' || true`);
+            const containers = stdout.trim().split('\n').filter(Boolean);
+
+            for (const name of containers) {
+                if (name !== keepContainerName) {
+                    console.log(`🧹 Cleaning up old container: ${name}`);
+                    await this.stopContainer(name);
+                }
+            }
+        } catch (e) {
+            console.error(`Failed to cleanup old containers for ${subdomain}:`, e);
         }
     }
 

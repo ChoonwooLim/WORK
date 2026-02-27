@@ -225,28 +225,90 @@ router.get('/:id/stats', async (req, res) => {
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
-        const containerName = `orbitron-${project.subdomain}`;
-        try {
-            const { stdout: raw } = await execAsync(
-                `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.PIDs}}' ${containerName} 2>/dev/null`,
-                { timeout: 5000 }
-            );
-            const [cpu, memUsage, memPerc, netIO, pids] = raw.trim().split('|');
+        // If container_id is known (e.g. compose-xxx or specific hash name) use it, otherwise fallback
+        const containerIdent = project.container_id || `orbitron-${project.subdomain}`;
 
-            // Get uptime
-            const { stdout: uptimeRaw } = await execAsync(
-                `docker inspect --format '{{.State.StartedAt}}' ${containerName} 2>/dev/null`,
-                { timeout: 3000 }
-            );
-            const startedAt = new Date(uptimeRaw);
-            const uptimeMs = Date.now() - startedAt.getTime();
+        try {
+            let cpu = 0, memUsage = 0, memPerc = 0, netIO = '0B / 0B', pids = 0, uptimeMs = 0, uptimeRaw = '';
+
+            if (containerIdent.startsWith('compose-')) {
+                // Docker Compose project: Aggregate stats
+                const projectDir = path.join(__dirname, '..', 'deployments', project.subdomain);
+
+                // Get all container IDs for this compose project
+                const { stdout: psOut } = await execAsync(`cd ${projectDir} && docker compose ps -q`, { timeout: 5000 });
+                const containerIds = psOut.trim().split('\n').filter(Boolean);
+
+                if (containerIds.length > 0) {
+                    const statsPromises = containerIds.map(async (cid) => {
+                        const { stdout } = await execAsync(
+                            `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.PIDs}}' ${cid} 2>/dev/null`,
+                            { timeout: 5000 }
+                        );
+                        return stdout.trim();
+                    });
+
+                    const statsResults = await Promise.all(statsPromises);
+
+                    statsResults.forEach(raw => {
+                        if (!raw) return;
+                        const [c, mUse, mP, nIO, p] = raw.split('|');
+                        cpu += parseFloat(c.replace('%', '')) || 0;
+                        memPerc += parseFloat(mP.replace('%', '')) || 0;
+                        pids += parseInt(p) || 0;
+
+                        // Parse Memory Usage (e.g. 10.5MiB / 1GiB -> 10.5)
+                        const memMatch = mUse.match(/([0-9.]+)([a-zA-Z]+)/);
+                        if (memMatch) {
+                            let val = parseFloat(memMatch[1]);
+                            if (memMatch[2].includes('Gi')) val *= 1024; // unify to MiB
+                            if (memMatch[2].includes('Ki')) val /= 1024;
+                            memUsage += val;
+                        }
+                    });
+
+                    // Simple representation for Compose memUsage
+                    memUsage = `${memUsage.toFixed(2)}MiB`;
+                    memPerc = (memPerc / containerIds.length).toFixed(2); // Average percentage
+                    cpu = cpu.toFixed(2);
+
+                    // Uptime based on the first container
+                    const { stdout: upRaw } = await execAsync(`docker inspect --format '{{.State.StartedAt}}' ${containerIds[0]} 2>/dev/null`);
+                    uptimeRaw = upRaw.trim();
+                    const startedAt = new Date(uptimeRaw);
+                    uptimeMs = Date.now() - startedAt.getTime();
+                } else {
+                    throw new Error("No running compose containers");
+                }
+            } else {
+                // Native single container
+                const { stdout: raw } = await execAsync(
+                    `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.PIDs}}' ${containerIdent} 2>/dev/null`,
+                    { timeout: 5000 }
+                );
+                const [c, mUse, mP, nIO, p] = raw.trim().split('|');
+                cpu = c.replace('%', '').trim();
+                memUsage = mUse.trim();
+                memPerc = mP.replace('%', '').trim();
+                netIO = nIO.trim();
+                pids = p.trim();
+
+                // Get uptime
+                const { stdout: upRaw } = await execAsync(
+                    `docker inspect --format '{{.State.StartedAt}}' ${containerIdent} 2>/dev/null`,
+                    { timeout: 3000 }
+                );
+                uptimeRaw = upRaw.trim();
+                const startedAt = new Date(uptimeRaw);
+                uptimeMs = Date.now() - startedAt.getTime();
+            }
 
             res.json({
-                cpu: cpu.replace('%', '').trim(),
-                memUsage: memUsage.trim(),
-                memPercent: memPerc.replace('%', '').trim(),
-                netIO: netIO.trim(),
-                pids: pids.trim(),
+                cpu,
+                memUsage,
+                memPercent: memPerc,
+                netIO,
+                pids,
                 uptime: uptimeMs,
                 startedAt: uptimeRaw
             });
@@ -335,7 +397,7 @@ router.post('/:id/exec', async (req, res) => {
         const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
-        const containerName = `orbitron-${project.subdomain}`;
+        const containerName = project.container_id || `orbitron-${project.subdomain}`;
         // Sanitize: block dangerous commands
         const blocked = ['rm -rf /', 'mkfs', 'dd if=', ':(){', 'fork'];
         if (blocked.some(b => command.includes(b))) {

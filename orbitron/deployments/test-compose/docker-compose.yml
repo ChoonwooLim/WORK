@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  web:
+    image: node:20-alpine
+    command: sh -c "mkdir -p /app && echo 'const http = require(\"http\"); http.createServer((req, res) => res.end(\"Hello from Compose Web Version 1!\")).listen(3000);' > /app/index.js && node /app/index.js"
+    ports:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+  redis:
+    image: redis:alpine
