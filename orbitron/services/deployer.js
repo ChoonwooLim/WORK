@@ -91,6 +91,9 @@ class Deployer extends EventEmitter {
             let containerId = null;
             let containerName = null;
             let tunnelUrl = null;
+            let isCompose = false;
+            let isPixelStreaming = false;
+            let isWorker = false;
 
             const isDatabase = project.type === 'db_postgres' || project.type === 'db_redis';
 
@@ -262,8 +265,7 @@ class Deployer extends EventEmitter {
 
                 // Step 2: Build Docker image (or Compose service)
                 this.emitProgress(project.id, 'build', 'Docker 이미지(또는 Compose) 빌드 중...');
-                logs += '\nBuilding Docker image (or pulling Compose)...\n';
-                let isCompose = false;
+                logs += '\nBuilding Docker image (or pulling Compose)....\n';
                 try {
                     const buildResult = await dockerService.buildImage(project);
                     logs += buildResult.logs;
@@ -288,8 +290,8 @@ class Deployer extends EventEmitter {
                     }
                 }
 
-                const isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
-                const isWorker = project.type === 'worker';
+                isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
+                isWorker = project.type === 'worker';
 
                 if (isPixelStreaming) {
                     // For Pixel Streaming, the Matchmaker handles dynamic containers and ports.

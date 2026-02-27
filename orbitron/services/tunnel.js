@@ -60,6 +60,19 @@ class TunnelService {
         const hostname = `${key}.${TUNNEL_DOMAIN}`;
         const fixedUrl = `https://${hostname}`;
 
+        // ── Skip if the systemd tunnel service is already active ──
+        try {
+            const { stdout: status } = await execAsync(
+                `systemctl is-active cloudflared-${tunnelName} 2>/dev/null || true`,
+                { timeout: 5000 }
+            );
+            if (status.trim() === 'active') {
+                console.log(`✅ Tunnel systemd service already active for ${project.name}, skipping restart.`);
+                TUNNEL_PROCS[key] = { url: fixedUrl, tunnelName, project, key, isSystemd: true };
+                return fixedUrl;
+            }
+        } catch (e) { /* ignore check failure, continue with normal flow */ }
+
         try {
             // Step 1: Create tunnel if it doesn't exist
             const tunnelId = await this._ensureTunnel(tunnelName);

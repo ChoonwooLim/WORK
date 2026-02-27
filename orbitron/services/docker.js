@@ -502,7 +502,10 @@ EXPOSE ${port}
         const envVars = project.env_vars || {};
         const envFlags = Object.entries(envVars)
             .filter(([k]) => !k.startsWith('_ORBITRON_'))
-            .map(([k, v]) => `-e ${k}="${v}"`)
+            .map(([k, v]) => {
+                const escapedVal = String(v).replace(/'/g, "'\\''");
+                return `-e ${k}='${escapedVal}'`;
+            })
             .join(' ');
 
         // ── Feature 1: Auto-mount persistent volumes ──
