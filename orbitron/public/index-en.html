@@ -373,6 +373,20 @@
                 <p>Fully supports hardware mounting paths to perfectly prevent data loss. Archive and compress all
                     volumes' media and source code with a single click.</p>
             </div>
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <h3>Zero-Downtime Deployments</h3>
+                <p>Never experience a single second of downtime during app updates. The new version runs flawlessly in
+                    the background before Nginx proxy routing instantly snap-switches (Blue-Green) without user
+                    interruption.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🐳</div>
+                <h3>Multi-Container Orchestration</h3>
+                <p>Don't just launch a single web app. If a <code>docker-compose.yml</code> file is detected, dozens of
+                    complex containers—Node.js, Redis, Celery Workers—are orchestrated and deployed together as one
+                    cohesive system.</p>
+            </div>
         </div>
     </section>
 
@@ -426,6 +440,32 @@
                             3. Compress the extracted Linux Server root folder into a ZIP file and upload it.<br>
                             4. Once Vulkan tools are setup and GPU port mapping concludes in the background, a "🎮 Start
                             Game" button will appear. Clicking it takes you to the external Web Matchmaker Client.</p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>🐳 Deploying Multi-Container Compose Apps</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 Overview:</strong> A massive orchestration feature that deploys <strong>gigantic
+                                systems with multiple interlocking containers</strong>—frontend, backend servers, Redis
+                            cache, queue workers, etc.—all with a single Push.</p>
+                        <p><strong>✅ Use Case:</strong> When your Node.js app and real-time chatting Redis need to be
+                            bundled together. No need to deploy them separately; simply place a Compose file in your
+                            project, and they will run automatically on a unified network.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 How to Use:</h4>
+                        <p>1. Create a <code>docker-compose.yml</code> file at the root of your project folder to define
+                            your container architecture.<br>
+                            2. Set the main traffic receiver by including <code>web</code>, <code>app</code>, or
+                            <code>api</code> in the service name and specify the port.<br>
+                            3. Link the repository and deploy from the dashboard.<br>
+                            4. Orbitron detects the Compose file, skips single-build, <strong>spins up the entire stack
+                                as background multi-containers, and automatically routes traffic to the main
+                                service.</strong>
+                        </p>
                     </div>
                 </div>
 

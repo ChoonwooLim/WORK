@@ -589,6 +589,8 @@ EXPOSE ${port}
                             const { stdout: nameOut } = await execAsync(`cd ${projectDir} && docker compose ps -q ${webService} | xargs docker inspect -f '{{.Name}}' | sed 's|^/||'`);
                             if (nameOut.trim()) {
                                 mainContainer = nameOut.trim();
+                                // Attach main compose container to Orbitron internal network to allow Nginx Proxy to hit it
+                                await execAsync(`docker network connect orbitron_internal ${mainContainer}`).catch(() => { });
                             }
                         }
                     } catch (e) { }

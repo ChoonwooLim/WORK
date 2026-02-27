@@ -362,7 +362,7 @@ class Deployer extends EventEmitter {
             // Step 6: Update DB
             await db.query(
                 `UPDATE projects SET status = 'running', container_id = $1, tunnel_url = $2, updated_at = NOW() WHERE id = $3`,
-                [containerName, tunnelUrl, project.id]
+                [isCompose ? containerId : containerName, tunnelUrl, project.id]
             );
             await db.query(
                 `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,

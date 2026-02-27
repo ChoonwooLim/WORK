@@ -400,6 +400,18 @@
                 <p>데이터 유실을 완벽히 방어하기 위해 DATA 드라이브 하드웨어 마운트를 완벽히 지원하며, 클릭 한 번으로 모든 볼륨의 미디어 및 소스 코드를 아카이브 압축합니다.</p>
             </div>
             <div class="card">
+                <div class="card-icon">⚡</div>
+                <h3>무중단 배포 (Zero-Downtime)</h3>
+                <p>앱 업데이트 시 단 1초의 끊김도 용납하지 않습니다. 신규 버전을 백그라운드에서 완벽히 구동시키고 Nginx 프록시 라우팅을 스냅 스위칭(Blue-Green)하여 사용자는 눈치채지
+                    못합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🐳</div>
+                <h3>멀티 컨테이너 (Docker Compose)</h3>
+                <p>웹 앱 하나만 띄우는 것이 아닙니다. <code>docker-compose.yml</code> 파일만 감지되면, Node.js, Redis, Celery Worker 등 수십 개의
+                    복합 컨테이너를 한 몸처럼 엮어 배포합니다.</p>
+            </div>
+            <div class="card">
                 <div class="card-icon">🗄</div>
                 <h3>매니지드 데이터베이스</h3>
                 <p>PostgreSQL과 Redis 엔진을 원클릭으로 가동합니다. 별도 설정 없이 랜덤 비밀번호와 안전한 Connection String을 즉시 발급받아 웹앱과 연동하세요.</p>
@@ -538,6 +550,28 @@
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>🐳 멀티 컨테이너 (Docker Compose) 자동 배포</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 단순한 웹사이트 하나가 아니라 프론트엔드, 백엔드 서버, Redis 캐시, 큐 워커 등 <strong>여러 개의 컨테이너가
+                                복합적으로 맞물려 돌아가는 거대한 시스템</strong>을 단 한 번의 Push로 배포해 주는 대규모 오케스트레이션 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> Node.js 앱과 실시간 채팅을 위한 Redis가 하나로 묶여 있어야 할 때, 각각 따로 배포할 필요 없이 프로젝트
+                            안에 Compose 파일만 두면 알아서 이들을 단일 네트워크로 엮어 서비스합니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. 프로젝트 폴더 최상단에 <code>docker-compose.yml</code> 파일을 생성하여 컨테이너 아키텍처를 정의합니다.<br>
+                            2. <code>web</code>, <code>app</code>, <code>api</code> 중 하나의 이름이 들어간 서비스를 메인 트래픽 수신기로 설정하고
+                            포트를 명시합니다.<br>
+                            3. 대시보드에서 해당 저장소를 연동하고 배포합니다.<br>
+                            4. 시스템이 Compose 파일을 감지하면 단일 빌드를 건너뛰고 <strong>전체 스택을 백그라운드 멀티 컨테이너로 가동하며 메인 서비스에 트래픽을 자동
+                                라우팅</strong>해 줍니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>🔒 프라이빗 네트워크 (Private Network)</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -639,7 +673,8 @@ backend:
 
 spa: true                     <span class="yaml-comment"># SPA 라우팅 자동 처리 (기본값: true)</span></code></pre>
                         <p>⬆ Orbitron이 자동으로: ① Node.js로 프론트엔드 빌드 → ② Python 백엔드에 정적 파일 복사 → ③ SPA 라우팅 래퍼 생성 → ④
-                            <code>localhost</code> API URL 자동 제거</p>
+                            <code>localhost</code> API URL 자동 제거
+                        </p>
 
                         <p class="sample-title">🔥 샘플 2: Vue + Express 풀스택</p>
                         <pre><code>type: fullstack
