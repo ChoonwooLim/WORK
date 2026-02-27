@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron - 요금제</title>
+    <meta name="description" content="Orbitron의 투명하고 예측 가능한 요금 정책. 개인 프로젝트부터 엔터프라이즈까지.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #07090f;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.4);
+            --purple: #bd93f9;
+            --purple-glow: rgba(189, 147, 249, 0.4);
+            --pink: #ff79c6;
+            --green: #50fa7b;
+            --orange: #ffb86c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: radial-gradient(circle at 15% 50%, rgba(189, 147, 249, 0.08), transparent 50%), radial-gradient(circle at 85% 30%, rgba(88, 166, 255, 0.08), transparent 50%);
+            animation: pulseBg 10s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulseBg {
+            0% {
+                transform: scale(1)
+            }
+
+            100% {
+                transform: scale(1.05)
+            }
+        }
+
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-left: 24px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-main);
+        }
+
+        .nav-links a.active {
+            color: var(--accent);
+        }
+
+        .btn-login {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Hero */
+        .pricing-hero {
+            text-align: center;
+            padding: 80px 24px 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .pricing-hero h1 {
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 16px;
+            background: linear-gradient(to right, #fff, #8b949e);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .pricing-hero p {
+            font-size: 18px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Plan Cards */
+        .plans {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .plan-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            transition: transform 0.3s, border-color 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .plan-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-hover);
+        }
+
+        .plan-card.featured {
+            border-color: var(--purple);
+            box-shadow: 0 0 30px rgba(189, 147, 249, 0.15);
+        }
+
+        .plan-header {
+            padding: 28px 24px 20px;
+        }
+
+        .plan-header.starter {
+            background: linear-gradient(135deg, rgba(80, 250, 123, 0.15), rgba(80, 250, 123, 0.03));
+        }
+
+        .plan-header.pro {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.2), rgba(88, 166, 255, 0.03));
+        }
+
+        .plan-header.team {
+            background: linear-gradient(135deg, rgba(189, 147, 249, 0.2), rgba(189, 147, 249, 0.03));
+        }
+
+        .plan-header.enterprise {
+            background: linear-gradient(135deg, rgba(255, 184, 108, 0.15), rgba(255, 184, 108, 0.03));
+        }
+
+        .plan-name {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .plan-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            line-height: 1.4;
+        }
+
+        .plan-price {
+            font-size: 36px;
+            font-weight: 800;
+        }
+
+        .plan-price span {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .plan-body {
+            padding: 20px 24px 28px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .plan-btn {
+            display: block;
+            text-align: center;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .plan-btn.starter-btn {
+            background: rgba(80, 250, 123, 0.15);
+            color: var(--green);
+            border: 1px solid rgba(80, 250, 123, 0.3);
+        }
+
+        .plan-btn.starter-btn:hover {
+            background: rgba(80, 250, 123, 0.25);
+        }
+
+        .plan-btn.pro-btn {
+            background: linear-gradient(135deg, var(--accent), #3b82f6);
+            color: white;
+        }
+
+        .plan-btn.pro-btn:hover {
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+
+        .plan-btn.team-btn {
+            background: linear-gradient(135deg, var(--purple), var(--pink));
+            color: white;
+        }
+
+        .plan-btn.team-btn:hover {
+            box-shadow: 0 4px 20px var(--purple-glow);
+        }
+
+        .plan-btn.enterprise-btn {
+            background: rgba(255, 184, 108, 0.15);
+            color: var(--orange);
+            border: 1px solid rgba(255, 184, 108, 0.3);
+        }
+
+        .plan-btn.enterprise-btn:hover {
+            background: rgba(255, 184, 108, 0.25);
+        }
+
+        .plan-includes {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .plan-features {
+            list-style: none;
+            flex: 1;
+        }
+
+        .plan-features li {
+            font-size: 13px;
+            padding: 6px 0;
+            color: var(--text-muted);
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .plan-features li::before {
+            content: '✓';
+            color: var(--green);
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        /* Compute Pricing */
+        .compute {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .section-sub {
+            color: var(--text-muted);
+            font-size: 16px;
+            margin-bottom: 48px;
+        }
+
+        .compute-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 24px;
+        }
+
+        .compute-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .compute-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--border-hover);
+        }
+
+        .compute-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .compute-card-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .compute-card-price {
+            text-align: right;
+        }
+
+        .compute-card-price .from {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .compute-card-price .amount {
+            font-size: 28px;
+            font-weight: 800;
+        }
+
+        .compute-card-price .period {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .compute-card-btn {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            background: rgba(88, 166, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            transition: all 0.2s;
+        }
+
+        .compute-card-btn:hover {
+            background: rgba(88, 166, 255, 0.2);
+        }
+
+        .compute-features {
+            list-style: none;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 16px;
+            margin-top: 16px;
+        }
+
+        .compute-features li {
+            font-size: 13px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .compute-features li::before {
+            content: '✓';
+            color: var(--green);
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* Feature Comparison */
+        .comparison {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .compare-table-wrap {
+            overflow-x: auto;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 700px;
+        }
+
+        thead th {
+            position: sticky;
+            top: 0;
+            background: #0d1117;
+            padding: 16px 20px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 700;
+            border-bottom: 2px solid var(--border);
+            z-index: 10;
+        }
+
+        thead th:first-child {
+            text-align: left;
+            min-width: 220px;
+        }
+
+        thead th.starter-h {
+            color: var(--green);
+        }
+
+        thead th.pro-h {
+            color: var(--accent);
+        }
+
+        thead th.team-h {
+            color: var(--purple);
+        }
+
+        thead th.ent-h {
+            color: var(--orange);
+        }
+
+        .cat-row td {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 14px 20px;
+            font-weight: 700;
+            font-size: 15px;
+            border-top: 1px solid var(--border);
+        }
+
+        tbody td {
+            padding: 12px 20px;
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-muted);
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        tbody td:first-child {
+            text-align: left;
+            color: var(--text-main);
+            font-size: 13px;
+        }
+
+        .check {
+            color: var(--green);
+            font-weight: 700;
+        }
+
+        .cross {
+            color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* FAQ */
+        .faq {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .faq-title {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 40px;
+        }
+
+        .accordion-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            padding: 18px 24px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 15px;
+            transition: background 0.2s;
+        }
+
+        .accordion-header:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .accordion-body {
+            padding: 0 24px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .accordion-item.active .accordion-body {
+            padding: 0 24px 20px;
+            max-height: 500px;
+        }
+
+        .accordion-icon {
+            transition: transform 0.3s;
+            font-size: 12px;
+        }
+
+        .accordion-item.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+            font-size: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* CTA Banner */
+        .cta-banner {
+            text-align: center;
+            padding: 80px 24px;
+            background: linear-gradient(135deg, rgba(189, 147, 249, 0.08), rgba(88, 166, 255, 0.08));
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .cta-banner h2 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .cta-banner p {
+            color: var(--text-muted);
+            margin-bottom: 28px;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            color: white;
+            padding: 14px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            box-shadow: 0 8px 32px var(--purple-glow);
+            transition: all 0.3s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px var(--purple-glow);
+        }
+
+        /* Responsive */
+        @media(max-width:1024px) {
+            .plans {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media(max-width:640px) {
+            .plans {
+                grid-template-columns: 1fr;
+            }
+
+            .navbar {
+                padding: 16px 20px;
+            }
+
+            .pricing-hero h1 {
+                font-size: 32px;
+            }
+
+            .compute-features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-gradient"></div>
+
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span style="font-size: 28px;">🪐</span> Orbitron
+        </a>
+        <div class="nav-links">
+            <a href="/features.html">기능 소개</a>
+            <a href="/pricing.html" class="active">요금제</a>
+            <a href="/docs.html">문서</a>
+            <a href="/index-en.html">EN</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="pricing-hero">
+        <h1>투명하고 예측 가능한<br>요금 정책</h1>
+        <p>개인 사이드 프로젝트부터 대규모 엔터프라이즈까지, 프로젝트 규모에 맞는 최적의 플랜을 선택하세요.</p>
+    </section>
+
+    <!-- Plan Cards -->
+    <section class="plans">
+        <div class="plan-card">
+            <div class="plan-header starter">
+                <div class="plan-name">Starter</div>
+                <div class="plan-desc">개인 프로젝트와 사이드 프로젝트에 최적화</div>
+                <div class="plan-price">무료 <span>/ 컴퓨트 비용 별도</span></div>
+            </div>
+            <div class="plan-body">
+                <a href="/dashboard" class="plan-btn starter-btn">무료로 시작하기 →</a>
+                <div class="plan-includes">포함 사항:</div>
+                <ul class="plan-features">
+                    <li>풀스택 앱 즉시 배포</li>
+                    <li>매니지드 데이터스토어</li>
+                    <li>커스텀 도메인</li>
+                    <li>Cloudflare CDN & 터널링</li>
+                    <li>기본 보안 자동 적용</li>
+                    <li>커뮤니티 서포트</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="plan-card featured">
+            <div class="plan-header pro">
+                <div class="plan-name">Pro</div>
+                <div class="plan-desc">소규모 팀의 프로덕션 애플리케이션에 적합</div>
+                <div class="plan-price">₩19,000 <span>/ 월 + 컴퓨트 비용</span></div>
+            </div>
+            <div class="plan-body">
+                <a href="/dashboard" class="plan-btn pro-btn">Pro 시작하기 →</a>
+                <div class="plan-includes">Starter의 모든 기능, 추가로:</div>
+                <ul class="plan-features">
+                    <li>500 GB 대역폭 포함</li>
+                    <li>최대 10명 팀 멤버 협업</li>
+                    <li>무제한 프로젝트 & 환경</li>
+                    <li>AI 에러 분석 (Claude / Gemini)</li>
+                    <li>프리뷰 환경 테스트</li>
+                    <li>채팅 서포트</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="plan-card">
+            <div class="plan-header team">
+                <div class="plan-name">Team</div>
+                <div class="plan-desc">성장하는 팀의 확장성과 보안 요구에 대응</div>
+                <div class="plan-price">₩49,000 <span>/ 월 + 컴퓨트 비용</span></div>
+            </div>
+            <div class="plan-body">
+                <a href="/dashboard" class="plan-btn team-btn">Team 시작하기 →</a>
+                <div class="plan-includes">Pro의 모든 기능, 추가로:</div>
+                <ul class="plan-features">
+                    <li>1 TB 대역폭 포함</li>
+                    <li>무제한 팀 멤버</li>
+                    <li>감사 로그 (Audit Logs)</li>
+                    <li>GPU 스트리밍 우선 할당</li>
+                    <li>프라이빗 네트워크 확장</li>
+                    <li>프리미엄 서포트</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="plan-card">
+            <div class="plan-header enterprise">
+                <div class="plan-name">Enterprise</div>
+                <div class="plan-desc">대규모 조직의 보안, 성능, 지원 요구 충족</div>
+                <div class="plan-price">맞춤 견적</div>
+            </div>
+            <div class="plan-body">
+                <a href="mailto:contact@twinverse.org" class="plan-btn enterprise-btn">문의하기 →</a>
+                <div class="plan-includes">Team의 모든 기능, 추가로:</div>
+                <ul class="plan-features">
+                    <li>중앙화된 팀 관리</li>
+                    <li>SSO & SCIM 연동</li>
+                    <li>SLA 보장 업타임</li>
+                    <li>전용 GPU 클러스터</li>
+                    <li>커스텀 온보딩 지원</li>
+                    <li>고객 성공 매니저 배정</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Compute Pricing -->
+    <section class="compute" id="compute">
+        <h2 class="section-title">컴퓨트 프라이싱</h2>
+        <p class="section-sub">초 단위 과금으로, 사용한 만큼만 지불합니다.</p>
+
+        <div class="compute-grid">
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">🌐 Static Sites</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">무료</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>초고속 CDN 배포</li>
+                    <li>Git Push 자동 배포</li>
+                    <li>즉시 캐시 무효화</li>
+                    <li>커스텀 도메인 + TLS</li>
+                </ul>
+                <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">⚡ Web Services</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">무료</div>
+                        <div class="period">월</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>HTTP/2 + TLS 자동 적용</li>
+                    <li>Node, Python, Go, Rust 등</li>
+                    <li>커스텀 Docker 컨테이너</li>
+                    <li>Background Workers</li>
+                    <li>무중단 배포 (Zero-Downtime)</li>
+                    <li>SSD ₩300/GB 월</li>
+                </ul>
+                <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">🗄 Managed PostgreSQL</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">무료</div>
+                        <div class="period">월</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>완전 매니지드 PostgreSQL</li>
+                    <li>논리적 백업 보관 (유료)</li>
+                    <li>어디서든 접속 가능</li>
+                    <li>확장형 스토리지 (₩350/GB)</li>
+                    <li>고가용성 (Pro 이상)</li>
+                    <li>PITR 지원 (유료)</li>
+                </ul>
+                <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">🔴 Redis Cache</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">무료</div>
+                        <div class="period">월</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>매니지드 Redis 호환 캐싱</li>
+                    <li>어디서든 접속 가능</li>
+                    <li>Job 큐잉으로 가용성 극대화</li>
+                    <li>Primary DB 부하 감소</li>
+                    <li>페이지/결과/프래그먼트 캐시</li>
+                </ul>
+                <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">🎮 Unreal Pixel Streaming</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">₩50,000</div>
+                        <div class="period">월</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>듀얼 GPU 로드밸런싱</li>
+                    <li>웹 기반 Pixel Streaming</li>
+                    <li>자동 매치메이커 구성</li>
+                    <li>Vulkan + 가상 오디오 자동 설정</li>
+                </ul>
+                <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">🎲 Unity WebGL Hosting</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">무료</div>
+                        <div class="period">월</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>Gzip/Brotli 사전 압축</li>
+                    <li>Nginx 최적화 WASM 서빙</li>
+                    <li>MIME 타입 자동 설정</li>
+                    <li>초고속 로딩 최적화</li>
+                </ul>
+                <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Feature Comparison -->
+    <section class="comparison" id="features">
+        <h2 class="section-title">기능 상세 비교</h2>
+        <p class="section-sub">플랜별 기능을 한눈에 비교하세요.</p>
+
+        <div class="compare-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="starter-h">Starter</th>
+                        <th class="pro-h">Pro</th>
+                        <th class="team-h">Team</th>
+                        <th class="ent-h">Enterprise</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Build & Deploy -->
+                    <tr class="cat-row">
+                        <td colspan="5">🚀 Build & Deploy</td>
+                    </tr>
+                    <tr>
+                        <td>프로젝트 수</td>
+                        <td>3개</td>
+                        <td>무제한</td>
+                        <td>무제한</td>
+                        <td>무제한</td>
+                    </tr>
+                    <tr>
+                        <td>포함 대역폭</td>
+                        <td>100 GB/월</td>
+                        <td>500 GB/월</td>
+                        <td>1 TB/월</td>
+                        <td>맞춤</td>
+                    </tr>
+                    <tr>
+                        <td>빌드 파이프라인</td>
+                        <td>500분/월</td>
+                        <td>500분/유저/월</td>
+                        <td>500분/유저/월</td>
+                        <td>맞춤</td>
+                    </tr>
+                    <tr>
+                        <td>Docker Compose 지원</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>무중단 배포 (Blue-Green)</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Infrastructure-as-Code</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Git Push 자동 배포</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- Storage -->
+                    <tr class="cat-row">
+                        <td colspan="5">💾 Storage & Backup</td>
+                    </tr>
+                    <tr>
+                        <td>PostgreSQL 백업 보관</td>
+                        <td>3일</td>
+                        <td>7일</td>
+                        <td>7일</td>
+                        <td>7일</td>
+                    </tr>
+                    <tr>
+                        <td>미디어 백업 (DATA 드라이브)</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Git Clone 백업</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Redis Cache</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>확장형 스토리지</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- AI -->
+                    <tr class="cat-row">
+                        <td colspan="5">🤖 AI Features</td>
+                    </tr>
+                    <tr>
+                        <td>AI 에러 분석 (자동)</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>AI 챗봇 어시스턴트</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Claude 3.5 / Gemini 모델 선택</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- Game Engine -->
+                    <tr class="cat-row">
+                        <td colspan="5">🎮 Game Engine</td>
+                    </tr>
+                    <tr>
+                        <td>Unity WebGL 호스팅</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Unreal Pixel Streaming</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>듀얼 GPU 로드밸런싱</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>전용 GPU 클러스터</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- Security -->
+                    <tr class="cat-row">
+                        <td colspan="5">🔒 Security & Networking</td>
+                    </tr>
+                    <tr>
+                        <td>Cloudflare DDoS 보호</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>자동 HTTPS / TLS</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>프라이빗 네트워크</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>커스텀 도메인</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>감사 로그 (Audit Logs)</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>SSO & SCIM</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- Collaboration -->
+                    <tr class="cat-row">
+                        <td colspan="5">👥 Collaboration</td>
+                    </tr>
+                    <tr>
+                        <td>팀 멤버</td>
+                        <td>1명</td>
+                        <td>최대 10명</td>
+                        <td>무제한</td>
+                        <td>무제한</td>
+                    </tr>
+                    <tr>
+                        <td>리소스 모니터링 대시보드</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>고객 성공 매니저</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- Convenience -->
+                    <tr class="cat-row">
+                        <td colspan="5">⚙️ Convenience</td>
+                    </tr>
+                    <tr>
+                        <td>orbitron.yaml (IaC)</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>풀스택 자동 감지</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>커밋 선택 배포</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>백그라운드 워커</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>환경 변수 관리</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq" id="faq">
+        <h2 class="faq-title">자주 묻는 질문</h2>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>요금은 어떻게 청구되나요?</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">워크스페이스 플랜 비용과 사용한 컴퓨트 리소스 비용이 매월 말 합산 청구됩니다. 컴퓨트 비용은 초 단위로 비례 배분되어, 서비스를 하루만
+                사용했다면 하루치만 결제됩니다.</div>
+        </div>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>활동이 없는 달에도 요금이 부과되나요?</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">워크스페이스에 서비스(라이브 또는 일시정지)가 없고 활동이 없는 달에는 멤버 요금이 면제됩니다.</div>
+        </div>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>무료 플랜의 제한 사항은 무엇인가요?</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">Starter 플랜은 최대 3개 프로젝트, 100GB 월 대역폭, 1인 사용으로 제한됩니다. 개인 프로젝트와 학습 목적으로 설계되어 있으며,
+                AI 에러 분석과 GPU 스트리밍 기능은 Pro 이상 플랜에서 사용 가능합니다.</div>
+        </div>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>결제 수단은 무엇을 지원하나요?</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">주요 신용카드 및 체크카드를 모두 지원합니다. 결제 정보는 Stripe를 통해 안전하게 처리되며, 당사 서버에는 저장되지 않습니다.</div>
+        </div>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>플랜을 언제든지 변경할 수 있나요?</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">네, 언제든지 대시보드에서 플랜을 업그레이드하거나 다운그레이드할 수 있습니다. 업그레이드 시 즉시 적용되며, 다운그레이드는 현재 결제 주기 종료
+                후 적용됩니다.</div>
+        </div>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>Unreal Pixel Streaming은 어떻게 과금되나요?</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">GPU 인스턴스 사용 시간에 따라 초 단위로 과금됩니다. 듀얼 GPU 로드밸런싱은 Team 이상 플랜에서 지원되며, 단일 GPU 스트리밍은
+                Pro 플랜부터 사용 가능합니다.</div>
+        </div>
+
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span>Enterprise 플랜에 대해 더 알고 싶습니다.</span>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-body">Enterprise 플랜은 조직의 규모와 요구사항에 맞춘 맞춤형 요금 체계를 제공합니다. 전용 GPU 클러스터, SLA 보장 업타임, 전담 고객
+                성공 매니저 등이 포함됩니다. <a href="mailto:contact@twinverse.org"
+                    style="color:var(--accent)">contact@twinverse.org</a>로 연락 주시면 상세히 안내드리겠습니다.</div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-banner">
+        <h2>지금 바로 프로젝트를 궤도에 올리세요</h2>
+        <p>무료로 시작하고, 성장에 맞춰 확장하세요.</p>
+        <a href="/dashboard" class="btn-primary" id="cta-auth-btn">Orbitron 시작하기 →</a>
+    </section>
+
+    <footer>&copy; 2026 Orbitron - Twinverse Corporation. All rights reserved.</footer>
+
+    <script>
+        function toggleAccordion(el) {
+            const parent = el.parentElement;
+            parent.classList.toggle('active');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('orbitron_token');
+            const navBtn = document.getElementById('nav-auth-btn');
+            const ctaBtn = document.getElementById('cta-auth-btn');
+            if (token) {
+                if (navBtn) navBtn.innerHTML = '대시보드 관리';
+                if (ctaBtn) ctaBtn.innerHTML = '내 프로젝트로 돌아가기 →';
+            }
+        });
+    </script>
+</body>
+
+</html>

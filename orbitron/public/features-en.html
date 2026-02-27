@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron - Features</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #07090f;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.4);
+            --purple: #bd93f9;
+            --purple-glow: rgba(189, 147, 249, 0.4);
+            --pink: #ff79c6;
+            --border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Animated Background Gradient */
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background:
+                radial-gradient(circle at 15% 50%, rgba(189, 147, 249, 0.08), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(88, 166, 255, 0.08), transparent 50%);
+            animation: pulseBg 10s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulseBg {
+            0% {
+                transform: scale(1);
+            }
+
+            100% {
+                transform: scale(1.05);
+            }
+        }
+
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            /* Match index.html */
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-left: 24px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--text-main);
+        }
+
+        .btn-login {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 20px;
+            /* Match index.html */
+            border-radius: 8px;
+            /* Match index.html */
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Features Section */
+        .features {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 36px;
+            margin-bottom: 64px;
+            font-weight: 700;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 32px;
+            transition: transform 0.3s, background 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .card-icon {
+            font-size: 40px;
+            margin-bottom: 24px;
+            display: inline-block;
+        }
+
+        .card h3 {
+            font-size: 22px;
+            margin-bottom: 12px;
+        }
+
+        .card p {
+            color: var(--text-muted);
+            font-size: 15px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 80px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="bg-gradient"></div>
+
+    <nav class="navbar">
+        <a href="/index-en.html" class="logo">
+            <span style="font-size: 28px;">🪐</span> Orbitron
+        </a>
+        <div class="nav-links">
+            <a href="/features-en.html" class="active">Features</a>
+            <a href="/pricing.html">Pricing</a>
+            <a href="/docs.html">Docs</a>
+            <a href="/features.html">KO</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">Launch Dashboard</a>
+        </div>
+    </nav>
+
+    <section class="features" id="features">
+        <h2 class="section-title" style="margin-top:40px;">Features for the Ultimate Developer Experience</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="card-icon">🎮</div>
+                <h3>Unreal Engine Streaming</h3>
+                <p>Upload your Linux dedicated server ZIP, and we'll instantly configure a Pixel Streaming web viewer
+                    and matchmaking server with auto dual-GPU load balancing.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🎲</div>
+                <h3>Blazing Fast Unity WebGL</h3>
+                <p>Enjoy a dedicated deployment ecosystem maximizing WebAssembly (WASM) parsing and loading speeds
+                    through pre-compressed Gzip/Brotli support and Nginx optimizations.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🤖</div>
+                <h3>AI-Powered Diagnostics</h3>
+                <p>Upon deployment failure, our integrated Claude and Gemini models analyze logs and context, instantly
+                    providing markdown guides for the cause and solutions. (Provides safe guides only, without forcibly
+                    modifying your source code.)</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔄</div>
+                <h3>Infinite GitHub CI/CD</h3>
+                <p>Simply enter your repository URL and push. Orbitron instantly detects changes, rebuilds your Docker
+                    containers, and rolls them out to live services without complex configuration.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🌐</div>
+                <h3>Cloudflare Ingress Security</h3>
+                <p>No need for complex router port forwarding. Upon creation, a unique Cloudflare Edge Tunnel is
+                    generated, securely tunneling all HTTP/Dev ports to the internet.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📁</div>
+                <h3>Hybrid Backup Storage</h3>
+                <p>Fully supports hardware mounting paths to perfectly prevent data loss. Archive and compress all
+                    volumes' media and source code with a single click.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <h3>Zero-Downtime Deployments</h3>
+                <p>Never experience a single second of downtime during app updates. The new version runs flawlessly in
+                    the background before Nginx proxy routing instantly snap-switches (Blue-Green) without user
+                    interruption.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🐳</div>
+                <h3>Multi-Container Orchestration</h3>
+                <p>Don't just launch a single web app. If a <code>docker-compose.yml</code> file is detected, dozens of
+                    complex containers—Node.js, Redis, Celery Workers—are orchestrated and deployed together as one
+                    cohesive system.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        &copy; 2026 Orbitron - Twinverse Corporation. All rights reserved.
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('orbitron_token');
+            const navBtn = document.getElementById('nav-auth-btn');
+
+            if (token) {
+                if (navBtn) navBtn.innerHTML = 'Manage Dashboard';
+            } else {
+                if (navBtn) navBtn.innerHTML = 'Launch Dashboard';
+            }
+        });
+    </script>
+</body>
+
+</html>

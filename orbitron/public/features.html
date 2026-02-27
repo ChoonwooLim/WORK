@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron - 기능 소개</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #07090f;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.4);
+            --purple: #bd93f9;
+            --purple-glow: rgba(189, 147, 249, 0.4);
+            --pink: #ff79c6;
+            --border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Animated Background Gradient */
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background:
+                radial-gradient(circle at 15% 50%, rgba(189, 147, 249, 0.08), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(88, 166, 255, 0.08), transparent 50%);
+            animation: pulseBg 10s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulseBg {
+            0% {
+                transform: scale(1);
+            }
+
+            100% {
+                transform: scale(1.05);
+            }
+        }
+
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            /* Match index.html */
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-left: 24px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--text-main);
+        }
+
+        .btn-login {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 20px;
+            /* Match index.html */
+            border-radius: 8px;
+            /* Match index.html */
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Features Section */
+        .features {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 36px;
+            margin-bottom: 64px;
+            font-weight: 700;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 32px;
+            transition: transform 0.3s, background 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .card-icon {
+            font-size: 40px;
+            margin-bottom: 24px;
+            display: inline-block;
+        }
+
+        .card h3 {
+            font-size: 22px;
+            margin-bottom: 12px;
+        }
+
+        .card p {
+            color: var(--text-muted);
+            font-size: 15px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 80px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="bg-gradient"></div>
+
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span style="font-size: 28px;">🪐</span> Orbitron
+        </a>
+        <div class="nav-links">
+            <a href="/features.html" class="active">기능 소개</a>
+            <a href="/pricing.html">요금제</a>
+            <a href="/docs.html">문서</a>
+            <a href="/index-en.html">EN</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
+        </div>
+    </nav>
+
+    <section class="features" id="features">
+        <h2 class="section-title" style="margin-top:40px;">최고의 개발 경험을 위한 기능들</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="card-icon">🎮</div>
+                <h3>Unreal Engine 스트리밍</h3>
+                <p>리눅스 전용 빌드 ZIP 파일만 업로드하면, 자동 듀얼 GPU 로드밸런싱과 함께 Pixel Streaming 웹 뷰어와 매치메이킹 서버를 즉시 구성합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🎲</div>
+                <h3>Unity WebGL 광속 호스팅</h3>
+                <p>Gzip/Brotli 사전 압축 지원 및 Nginx 최적화 적용으로, 웹 어셈블리(WASM) 패키지의 파싱 및 로딩 속도를 극대화한 전용 배포 생태계를 제공합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🤖</div>
+                <h3>AI 기반 에러 분석</h3>
+                <p>배포 실패 시, 시스템 통합된 Claude 및 Gemini 모델이 에러 로그를 읽고 컨텍스트를 파악해 1초 만에 원인과 해결책 가이드를 마크다운으로 제시합니다. (현재 코드를 직접
+                    강제 수정하지는 않으며, 안전한 가이드만 제공합니다.)</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔄</div>
+                <h3>GitHub 무한 CI/CD</h3>
+                <p>별도의 설정 없이 저장소 URL을 입력하고 Push 해보세요. 코드가 올라옴과 동시에 Orbitron이 감지하여 Docker 컨테이너를 재빌드하고 라이브 서비스로 롤아웃합니다.
+                </p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🌐</div>
+                <h3>Cloudflare 인그레스 보안</h3>
+                <p>복잡한 공유기 포트포워딩은 필요 없습니다. 시스템 생성과 동시에 고유한 Cloudflare Edge 터널을 생성하여 모든 HTTP/Dev 포트를 인터넷에 안전하게 터널링합니다.
+                </p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📁</div>
+                <h3>하이브리드 백업 스토리지</h3>
+                <p>데이터 유실을 완벽히 방어하기 위해 DATA 드라이브 하드웨어 마운트를 완벽히 지원하며, 클릭 한 번으로 모든 볼륨의 미디어 및 소스 코드를 아카이브 압축합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <h3>무중단 배포 (Zero-Downtime)</h3>
+                <p>앱 업데이트 시 단 1초의 끊김도 용납하지 않습니다. 신규 버전을 백그라운드에서 완벽히 구동시키고 Nginx 프록시 라우팅을 스냅 스위칭(Blue-Green)하여 사용자는 눈치채지
+                    못합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🐳</div>
+                <h3>멀티 컨테이너 (Docker Compose)</h3>
+                <p>웹 앱 하나만 띄우는 것이 아닙니다. <code>docker-compose.yml</code> 파일만 감지되면, Node.js, Redis, Celery Worker 등 수십 개의
+                    복합 컨테이너를 한 몸처럼 엮어 배포합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🗄</div>
+                <h3>매니지드 데이터베이스</h3>
+                <p>PostgreSQL과 Redis 엔진을 원클릭으로 가동합니다. 별도 설정 없이 랜덤 비밀번호와 안전한 Connection String을 즉시 발급받아 웹앱과 연동하세요.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔒</div>
+                <h3>프라이빗 네트워크</h3>
+                <p>배포되는 모든 인프라 자원을 `orbitron_internal` 전용 브릿지망에 자동 묶어, 외부 클라우드플레어 터널링 패스 없이 데이터베이스와 초고속 보안 통신을 보장합니다.
+                </p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚙️</div>
+                <h3>백그라운드 워커</h3>
+                <p>디스코드 봇, 크론(Cron) 스케줄러, 비동기 파이프라인 등 퍼블릭 포트 오픈이 필요 없는 무한 백그라운드 프로세스를 조용히 그리고 끈질기게 구동시킵니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📜</div>
+                <h3>Infrastructure-as-Code</h3>
+                <p>대시보드 조작 없이 레포지토리 내 정의된 단일 `orbitron.yaml` 코드를 시스템이 파싱하여 환경 변수, 포트 번호, 빌드 커맨드 설정을 즉각 덮어씌웁니다.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        &copy; 2026 Orbitron - Twinverse Corporation. All rights reserved.
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('orbitron_token');
+            const navBtn = document.getElementById('nav-auth-btn');
+
+            if (token) {
+                if (navBtn) navBtn.innerHTML = '대시보드 관리';
+            } else {
+                if (navBtn) navBtn.innerHTML = '로그인 · 회원가입';
+            }
+        });
+    </script>
+</body>
+
+</html>

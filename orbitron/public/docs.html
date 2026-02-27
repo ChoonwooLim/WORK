@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron 문서 (Docs)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <!-- Include marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #07090f;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.4);
+            --purple: #bd93f9;
+            --purple-glow: rgba(189, 147, 249, 0.4);
+            --pink: #ff79c6;
+            --sidebar-width: 280px;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Navbar (from index.html) */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            /* Match index.html */
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-left: 24px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-main);
+        }
+
+        .btn-login {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 20px;
+            /* Match index.html */
+            border-radius: 8px;
+            /* Match index.html */
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Documentation Layout */
+        .docs-container {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: var(--sidebar-width);
+            flex-shrink: 0;
+            border-right: 1px solid var(--border-color);
+            padding: 32px 24px;
+            position: sticky;
+            top: 70px;
+            height: calc(100vh - 70px);
+            overflow-y: auto;
+        }
+
+        .sidebar-group {
+            margin-bottom: 24px;
+        }
+
+        .sidebar-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: color 0.2s;
+        }
+
+        .sidebar-title:hover {
+            color: var(--text-main);
+        }
+
+        .sidebar-title::after {
+            content: '▼';
+            font-size: 9px;
+            transition: transform 0.2s ease;
+            opacity: 0.6;
+        }
+
+        .sidebar-group.collapsed .sidebar-title::after {
+            transform: rotate(-90deg);
+        }
+
+        .sidebar-group.collapsed .sidebar-link {
+            display: none;
+        }
+
+        .sidebar-link {
+            display: block;
+            padding: 8px 12px;
+            color: #c9d1d9;
+            text-decoration: none;
+            font-size: 14px;
+            border-radius: 6px;
+            margin-bottom: 2px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .sidebar-link:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+        }
+
+        .sidebar-link.active {
+            background-color: rgba(88, 166, 255, 0.1);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex-grow: 1;
+            padding: 48px 64px;
+            max-width: 900px;
+        }
+
+        /* Markdown rendered HTML styling */
+        .main-content h1 {
+            font-size: 40px;
+            font-weight: 800;
+            margin-bottom: 24px;
+            letter-spacing: -0.02em;
+        }
+
+        .main-content h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-top: 48px;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .main-content h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 16px;
+            color: var(--accent);
+        }
+
+        .main-content p {
+            margin-bottom: 16px;
+            font-size: 16px;
+            color: #b1bac4;
+        }
+
+        .main-content ul,
+        .main-content ol {
+            margin-bottom: 24px;
+            padding-left: 24px;
+            color: #b1bac4;
+        }
+
+        .main-content li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .main-content strong {
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Code Blocks */
+        .main-content code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+            color: var(--pink);
+        }
+
+        .main-content pre {
+            background: #161b22;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 24px 0;
+            border: 1px solid var(--border-color);
+        }
+
+        .main-content pre code {
+            background: transparent;
+            padding: 0;
+            color: #e6e6e6;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Blockquotes masquerading as callouts (Render style) */
+        .main-content blockquote {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+            background: rgba(139, 148, 158, 0.1);
+            border-left: 4px solid var(--text-muted);
+        }
+
+        .main-content blockquote p {
+            margin-bottom: 0;
+        }
+
+        .main-content a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .main-content a:hover {
+            text-decoration: underline;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #484f58;
+        }
+
+        @media (max-width: 1024px) {
+            .docs-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding: 16px 24px;
+            }
+
+            .main-content {
+                padding: 32px 24px;
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span style="font-size: 28px;">🪐</span> Orbitron
+        </a>
+        <div class="nav-links">
+            <a href="/features.html">기능 소개</a>
+            <a href="/pricing.html">요금제</a>
+            <a href="/docs.html">문서</a>
+            <a href="/index-en.html">EN</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
+        </div>
+    </nav>
+
+    <div class="docs-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-group">
+                <div class="sidebar-title">Getting Started</div>
+                <a href="#/quickstart" class="sidebar-link active" data-md="quickstart">빠른 배포 가이드</a>
+                <a href="#/core-concepts" class="sidebar-link" data-md="core-concepts">Orbitron 핵심 개념</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Web Services & Sites</div>
+                <a href="#/web-services" class="sidebar-link" data-md="web-services">백엔드 웹 서비스</a>
+                <a href="#/static-sites" class="sidebar-link" data-md="static-sites">정적 사이트 (Static)</a>
+                <a href="#/docker" class="sidebar-link" data-md="docker">Docker 커스텀 배포</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Game Hosting</div>
+                <a href="#/unreal-pixel" class="sidebar-link" data-md="unreal-pixel">Unreal 픽셀 스트리밍</a>
+                <a href="#/unity-webgl" class="sidebar-link" data-md="unity-webgl">Unity WebGL</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Background & Private</div>
+                <a href="#/workers" class="sidebar-link" data-md="workers">Background Workers</a>
+                <a href="#/private-services" class="sidebar-link" data-md="private-services">프라이빗 서비스</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Deploys & Workflows</div>
+                <a href="#/preview-envs" class="sidebar-link" data-md="preview-envs">프리뷰 환경 (Preview) <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+                <a href="#/custom-ci" class="sidebar-link" data-md="custom-ci">커스텀 CI/CD 통합 <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Databases & Storage</div>
+                <a href="#/postgresql" class="sidebar-link" data-md="postgresql">PostgreSQL</a>
+                <a href="#/redis" class="sidebar-link" data-md="redis">Redis</a>
+                <a href="#/backups" class="sidebar-link" data-md="backups">하이브리드 시스템 백업</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Infrastructure & Setup</div>
+                <a href="#/iac" class="sidebar-link" data-md="iac">Orbitron.yaml 완벽 가이드</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Observability</div>
+                <a href="#/ai-analyzer" class="sidebar-link" data-md="ai-analyzer">AI 트러블슈팅 및 분석기</a>
+                <a href="#/metrics-logs" class="sidebar-link" data-md="metrics-logs">앱 메트릭 및 시스템 로그 <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+                <a href="#/custom-dashboards" class="sidebar-link" data-md="custom-dashboards">커스텀 관제 대시보드 <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">Platform & Integrations</div>
+                <a href="#/networking" class="sidebar-link" data-md="networking">Cloudflare 터널 & 보안망</a>
+                <a href="#/waf-ddos" class="sidebar-link" data-md="waf-ddos">WAF 및 L7 DDoS 방어 <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+                <a href="#/slack-discord" class="sidebar-link" data-md="slack-discord">배포 상태 알림 (Slack/Discord) <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+                <a href="#/datadog-apm" class="sidebar-link" data-md="datadog-apm">Datadog APM 모니터링 <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-title">User Management</div>
+                <a href="#/rbac" class="sidebar-link" data-md="rbac">멤버 초대 및 권한 제어 (RBAC) <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+                <a href="#/audit-logs" class="sidebar-link" data-md="audit-logs">인프라 보안 감사 로그 <span
+                        style="font-size: 10px; opacity: 0.5;">[예정]</span></a>
+            </div>
+        </aside>
+
+        <!-- Markdown Content Container -->
+        <main class="main-content" id="markdown-container">
+            <div class="loading">Loading content...</div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('markdown-container');
+            const links = document.querySelectorAll('.sidebar-link');
+
+            // Accordion for sidebar groups
+            const sidebarTitles = document.querySelectorAll('.sidebar-title');
+            sidebarTitles.forEach(title => {
+                title.addEventListener('click', () => {
+                    const group = title.closest('.sidebar-group');
+                    group.classList.toggle('collapsed');
+                });
+            });
+
+            // Function to load and render markdown
+            async function loadMarkdown(docId) {
+                try {
+                    container.innerHTML = '<div class="loading">Loading content...</div>';
+
+                    const response = await fetch(`/docs-content/${docId}.md`);
+                    if (!response.ok) {
+                        throw new Error(`Docs file not found: ${docId}`);
+                    }
+
+                    const markdown = await response.text();
+                    container.innerHTML = marked.parse(markdown);
+                    window.scrollTo(0, 0); // Scroll to top on new page load
+                } catch (error) {
+                    container.innerHTML = `
+                        <h1>문서를 찾을 수 없습니다 (404)</h1>
+                        <p>요청하신 ${docId}.md 파일이 아직 작성되지 않았거나 삭제되었습니다.</p>
+                        <p>좌측 메뉴에서 다른 문서를 선택해 주세요.</p>
+                    `;
+                    console.error('Error loading markdown:', error);
+                }
+            }
+
+            // Route handler based on hash
+            function handleRoute() {
+                // Get hash, remove #/ part. Default to 'quickstart' if empty
+                let hash = window.location.hash.replace('#/', '');
+                if (!hash) hash = 'quickstart';
+
+                // Update active state in sidebar
+                links.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('data-md') === hash) {
+                        link.classList.add('active');
+                        // Ensure parent group is open
+                        const group = link.closest('.sidebar-group');
+                        if (group) {
+                            group.classList.remove('collapsed');
+                        }
+                    }
+                });
+
+                // Load content
+                loadMarkdown(hash);
+            }
+
+            // Listen for hash changes
+            window.addEventListener('hashchange', handleRoute);
+
+            // Initial load
+            handleRoute();
+        });
+    </script>
+</body>
+
+</html>
