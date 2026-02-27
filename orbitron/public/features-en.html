@@ -11,7 +11,7 @@
         rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #07090f;
+            --bg-dark: #05080f;
             --text-main: #f0f6fc;
             --text-muted: #8b949e;
             --accent: #58a6ff;
@@ -36,7 +36,7 @@
             line-height: 1.6;
         }
 
-        /* Animated Background Gradient */
+        /* Static Elite Background */
         .bg-gradient {
             position: fixed;
             top: 0;
@@ -44,20 +44,33 @@
             width: 100vw;
             height: 100vh;
             z-index: -1;
-            background:
-                radial-gradient(circle at 15% 50%, rgba(189, 147, 249, 0.08), transparent 50%),
-                radial-gradient(circle at 85% 30%, rgba(88, 166, 255, 0.08), transparent 50%);
-            animation: pulseBg 10s ease-in-out infinite alternate;
+            background-color: #05080f;
+            overflow: hidden;
         }
 
-        @keyframes pulseBg {
-            0% {
-                transform: scale(1);
-            }
+        .bg-gradient::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('/orbitron_elite_user_bg.png');
+            background-size: 100% auto;
+            background-position: top left 20%;
+            background-repeat: no-repeat;
+        }
 
-            100% {
-                transform: scale(1.05);
-            }
+        .bg-gradient::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                linear-gradient(to right, #05080f, transparent 5%, transparent 85%, #05080f 95%),
+                linear-gradient(to bottom, transparent 60%, #05080f 90%);
         }
 
         /* Navbar */
