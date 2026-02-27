@@ -315,7 +315,23 @@ class Deployer extends EventEmitter {
                     this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (백그라운드 워커)');
                     this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (백그라운드 워커)');
                 } else {
-                    // Step 3: Start container (or Compose stack)
+                    // Step 3: Stop old containers to free up port before starting a new one
+                    this.emitProgress(project.id, 'container', '이전 컨테이너 정리 중...');
+                    logs += '\nCleaning up old containers...\n';
+                    try {
+                        // Stop all existing containers for this project (Blue-Green cleanup)
+                        if (project.container_id && !project.container_id.startsWith('compose-')) {
+                            await dockerService.stopContainer(project.container_id).catch(() => { });
+                        }
+                        await dockerService.cleanupOldContainers(project.subdomain, '__none__');
+                        // Also try the legacy name just in case
+                        await dockerService.stopContainer(`orbitron-${project.subdomain}`).catch(() => { });
+                        logs += 'Old containers cleaned up.\n';
+                    } catch (e) {
+                        logs += `Warning: cleanup error: ${e.message}\n`;
+                    }
+
+                    // Start container (or Compose stack)
                     this.emitProgress(project.id, 'container', '컨테이너 시작 중...');
                     logs += '\nStarting container...\n';
 
