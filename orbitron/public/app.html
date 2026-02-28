@@ -22,13 +22,27 @@
 
     <div id="sidebar-project-select-wrap"
       style="padding: 0 16px 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-      <label for="global-project-select"
+      <label
         style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase; margin-bottom:4px; display:block;">선택된
         프로젝트</label>
-      <select id="global-project-select" onchange="onGlobalProjectSelect(this.value)"
-        style="width:100%; padding:8px; border-radius:6px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); font-size:13px; outline:none; height: 34px;">
-        <option value="" disabled selected>프로젝트 정보를 불러오는 중...</option>
-      </select>
+      <div id="project-search-dropdown" class="project-search-dropdown">
+        <div id="project-search-selected" class="psd-selected" onclick="toggleProjectDropdown()">
+          <span id="psd-selected-text">프로젝트 정보를 불러오는 중...</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div id="project-search-panel" class="psd-panel" style="display:none;">
+          <div class="psd-search-wrap">
+            <input type="text" id="project-search-input" class="psd-search" placeholder="🔍 프로젝트 검색..."
+              autocomplete="off" oninput="filterProjectDropdown(this.value)">
+          </div>
+          <div id="project-search-list" class="psd-list"></div>
+        </div>
+      </div>
+      <!-- Hidden select for backward compat -->
+      <select id="global-project-select" style="display:none;"></select>
     </div>
     <div id="sidebar-new-project-wrap" style="padding: 16px 16px 0 16px;">
       <button class="btn btn-primary" style="width:100%; font-weight: bold;" onclick="openNewProjectModal()">+ New

@@ -65,20 +65,51 @@ function enrichConfigService(svc) {
     return svc;
 }
 
-// GET /api/groups - List all groups for current user
+// Helper: Get group with admin bypass
+async function getGroupForUser(groupId, user) {
+    if (user.role === 'admin') {
+        return await db.queryOne('SELECT * FROM project_groups WHERE id = $1', [groupId]);
+    }
+    return await db.queryOne('SELECT * FROM project_groups WHERE id = $1 AND user_id = $2', [groupId, user.userId]);
+}
+
+// GET /api/groups - List all groups for current user (admin sees selected owner's groups)
 router.get('/', async (req, res) => {
     try {
-        const groups = await db.queryAll(
-            `SELECT g.*,
+        let query, params;
+        if (req.user.role === 'admin') {
+            if (req.query.owner_id) {
+                query = `SELECT g.*,
+                        COUNT(p.id) AS linked_count,
+                        COUNT(CASE WHEN p.status = 'running' THEN 1 END) AS running_count
+                 FROM project_groups g
+                 LEFT JOIN projects p ON p.group_id = g.id
+                 WHERE g.user_id = $1
+                 GROUP BY g.id
+                 ORDER BY g.created_at DESC`;
+                params = [req.query.owner_id];
+            } else {
+                query = `SELECT g.*,
+                        COUNT(p.id) AS linked_count,
+                        COUNT(CASE WHEN p.status = 'running' THEN 1 END) AS running_count
+                 FROM project_groups g
+                 LEFT JOIN projects p ON p.group_id = g.id
+                 GROUP BY g.id
+                 ORDER BY g.created_at DESC`;
+                params = [];
+            }
+        } else {
+            query = `SELECT g.*,
                     COUNT(p.id) AS linked_count,
                     COUNT(CASE WHEN p.status = 'running' THEN 1 END) AS running_count
              FROM project_groups g
              LEFT JOIN projects p ON p.group_id = g.id
              WHERE g.user_id = $1
              GROUP BY g.id
-             ORDER BY g.created_at DESC`,
-            [req.user.userId]
-        );
+             ORDER BY g.created_at DESC`;
+            params = [req.user.userId];
+        }
+        const groups = await db.queryAll(query, params);
         // Add config service count
         groups.forEach(g => {
             const configServices = Array.isArray(g.services_config) ? g.services_config : [];
@@ -111,10 +142,18 @@ router.post('/', async (req, res) => {
 // MUST be before /:id to avoid Express matching 'unassigned' as an id!
 router.get('/unassigned/projects', async (req, res) => {
     try {
-        const projects = await db.queryAll(
-            'SELECT id, name, type, status, subdomain FROM projects WHERE user_id = $1 AND group_id IS NULL ORDER BY name ASC',
-            [req.user.userId]
-        );
+        let query, params;
+        if (req.user.role === 'admin' && req.query.owner_id) {
+            query = 'SELECT id, name, type, status, subdomain FROM projects WHERE user_id = $1 AND group_id IS NULL ORDER BY name ASC';
+            params = [req.query.owner_id];
+        } else if (req.user.role === 'admin') {
+            query = 'SELECT id, name, type, status, subdomain FROM projects WHERE group_id IS NULL ORDER BY name ASC';
+            params = [];
+        } else {
+            query = 'SELECT id, name, type, status, subdomain FROM projects WHERE user_id = $1 AND group_id IS NULL ORDER BY name ASC';
+            params = [req.user.userId];
+        }
+        const projects = await db.queryAll(query, params);
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -124,10 +163,7 @@ router.get('/unassigned/projects', async (req, res) => {
 // GET /api/groups/:id - Get group detail with MERGED services (linked projects + config services)
 router.get('/:id', async (req, res) => {
     try {
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         // 1. Linked Orbitron projects
@@ -193,12 +229,21 @@ router.put('/:id', async (req, res) => {
         if (description !== undefined) { updateFields.push(`description = $${idx++}`); values.push(description); }
         if (services_config !== undefined) { updateFields.push(`services_config = $${idx++}`); values.push(JSON.stringify(services_config)); }
         updateFields.push(`updated_at = NOW()`);
-        values.push(req.params.id, req.user.userId);
+        values.push(req.params.id);
 
-        const group = await db.queryOne(
-            `UPDATE project_groups SET ${updateFields.join(', ')} WHERE id = $${idx++} AND user_id = $${idx++} RETURNING *`,
-            values
-        );
+        let group;
+        if (req.user.role === 'admin') {
+            group = await db.queryOne(
+                `UPDATE project_groups SET ${updateFields.join(', ')} WHERE id = $${idx++} RETURNING *`,
+                values
+            );
+        } else {
+            values.push(req.user.userId);
+            group = await db.queryOne(
+                `UPDATE project_groups SET ${updateFields.join(', ')} WHERE id = $${idx++} AND user_id = $${idx++} RETURNING *`,
+                values
+            );
+        }
         if (!group) return res.status(404).json({ error: 'Group not found' });
         res.json(group);
     } catch (error) {
@@ -209,10 +254,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/groups/:id - Delete a group (services are only detached, not deleted)
 router.delete('/:id', async (req, res) => {
     try {
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         await db.query('UPDATE projects SET group_id = NULL WHERE group_id = $1', [group.id]);
@@ -230,16 +272,12 @@ router.post('/:id/services', async (req, res) => {
         const { project_id } = req.body;
         if (!project_id) return res.status(400).json({ error: 'project_id는 필수입니다.' });
 
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
-        const project = await db.queryOne(
-            'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-            [project_id, req.user.userId]
-        );
+        const project = req.user.role === 'admin'
+            ? await db.queryOne('SELECT * FROM projects WHERE id = $1', [project_id])
+            : await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [project_id, req.user.userId]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         await db.query('UPDATE projects SET group_id = $1 WHERE id = $2', [group.id, project.id]);
@@ -252,16 +290,14 @@ router.post('/:id/services', async (req, res) => {
 // DELETE /api/groups/:id/services/:projectId - Remove project from group
 router.delete('/:id/services/:projectId', async (req, res) => {
     try {
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
-        await db.query(
-            'UPDATE projects SET group_id = NULL WHERE id = $1 AND group_id = $2 AND user_id = $3',
-            [req.params.projectId, group.id, req.user.userId]
-        );
+        if (req.user.role === 'admin') {
+            await db.query('UPDATE projects SET group_id = NULL WHERE id = $1 AND group_id = $2', [req.params.projectId, group.id]);
+        } else {
+            await db.query('UPDATE projects SET group_id = NULL WHERE id = $1 AND group_id = $2 AND user_id = $3', [req.params.projectId, group.id, req.user.userId]);
+        }
 
         res.json({ message: '서비스가 그룹에서 제거되었습니다.' });
     } catch (error) {
@@ -272,10 +308,7 @@ router.delete('/:id/services/:projectId', async (req, res) => {
 // POST /api/groups/:id/config/service - Add a config-defined sub-service
 router.post('/:id/config/service', async (req, res) => {
     try {
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         const { key, name, type, runtime, root_dir, build_command, start_command, env_vars, connection_info } = req.body;
@@ -304,10 +337,7 @@ router.post('/:id/config/service', async (req, res) => {
 // PUT /api/groups/:id/config/service/:key - Update a config service
 router.put('/:id/config/service/:key', async (req, res) => {
     try {
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         const config = Array.isArray(group.services_config) ? [...group.services_config] : [];
@@ -332,10 +362,7 @@ router.put('/:id/config/service/:key', async (req, res) => {
 // DELETE /api/groups/:id/config/service/:key - Remove a config service
 router.delete('/:id/config/service/:key', async (req, res) => {
     try {
-        const group = await db.queryOne(
-            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.user.userId]
-        );
+        const group = await getGroupForUser(req.params.id, req.user);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         const config = Array.isArray(group.services_config) ? group.services_config.filter(s => s.key !== req.params.key) : [];

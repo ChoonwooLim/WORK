@@ -188,37 +188,29 @@ function navigateTo(page) {
 }
 
 // ============ PROJECT LIST ============
+let allProjectsCache = []; // Cached for dropdown search
 
 async function loadProjects() {
     try {
-        // Fetch all projects (for dropdown - admin sees all, users see own)
         const res = await fetch(`${API}/projects`);
         if (!res.ok) {
             if (res.status === 401) return;
             throw new Error(`HTTP error! status: ${res.status}`);
         }
-        const allProjects = await res.json();
+        allProjectsCache = await res.json();
 
-        // Update Sidebar dropdown (always show all projects for admin)
-        const selectEl = document.getElementById('global-project-select');
-        if (selectEl) {
-            selectEl.innerHTML = '<option value="" disabled>프로젝트를 선택하세요...</option>' +
-                allProjects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.owner_name ? ' (' + escapeHtml(p.owner_name) + ')' : ''}</option>`).join('');
+        // Populate custom searchable dropdown
+        renderProjectDropdown(allProjectsCache);
 
-            if (currentProject) {
-                selectEl.value = currentProject.id;
-            } else if (allProjects.length > 0) {
-                selectEl.value = allProjects[0].id;
-                await onGlobalProjectSelect(allProjects[0].id, false);
-            } else {
-                selectEl.innerHTML = '<option value="" disabled selected>생성된 프로젝트 없음</option>';
-            }
+        // Auto-select if needed
+        if (!currentProject && allProjectsCache.length > 0) {
+            await onGlobalProjectSelect(allProjectsCache[0].id, false);
         }
 
         // For dashboard display: admin shows only selected project's owner's projects
-        let displayProjects = allProjects;
+        let displayProjects = allProjectsCache;
         if (currentProject && currentProject.user_id && isAdminUser()) {
-            displayProjects = allProjects.filter(p => p.user_id === currentProject.user_id);
+            displayProjects = allProjectsCache.filter(p => p.user_id === currentProject.user_id);
         }
 
         renderProjects(displayProjects);
@@ -229,6 +221,107 @@ async function loadProjects() {
     }
 }
 
+// ===== CUSTOM SEARCHABLE PROJECT DROPDOWN =====
+const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+
+function renderProjectDropdown(projects) {
+    const listEl = document.getElementById('project-search-list');
+    const selectedText = document.getElementById('psd-selected-text');
+    if (!listEl) return;
+
+    if (projects.length === 0) {
+        listEl.innerHTML = '<div class="psd-empty">생성된 프로젝트 없음</div>';
+        if (selectedText) selectedText.textContent = '생성된 프로젝트 없음';
+        return;
+    }
+
+    listEl.innerHTML = projects.map(p => `
+        <div class="psd-item${currentProject && currentProject.id === p.id ? ' selected' : ''}" onclick="selectProjectFromDropdown(${p.id})" data-name="${escapeHtml(p.name).toLowerCase()}" data-owner="${(p.owner_name || '').toLowerCase()}">
+            <div class="psd-item-dot" style="background:${statusColors[p.status] || '#484f58'};${p.status === 'running' ? 'box-shadow:0 0 6px ' + statusColors[p.status] + ';' : ''}"></div>
+            <div class="psd-item-name">${escapeHtml(p.name)}</div>
+            ${p.owner_name ? `<div class="psd-item-owner">${escapeHtml(p.owner_name)}</div>` : ''}
+        </div>
+    `).join('');
+
+    // Update selected display
+    if (currentProject) {
+        const owner = projects.find(p => p.id === currentProject.id);
+        const ownerStr = owner && owner.owner_name ? ` (${owner.owner_name})` : '';
+        if (selectedText) selectedText.textContent = currentProject.name + ownerStr;
+    } else if (selectedText) {
+        selectedText.textContent = '프로젝트를 선택하세요...';
+    }
+}
+
+function toggleProjectDropdown() {
+    const panel = document.getElementById('project-search-panel');
+    const selected = document.getElementById('project-search-selected');
+    const searchInput = document.getElementById('project-search-input');
+    if (!panel) return;
+
+    const isOpen = panel.style.display !== 'none';
+    if (isOpen) {
+        closeProjectDropdown();
+    } else {
+        panel.style.display = 'block';
+        selected.classList.add('open');
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
+            filterProjectDropdown('');
+        }
+    }
+}
+
+function closeProjectDropdown() {
+    const panel = document.getElementById('project-search-panel');
+    const selected = document.getElementById('project-search-selected');
+    if (panel) panel.style.display = 'none';
+    if (selected) selected.classList.remove('open');
+}
+
+function filterProjectDropdown(query) {
+    const items = document.querySelectorAll('#project-search-list .psd-item');
+    const q = query.toLowerCase().trim();
+    let visibleCount = 0;
+    items.forEach(item => {
+        const name = item.dataset.name || '';
+        const owner = item.dataset.owner || '';
+        const match = !q || name.includes(q) || owner.includes(q);
+        item.style.display = match ? '' : 'none';
+        if (match) visibleCount++;
+    });
+    // Show "no results" message
+    let emptyEl = document.getElementById('psd-no-results');
+    if (visibleCount === 0) {
+        if (!emptyEl) {
+            emptyEl = document.createElement('div');
+            emptyEl.id = 'psd-no-results';
+            emptyEl.className = 'psd-empty';
+            document.getElementById('project-search-list').appendChild(emptyEl);
+        }
+        emptyEl.textContent = `"${query}" 검색 결과 없음`;
+        emptyEl.style.display = '';
+    } else if (emptyEl) {
+        emptyEl.style.display = 'none';
+    }
+}
+
+async function selectProjectFromDropdown(id) {
+    closeProjectDropdown();
+    await onGlobalProjectSelect(id);
+    // Re-render dropdown to update selected state
+    renderProjectDropdown(allProjectsCache);
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function (e) {
+    const dropdown = document.getElementById('project-search-dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        closeProjectDropdown();
+    }
+});
+
 // Sidebar Global Selection Event
 async function onGlobalProjectSelect(id, navigate = true) {
     if (!id) return;
@@ -237,6 +330,8 @@ async function onGlobalProjectSelect(id, navigate = true) {
         const data = await res.json();
         if (res.ok) {
             currentProject = data;
+            // Update dropdown display
+            renderProjectDropdown(allProjectsCache);
             // Update the topbar action buttons
             navigateTo(currentPage);
 
@@ -799,10 +894,7 @@ async function createUploadProject(projectType = 'upload') {
 
         // Switch to the new project overview page
         await loadProjects();
-        const selectEl = document.getElementById('global-project-select');
-        if (selectEl) {
-            selectEl.value = project.id;
-        }
+        renderProjectDropdown(allProjectsCache);
         await onGlobalProjectSelect(project.id);
 
     } catch (error) {
@@ -2293,7 +2385,11 @@ let currentGroup = null;
 
 async function loadGroups() {
     try {
-        const res = await fetch(`${API}/groups`);
+        let groupsUrl = `${API}/groups`;
+        if (isAdminUser() && currentProject && currentProject.user_id) {
+            groupsUrl += `?owner_id=${currentProject.user_id}`;
+        }
+        const res = await fetch(groupsUrl);
         const groups = await res.json();
         const container = document.getElementById('groups-list');
         if (groups.length === 0) {
@@ -2610,8 +2706,7 @@ async function openProjectFromGroup(projectId) {
     try {
         const res = await fetch(`${API}/projects/${projectId}`);
         currentProject = await res.json();
-        const selectEl = document.getElementById('global-project-select');
-        if (selectEl) selectEl.value = projectId;
+        renderProjectDropdown(allProjectsCache);
         navigateTo('project-overview');
     } catch (e) {
         toast('프로젝트 로드 실패', 'error');
@@ -2666,7 +2761,11 @@ async function openAddServiceModal(groupId) {
     container.innerHTML = '로딩 중...';
 
     try {
-        const res = await fetch(`${API}/groups/unassigned/projects`);
+        let unassignedUrl = `${API}/groups/unassigned/projects`;
+        if (isAdminUser() && currentProject && currentProject.user_id) {
+            unassignedUrl += `?owner_id=${currentProject.user_id}`;
+        }
+        const res = await fetch(unassignedUrl);
         const projects = await res.json();
         if (projects.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">모든 프로젝트가 이미 그룹에 할당되어 있습니다.</div>';
@@ -3177,67 +3276,126 @@ async function changeUserPlan(userId, plan) {
 
 // ============ ADMIN ALL PROJECTS ============
 
+let adminProjectsCache = [];
+
 async function renderAdminProjects() {
     const el = document.getElementById('admin-projects-content');
     el.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">로딩 중...</div>';
     try {
         const res = await fetch(`${API}/admin/projects`);
         if (!res.ok) throw new Error('Failed');
-        const projects = await res.json();
-        const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
-        const statusLabels = { running: '실행 중', stopped: '중지됨', building: '빌드 중', failed: '실패' };
-
-        // Stats
-        const total = projects.length;
-        const running = projects.filter(p => p.status === 'running').length;
-        const stopped = projects.filter(p => p.status === 'stopped' || p.status === 'failed').length;
-
-        el.innerHTML = `
-        <div style="display:flex; gap:16px; margin-bottom:24px;">
-          <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
-            <div style="font-size:28px; font-weight:700; color:var(--text-primary);">${total}</div>
-            <div style="font-size:13px; color:var(--text-muted);">전체 프로젝트</div>
-          </div>
-          <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
-            <div style="font-size:28px; font-weight:700; color:var(--success);">${running}</div>
-            <div style="font-size:13px; color:var(--text-muted);">실행 중</div>
-          </div>
-          <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
-            <div style="font-size:28px; font-weight:700; color:var(--danger);">${stopped}</div>
-            <div style="font-size:13px; color:var(--text-muted);">중지됨</div>
-          </div>
-        </div>
-        <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
-          <table style="width:100%; border-collapse:collapse; font-size:13px;">
-            <thead>
-              <tr style="background:rgba(255,255,255,0.03); text-align:left;">
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">상태</th>
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">프로젝트</th>
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">소유자</th>
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">타입</th>
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">포트</th>
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">URL</th>
-                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">업데이트</th>
-              </tr>
-            </thead>
-            <tbody>
-            ${projects.map(p => `
-              <tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="openProject(${p.id})">
-                <td style="padding:10px 14px;">
-                  <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${statusColors[p.status] || '#484f58'}; ${p.status === 'running' ? 'box-shadow:0 0 6px ' + statusColors.running + ';' : ''}"></span>
-                  <span style="margin-left:6px; font-size:12px; color:${statusColors[p.status] || 'var(--text-muted)'};">${statusLabels[p.status] || p.status}</span>
-                </td>
-                <td style="padding:10px 14px; font-weight:600;">${escapeHtml(p.name)}</td>
-                <td style="padding:10px 14px; color:var(--text-secondary);">${escapeHtml(p.owner_name)}</td>
-                <td style="padding:10px 14px; color:var(--text-muted);">${p.type || 'web'}</td>
-                <td style="padding:10px 14px; font-family:var(--font-mono); color:var(--text-muted);">${p.port || '-'}</td>
-                <td style="padding:10px 14px;">${p.tunnel_url ? `<a href="${p.tunnel_url}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent); font-size:12px;">${p.tunnel_url.replace('https://', '')}</a>` : '<span style="color:var(--text-muted);">-</span>'}</td>
-                <td style="padding:10px 14px; color:var(--text-muted); font-size:12px;">${timeAgo(p.updated_at || p.created_at)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`;
+        adminProjectsCache = await res.json();
+        renderAdminProjectsTable(adminProjectsCache);
     } catch (e) {
         el.innerHTML = `<div style="text-align:center; padding:40px; color:var(--danger);">프로젝트 정보를 불러올 수 없습니다.</div>`;
     }
+}
+
+function renderAdminProjectsTable(projects) {
+    const el = document.getElementById('admin-projects-content');
+    const _sc = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+    const _sl = { running: '실행 중', stopped: '중지됨', building: '빌드 중', failed: '실패' };
+
+    // Stats from full cache
+    const total = adminProjectsCache.length;
+    const running = adminProjectsCache.filter(p => p.status === 'running').length;
+    const stopped = adminProjectsCache.filter(p => p.status === 'stopped' || p.status === 'failed').length;
+
+    // Get unique owners
+    const owners = [...new Set(adminProjectsCache.map(p => p.owner_name).filter(Boolean))].sort();
+
+    // Preserve current filter values
+    const searchVal = document.getElementById('admin-proj-search')?.value || '';
+    const statusVal = document.getElementById('admin-proj-status')?.value || '';
+    const ownerVal = document.getElementById('admin-proj-owner')?.value || '';
+
+    el.innerHTML = `
+    <div style="display:flex; gap:16px; margin-bottom:24px;">
+      <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
+        <div style="font-size:28px; font-weight:700; color:var(--text-primary);">${total}</div>
+        <div style="font-size:13px; color:var(--text-muted);">전체 프로젝트</div>
+      </div>
+      <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
+        <div style="font-size:28px; font-weight:700; color:var(--success);">${running}</div>
+        <div style="font-size:13px; color:var(--text-muted);">실행 중</div>
+      </div>
+      <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
+        <div style="font-size:28px; font-weight:700; color:var(--danger);">${stopped}</div>
+        <div style="font-size:13px; color:var(--text-muted);">중지됨</div>
+      </div>
+    </div>
+    <div class="admin-search-bar">
+      <input type="text" id="admin-proj-search" placeholder="🔍 프로젝트 이름, 소유자 검색..." value="${escapeHtml(searchVal)}" oninput="debounceAdminProjectSearch()">
+      <select id="admin-proj-status" onchange="applyAdminProjectFilter()">
+        <option value="">전체 상태</option>
+        <option value="running"${statusVal === 'running' ? ' selected' : ''}>🟢 실행 중</option>
+        <option value="stopped"${statusVal === 'stopped' ? ' selected' : ''}>⚫ 중지됨</option>
+        <option value="building"${statusVal === 'building' ? ' selected' : ''}>🟡 빌드 중</option>
+        <option value="failed"${statusVal === 'failed' ? ' selected' : ''}>🔴 실패</option>
+      </select>
+      <select id="admin-proj-owner" onchange="applyAdminProjectFilter()">
+        <option value="">전체 소유자</option>
+        ${owners.map(o => `<option value="${escapeHtml(o)}"${ownerVal === o ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+      </select>
+      <span style="font-size:12px; color:var(--text-muted); white-space:nowrap;">${projects.length}/${total}건</span>
+    </div>
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="background:rgba(255,255,255,0.03); text-align:left;">
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">상태</th>
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">프로젝트</th>
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">소유자</th>
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">타입</th>
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">포트</th>
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">URL</th>
+            <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">업데이트</th>
+          </tr>
+        </thead>
+        <tbody>
+        ${projects.length === 0 ? `<tr><td colspan="7" style="padding:30px; text-align:center; color:var(--text-muted);">검색 결과가 없습니다.</td></tr>` :
+            projects.map(p => `
+          <tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="openProject(${p.id})">
+            <td style="padding:10px 14px;">
+              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${_sc[p.status] || '#484f58'}; ${p.status === 'running' ? 'box-shadow:0 0 6px ' + _sc.running + ';' : ''}"></span>
+              <span style="margin-left:6px; font-size:12px; color:${_sc[p.status] || 'var(--text-muted)'};">${_sl[p.status] || p.status}</span>
+            </td>
+            <td style="padding:10px 14px; font-weight:600;">${escapeHtml(p.name)}</td>
+            <td style="padding:10px 14px; color:var(--text-secondary);">${escapeHtml(p.owner_name)}</td>
+            <td style="padding:10px 14px; color:var(--text-muted);">${p.type || 'web'}</td>
+            <td style="padding:10px 14px; font-family:var(--font-mono); color:var(--text-muted);">${p.port || '-'}</td>
+            <td style="padding:10px 14px;">${p.tunnel_url ? `<a href="${p.tunnel_url}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent); font-size:12px;">${p.tunnel_url.replace('https://', '')}</a>` : '<span style="color:var(--text-muted);">-</span>'}</td>
+            <td style="padding:10px 14px; color:var(--text-muted); font-size:12px;">${timeAgo(p.updated_at || p.created_at)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+let adminSearchTimer = null;
+function debounceAdminProjectSearch() {
+    clearTimeout(adminSearchTimer);
+    adminSearchTimer = setTimeout(applyAdminProjectFilter, 200);
+}
+
+function applyAdminProjectFilter() {
+    const q = (document.getElementById('admin-proj-search')?.value || '').toLowerCase().trim();
+    const status = document.getElementById('admin-proj-status')?.value || '';
+    const owner = document.getElementById('admin-proj-owner')?.value || '';
+
+    let filtered = adminProjectsCache;
+    if (q) {
+        filtered = filtered.filter(p =>
+            (p.name || '').toLowerCase().includes(q) ||
+            (p.owner_name || '').toLowerCase().includes(q) ||
+            (p.subdomain || '').toLowerCase().includes(q)
+        );
+    }
+    if (status) {
+        filtered = filtered.filter(p => p.status === status);
+    }
+    if (owner) {
+        filtered = filtered.filter(p => p.owner_name === owner);
+    }
+    renderAdminProjectsTable(filtered);
 }
