@@ -81,6 +81,12 @@ DO $$ BEGIN
 
     -- Services config for project groups
     ALTER TABLE project_groups ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '[]'::jsonb;
+
+    -- User pricing plan tier
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(20) DEFAULT 'starter';
+
+    -- Promote first user to admin
+    UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY id ASC LIMIT 1) AND role = 'user';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

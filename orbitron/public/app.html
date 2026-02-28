@@ -86,6 +86,22 @@
         </a>
       </div>
 
+      <div class="nav-section-label" id="nav-admin-section" style="display:none;">🛡 어드민</div>
+      <div id="nav-admin-items" style="display:none;">
+        <a class="nav-item" onclick="navigateTo('admin-system')" id="nav-admin-system">
+          <span class="nav-icon">🖥</span>
+          <span>시스템 모니터</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('admin-users')" id="nav-admin-users">
+          <span class="nav-icon">👥</span>
+          <span>유저 관리</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('admin-projects')" id="nav-admin-projects">
+          <span class="nav-icon">🌐</span>
+          <span>전체 프로젝트</span>
+        </a>
+      </div>
+
       <div class="nav-section-label">전용 배포</div>
       <a class="nav-item" onclick="navigateTo('deploy-unreal')" id="nav-deploy-unreal">
         <span class="nav-icon">🎮</span>
@@ -320,6 +336,17 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Admin Pages -->
+      <div class="page" id="page-admin-system">
+        <div id="admin-system-content">로딩 중...</div>
+      </div>
+      <div class="page" id="page-admin-users">
+        <div id="admin-users-content">로딩 중...</div>
+      </div>
+      <div class="page" id="page-admin-projects">
+        <div id="admin-projects-content">로딩 중...</div>
       </div>
 
     </main>

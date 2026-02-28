@@ -126,6 +126,9 @@ function navigateTo(page) {
         'project-ai': `💬 ${currentProject?.name || ''} — AI 어시스턴트`,
         'groups': '📂 프로젝트 그룹',
         'group-overview': `📂 ${currentGroup?.name || ''} — 서비스 목록`,
+        'admin-system': '🖥 시스템 모니터',
+        'admin-users': '👥 유저 관리',
+        'admin-projects': '🌐 전체 프로젝트',
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
 
@@ -171,6 +174,9 @@ function navigateTo(page) {
 
     if (page === 'groups') loadGroups();
     if (page === 'group-overview') renderGroupOverview();
+    if (page === 'admin-system') renderAdminSystem();
+    if (page === 'admin-users') renderAdminUsers();
+    if (page === 'admin-projects') renderAdminProjects();
 }
 
 // ============ PROJECT LIST ============
@@ -2163,6 +2169,20 @@ async function init() {
         if (info.publicIp) serverHost = info.publicIp;
     } catch (e) { /* fallback to localhost */ }
     loadProjects();
+
+    // Check admin role from JWT and show admin nav
+    try {
+        const token = getToken();
+        if (token) {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.role === 'admin') {
+                const adminSection = document.getElementById('nav-admin-section');
+                const adminItems = document.getElementById('nav-admin-items');
+                if (adminSection) adminSection.style.display = 'block';
+                if (adminItems) adminItems.style.display = 'block';
+            }
+        }
+    } catch (e) { /* ignore */ }
 }
 
 init();
@@ -2710,4 +2730,341 @@ async function removeConfigService(groupId, key) {
         currentGroup = await groupRes.json();
         renderGroupOverview();
     } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============ ADMIN DASHBOARD ============
+
+let adminSystemSSE = null;
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatUptime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}일 ${h}시간 ${m}분`;
+    if (h > 0) return `${h}시간 ${m}분`;
+    return `${m}분`;
+}
+
+function gaugeCircle(percent, label, color, detail) {
+    const p = Math.min(100, Math.max(0, parseFloat(percent) || 0));
+    const circumference = 2 * Math.PI * 40;
+    const offset = circumference - (p / 100) * circumference;
+    return `
+    <div style="text-align:center; min-width:120px;">
+      <svg width="100" height="100" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/>
+        <circle cx="50" cy="50" r="40" fill="none" stroke="${color}" stroke-width="8"
+          stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+          stroke-linecap="round" transform="rotate(-90 50 50)" style="transition:stroke-dashoffset 0.5s ease;"/>
+        <text x="50" y="46" text-anchor="middle" fill="var(--text-primary)" font-size="18" font-weight="700">${p}%</text>
+        <text x="50" y="62" text-anchor="middle" fill="var(--text-muted)" font-size="10">${detail || ''}</text>
+      </svg>
+      <div style="font-size:13px; font-weight:600; color:var(--text-secondary); margin-top:4px;">${label}</div>
+    </div>`;
+}
+
+function renderAdminSystem() {
+    const el = document.getElementById('admin-system-content');
+    el.innerHTML = `
+    <div style="background:linear-gradient(135deg, rgba(88,166,255,0.08), rgba(189,147,249,0.05)); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:24px;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+        <span style="font-size:24px;">🖥</span>
+        <div>
+          <div style="font-size:18px; font-weight:700; color:var(--text-primary);">Orbitron 서버 상태</div>
+          <div style="font-size:13px; color:var(--text-muted);">실시간 시스템 메트릭</div>
+        </div>
+      </div>
+      <div id="admin-gauges" style="display:flex; justify-content:center; gap:32px; flex-wrap:wrap;">
+        ${gaugeCircle(0, 'CPU', '#58a6ff', '--')}
+        ${gaugeCircle(0, 'RAM', '#3fb950', '--')}
+        ${gaugeCircle(0, 'Disk', '#d29922', '--')}
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px;">
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px;">
+        <div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-primary);">📊 서버 정보</div>
+        <div id="admin-server-info" style="font-size:13px; color:var(--text-secondary); line-height:2;">로딩 중...</div>
+      </div>
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px;">
+        <div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-primary);">🐳 Docker 상태</div>
+        <div id="admin-docker-info" style="font-size:13px; color:var(--text-secondary); line-height:2;">로딩 중...</div>
+      </div>
+    </div>
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div style="font-size:14px; font-weight:600; color:var(--text-primary);">📋 서버 로그</div>
+        <button class="btn btn-sm btn-ghost" onclick="loadAdminLogs()">🔄 새로고침</button>
+      </div>
+      <div id="admin-log-viewer" class="log-viewer" style="max-height:300px; font-size:12px;">로딩 중...</div>
+    </div>`;
+
+    // Start SSE stream
+    startAdminSSE();
+    loadAdminDocker();
+    loadAdminLogs();
+}
+
+function startAdminSSE() {
+    if (adminSystemSSE) adminSystemSSE.close();
+    const token = getToken();
+    adminSystemSSE = new EventSource(`${API}/admin/system/stream?token=${token}`);
+    adminSystemSSE.onmessage = (e) => {
+        try {
+            const d = JSON.parse(e.data);
+            if (d.error) return;
+            // Update gauges
+            const gaugesEl = document.getElementById('admin-gauges');
+            if (gaugesEl) {
+                gaugesEl.innerHTML =
+                    gaugeCircle(d.cpu.usage, 'CPU', '#58a6ff', `${d.cpu.cores} cores`) +
+                    gaugeCircle(d.memory.percent, 'RAM', '#3fb950', `${formatBytes(d.memory.used)} / ${formatBytes(d.memory.total)}`) +
+                    gaugeCircle(d.disk.percent, 'Disk', '#d29922', `${formatBytes(d.disk.used)} / ${formatBytes(d.disk.total)}`);
+            }
+            // Update server info
+            const infoEl = document.getElementById('admin-server-info');
+            if (infoEl) {
+                infoEl.innerHTML = `
+                  <div>🕐 서버 업타임: <strong>${formatUptime(d.system.uptime)}</strong></div>
+                  <div>⚙️ Node.js: <strong>${d.process.nodeVersion}</strong> | PID: <strong>${d.process.pid}</strong></div>
+                  <div>💾 프로세스 메모리: <strong>${formatBytes(d.process.memoryUsage.rss)}</strong></div>
+                  <div>📡 Load Average: <strong>${d.system.loadAvg.map(l => l.toFixed(2)).join(' / ')}</strong></div>
+                  <div>🌐 네트워크 I/O: ↓ <strong>${formatBytes(d.network.rxBytes)}</strong> / ↑ <strong>${formatBytes(d.network.txBytes)}</strong></div>
+                  <div>🖥 호스트: <strong>${d.system.hostname}</strong> (${d.system.platform}/${d.system.arch})</div>`;
+            }
+        } catch (err) { /* ignore parse errors */ }
+    };
+    adminSystemSSE.onerror = () => {
+        // Will auto-reconnect
+    };
+}
+
+// Stop SSE when navigating away
+const origNavigateTo = navigateTo;
+navigateTo = function (page) {
+    if (!page.startsWith('admin-system') && adminSystemSSE) {
+        adminSystemSSE.close();
+        adminSystemSSE = null;
+    }
+    return origNavigateTo(page);
+};
+
+async function loadAdminDocker() {
+    try {
+        const res = await fetch(`${API}/admin/docker`);
+        if (!res.ok) throw new Error('Failed');
+        const d = await res.json();
+        const el = document.getElementById('admin-docker-info');
+        if (el) {
+            el.innerHTML = `
+              <div>📦 컨테이너: <strong style="color:var(--success);">${d.containers.running}</strong> 실행 / <strong>${d.containers.total}</strong> 전체</div>
+              <div>💿 이미지: <strong>${d.images.total}</strong>개</div>
+              <div>💾 볼륨: <strong>${d.volumes.total}</strong>개</div>
+              <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">실행 중인 컨테이너:</div>
+              ${d.containers.list.filter(c => c.status?.startsWith('Up')).map(c =>
+                `<div style="font-size:12px; padding:2px 0;"><code style="color:var(--accent);">${c.name}</code> <span style="color:var(--text-muted);">${c.status}</span></div>`
+            ).join('')}`;
+        }
+    } catch (e) {
+        const el = document.getElementById('admin-docker-info');
+        if (el) el.innerHTML = '<span style="color:var(--danger);">Docker 정보를 불러올 수 없습니다.</span>';
+    }
+}
+
+async function loadAdminLogs() {
+    try {
+        const res = await fetch(`${API}/admin/logs?lines=80`);
+        if (!res.ok) throw new Error('Failed');
+        const d = await res.json();
+        const el = document.getElementById('admin-log-viewer');
+        if (el) {
+            el.textContent = d.logs || 'No logs available';
+            el.scrollTop = el.scrollHeight;
+        }
+    } catch (e) {
+        const el = document.getElementById('admin-log-viewer');
+        if (el) el.textContent = '로그를 불러올 수 없습니다.';
+    }
+}
+
+// ============ ADMIN USERS ============
+
+async function renderAdminUsers() {
+    const el = document.getElementById('admin-users-content');
+    el.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">로딩 중...</div>';
+    try {
+        const res = await fetch(`${API}/admin/users`);
+        if (!res.ok) throw new Error('Failed');
+        const users = await res.json();
+        const planColors = { starter: '#8b949e', pro: '#58a6ff', team: '#3fb950', enterprise: '#d29922' };
+        const planLabels = { starter: 'Starter', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
+        const planIcons = { starter: '🌱', pro: '⚡', team: '🏢', enterprise: '👑' };
+        el.innerHTML = `
+        <div style="display:flex; gap:12px; margin-bottom:20px;">
+          ${['starter', 'pro', 'team', 'enterprise'].map(p => {
+            const count = users.filter(u => (u.plan || 'starter') === p).length;
+            return `<div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 16px; text-align:center;">
+              <div style="font-size:20px; font-weight:700; color:${planColors[p]};">${count}</div>
+              <div style="font-size:12px; color:var(--text-muted);">${planIcons[p]} ${planLabels[p]}</div>
+            </div>`;
+        }).join('')}
+        </div>
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+          <table style="width:100%; border-collapse:collapse; font-size:14px;">
+            <thead>
+              <tr style="background:rgba(255,255,255,0.03); text-align:left;">
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">ID</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">사용자명</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">이메일</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">역할</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">요금제</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">프로젝트</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">가입일</th>
+                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map(u => {
+            const plan = u.plan || 'starter';
+            return `
+              <tr style="border-top:1px solid var(--border);">
+                <td style="padding:12px 16px; color:var(--text-muted);">${u.id}</td>
+                <td style="padding:12px 16px; font-weight:600;">${escapeHtml(u.username)}</td>
+                <td style="padding:12px 16px; color:var(--text-secondary);">${escapeHtml(u.email)}</td>
+                <td style="padding:12px 16px;">
+                  <span style="background:${u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;">
+                    ${u.role === 'admin' ? '🛡 Admin' : '👤 User'}
+                  </span>
+                </td>
+                <td style="padding:12px 16px;">
+                  <span style="background:rgba(${plan === 'starter' ? '139,148,158' : plan === 'pro' ? '88,166,255' : plan === 'team' ? '63,185,80' : '210,153,34'},0.15); color:${planColors[plan]}; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;">
+                    ${planIcons[plan]} ${planLabels[plan]}
+                  </span>
+                </td>
+                <td style="padding:12px 16px; text-align:center;"><strong>${u.project_count}</strong></td>
+                <td style="padding:12px 16px; color:var(--text-muted); font-size:13px;">${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
+                <td style="padding:12px 16px;">
+                  <div style="display:flex; gap:4px;">
+                    <select onchange="changeUserRole(${u.id}, this.value)" style="padding:4px 6px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
+                      <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
+                      <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                    <select onchange="changeUserPlan(${u.id}, this.value)" style="padding:4px 6px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
+                      <option value="starter" ${plan === 'starter' ? 'selected' : ''}>🌱 Starter</option>
+                      <option value="pro" ${plan === 'pro' ? 'selected' : ''}>⚡ Pro</option>
+                      <option value="team" ${plan === 'team' ? 'selected' : ''}>🏢 Team</option>
+                      <option value="enterprise" ${plan === 'enterprise' ? 'selected' : ''}>👑 Enterprise</option>
+                    </select>
+                  </div>
+                </td>
+              </tr>`;
+        }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:16px; font-size:13px; color:var(--text-muted);">총 ${users.length}명의 사용자</div>`;
+    } catch (e) {
+        el.innerHTML = `<div style="text-align:center; padding:40px; color:var(--danger);">유저 정보를 불러올 수 없습니다.</div>`;
+    }
+}
+
+async function changeUserRole(userId, role) {
+    try {
+        const res = await fetch(`${API}/admin/users/${userId}/role`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast(`역할이 ${role}로 변경되었습니다.`, 'success');
+        renderAdminUsers();
+    } catch (e) { toast(e.message, 'error'); renderAdminUsers(); }
+}
+
+async function changeUserPlan(userId, plan) {
+    try {
+        const res = await fetch(`${API}/admin/users/${userId}/plan`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        const planLabels = { starter: 'Starter', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
+        toast(`요금제가 ${planLabels[plan]}로 변경되었습니다.`, 'success');
+        renderAdminUsers();
+    } catch (e) { toast(e.message, 'error'); renderAdminUsers(); }
+}
+
+// ============ ADMIN ALL PROJECTS ============
+
+async function renderAdminProjects() {
+    const el = document.getElementById('admin-projects-content');
+    el.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">로딩 중...</div>';
+    try {
+        const res = await fetch(`${API}/admin/projects`);
+        if (!res.ok) throw new Error('Failed');
+        const projects = await res.json();
+        const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+        const statusLabels = { running: '실행 중', stopped: '중지됨', building: '빌드 중', failed: '실패' };
+
+        // Stats
+        const total = projects.length;
+        const running = projects.filter(p => p.status === 'running').length;
+        const stopped = projects.filter(p => p.status === 'stopped' || p.status === 'failed').length;
+
+        el.innerHTML = `
+        <div style="display:flex; gap:16px; margin-bottom:24px;">
+          <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
+            <div style="font-size:28px; font-weight:700; color:var(--text-primary);">${total}</div>
+            <div style="font-size:13px; color:var(--text-muted);">전체 프로젝트</div>
+          </div>
+          <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
+            <div style="font-size:28px; font-weight:700; color:var(--success);">${running}</div>
+            <div style="font-size:13px; color:var(--text-muted);">실행 중</div>
+          </div>
+          <div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;">
+            <div style="font-size:28px; font-weight:700; color:var(--danger);">${stopped}</div>
+            <div style="font-size:13px; color:var(--text-muted);">중지됨</div>
+          </div>
+        </div>
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+          <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="background:rgba(255,255,255,0.03); text-align:left;">
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">상태</th>
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">프로젝트</th>
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">소유자</th>
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">타입</th>
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">포트</th>
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">URL</th>
+                <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">업데이트</th>
+              </tr>
+            </thead>
+            <tbody>
+            ${projects.map(p => `
+              <tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="openProject(${p.id})">
+                <td style="padding:10px 14px;">
+                  <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${statusColors[p.status] || '#484f58'}; ${p.status === 'running' ? 'box-shadow:0 0 6px ' + statusColors.running + ';' : ''}"></span>
+                  <span style="margin-left:6px; font-size:12px; color:${statusColors[p.status] || 'var(--text-muted)'};">${statusLabels[p.status] || p.status}</span>
+                </td>
+                <td style="padding:10px 14px; font-weight:600;">${escapeHtml(p.name)}</td>
+                <td style="padding:10px 14px; color:var(--text-secondary);">${escapeHtml(p.owner_name)}</td>
+                <td style="padding:10px 14px; color:var(--text-muted);">${p.type || 'web'}</td>
+                <td style="padding:10px 14px; font-family:var(--font-mono); color:var(--text-muted);">${p.port || '-'}</td>
+                <td style="padding:10px 14px;">${p.tunnel_url ? `<a href="${p.tunnel_url}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent); font-size:12px;">${p.tunnel_url.replace('https://', '')}</a>` : '<span style="color:var(--text-muted);">-</span>'}</td>
+                <td style="padding:10px 14px; color:var(--text-muted); font-size:12px;">${timeAgo(p.updated_at || p.created_at)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (e) {
+        el.innerHTML = `<div style="text-align:center; padding:40px; color:var(--danger);">프로젝트 정보를 불러올 수 없습니다.</div>`;
+    }
 }

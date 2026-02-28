@@ -32,6 +32,7 @@ app.use('/api/deployments', authMiddleware, require('./routes/deployments'));
 app.use('/api/groups', authMiddleware, require('./routes/groups'));
 app.use('/api/projects', authMiddleware, require('./routes/source'));
 app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
+app.use('/api/admin', authMiddleware, require('./middleware/adminAuth'), require('./routes/admin'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -100,6 +101,23 @@ async function start() {
         const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf-8');
         await db.query(schema);
         console.log('✅ Database schema initialized');
+
+        // Auto-create admin user from .env if not exists
+        if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+            const bcrypt = require('bcrypt');
+            const existing = await db.queryOne('SELECT id FROM users WHERE email = $1', [process.env.ADMIN_EMAIL]);
+            if (!existing) {
+                const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+                await db.queryOne(
+                    "INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id",
+                    ['admin', process.env.ADMIN_EMAIL, hash]
+                );
+                console.log(`🛡 Admin account created: ${process.env.ADMIN_EMAIL}`);
+            } else {
+                // Ensure existing user has admin role
+                await db.query("UPDATE users SET role = 'admin' WHERE email = $1", [process.env.ADMIN_EMAIL]);
+            }
+        }
 
         app.listen(PORT, async () => {
             console.log(`
