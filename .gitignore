@@ -6,3 +6,4 @@ node_modules/
 # Ignore external and dynamic deployments
 WRA/
 devdeploy/deployments/
+RemoteAGT/
