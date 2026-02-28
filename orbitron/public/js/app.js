@@ -2916,18 +2916,18 @@ async function renderAdminUsers() {
             </div>`;
         }).join('')}
         </div>
-        <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
-          <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow-x:auto;">
+          <table style="width:100%; min-width:850px; border-collapse:collapse; font-size:13px;">
             <thead>
               <tr style="background:rgba(255,255,255,0.03); text-align:left;">
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">ID</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">사용자명</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">이메일</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">역할</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">요금제</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">프로젝트</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">가입일</th>
-                <th style="padding:14px 16px; font-weight:600; color:var(--text-secondary);">관리</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">ID</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">사용자명</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">이메일</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">역할</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">요금제</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); text-align:center;">프로젝트</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">가입일</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -2935,28 +2935,28 @@ async function renderAdminUsers() {
             const plan = u.plan || 'starter';
             return `
               <tr style="border-top:1px solid var(--border);">
-                <td style="padding:12px 16px; color:var(--text-muted);">${u.id}</td>
-                <td style="padding:12px 16px; font-weight:600;">${escapeHtml(u.username)}</td>
-                <td style="padding:12px 16px; color:var(--text-secondary);">${escapeHtml(u.email)}</td>
-                <td style="padding:12px 16px;">
-                  <span style="background:${u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;">
+                <td style="padding:8px 10px; color:var(--text-muted);">${u.id}</td>
+                <td style="padding:8px 10px; font-weight:600; white-space:nowrap;">${escapeHtml(u.username)}</td>
+                <td style="padding:8px 10px; color:var(--text-secondary); font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(u.email)}</td>
+                <td style="padding:8px 10px;">
+                  <span style="background:${u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;">
                     ${u.role === 'admin' ? '🛡 Admin' : '👤 User'}
                   </span>
                 </td>
-                <td style="padding:12px 16px;">
-                  <span style="background:rgba(${plan === 'starter' ? '139,148,158' : plan === 'pro' ? '88,166,255' : plan === 'team' ? '63,185,80' : '210,153,34'},0.15); color:${planColors[plan]}; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;">
+                <td style="padding:8px 10px;">
+                  <span style="background:rgba(${plan === 'starter' ? '139,148,158' : plan === 'pro' ? '88,166,255' : plan === 'team' ? '63,185,80' : '210,153,34'},0.15); color:${planColors[plan]}; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;">
                     ${planIcons[plan]} ${planLabels[plan]}
                   </span>
                 </td>
-                <td style="padding:12px 16px; text-align:center;"><strong>${u.project_count}</strong></td>
-                <td style="padding:12px 16px; color:var(--text-muted); font-size:13px;">${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
-                <td style="padding:12px 16px;">
+                <td style="padding:8px 10px; text-align:center;"><strong>${u.project_count}</strong></td>
+                <td style="padding:8px 10px; color:var(--text-muted); font-size:12px; white-space:nowrap;">${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
+                <td style="padding:8px 10px;">
                   <div style="display:flex; gap:4px;">
-                    <select onchange="changeUserRole(${u.id}, this.value)" style="padding:4px 6px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
+                    <select onchange="changeUserRole(${u.id}, this.value)" style="padding:3px 4px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
                       <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
                       <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
                     </select>
-                    <select onchange="changeUserPlan(${u.id}, this.value)" style="padding:4px 6px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
+                    <select onchange="changeUserPlan(${u.id}, this.value)" style="padding:3px 4px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
                       <option value="starter" ${plan === 'starter' ? 'selected' : ''}>🌱 Starter</option>
                       <option value="pro" ${plan === 'pro' ? 'selected' : ''}>⚡ Pro</option>
                       <option value="team" ${plan === 'team' ? 'selected' : ''}>🏢 Team</option>

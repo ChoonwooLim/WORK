@@ -109,13 +109,13 @@ async function start() {
             if (!existing) {
                 const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
                 await db.queryOne(
-                    "INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id",
+                    "INSERT INTO users (username, email, password_hash, role, plan) VALUES ($1, $2, $3, 'admin', 'enterprise') RETURNING id",
                     ['admin', process.env.ADMIN_EMAIL, hash]
                 );
                 console.log(`🛡 Admin account created: ${process.env.ADMIN_EMAIL}`);
             } else {
-                // Ensure existing user has admin role
-                await db.query("UPDATE users SET role = 'admin' WHERE email = $1", [process.env.ADMIN_EMAIL]);
+                // Ensure existing user has admin role and enterprise plan
+                await db.query("UPDATE users SET role = 'admin', plan = 'enterprise' WHERE email = $1", [process.env.ADMIN_EMAIL]);
             }
         }
 
