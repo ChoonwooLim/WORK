@@ -7,6 +7,14 @@ let currentPage = 'dashboard';
 
 const getToken = () => localStorage.getItem('orbitron_token');
 const setToken = (t) => localStorage.setItem('orbitron_token', t);
+function isAdminUser() {
+    try {
+        const token = getToken();
+        if (!token) return false;
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.role === 'admin';
+    } catch (e) { return false; }
+}
 
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
@@ -183,33 +191,38 @@ function navigateTo(page) {
 
 async function loadProjects() {
     try {
+        // Fetch all projects (for dropdown - admin sees all, users see own)
         const res = await fetch(`${API}/projects`);
         if (!res.ok) {
-            if (res.status === 401) return; // Will be handled by the global fetch interceptor
+            if (res.status === 401) return;
             throw new Error(`HTTP error! status: ${res.status}`);
         }
-        const projects = await res.json();
+        const allProjects = await res.json();
 
-        // Update Sidebar Options
+        // Update Sidebar dropdown (always show all projects for admin)
         const selectEl = document.getElementById('global-project-select');
         if (selectEl) {
             selectEl.innerHTML = '<option value="" disabled>프로젝트를 선택하세요...</option>' +
-                projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+                allProjects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.owner_name ? ' (' + escapeHtml(p.owner_name) + ')' : ''}</option>`).join('');
 
             if (currentProject) {
-                // Keep the current project selected if it exists
                 selectEl.value = currentProject.id;
-            } else if (projects.length > 0) {
-                // Auto-select the first project by default, but stay on Dashboard page
-                selectEl.value = projects[0].id;
-                await onGlobalProjectSelect(projects[0].id, false);
+            } else if (allProjects.length > 0) {
+                selectEl.value = allProjects[0].id;
+                await onGlobalProjectSelect(allProjects[0].id, false);
             } else {
                 selectEl.innerHTML = '<option value="" disabled selected>생성된 프로젝트 없음</option>';
             }
         }
 
-        renderProjects(projects);
-        updateStats(projects);
+        // For dashboard display: admin shows only selected project's owner's projects
+        let displayProjects = allProjects;
+        if (currentProject && currentProject.user_id && isAdminUser()) {
+            displayProjects = allProjects.filter(p => p.user_id === currentProject.user_id);
+        }
+
+        renderProjects(displayProjects);
+        updateStats(displayProjects);
         loadDashboardResourceStats();
     } catch (error) {
         console.error('Failed to load projects:', error);
@@ -2162,6 +2175,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ============ INIT ============
 
+// Collapsible sidebar section helper
+function makeCollapsible(labelEl, getItemsFn, startCollapsed = false) {
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'float:right; font-size:10px; transition:transform 0.2s; margin-right:4px;';
+    arrow.textContent = '▼';
+    labelEl.appendChild(arrow);
+    labelEl.style.cursor = 'pointer';
+    labelEl.style.userSelect = 'none';
+
+    let collapsed = startCollapsed;
+    function toggle() {
+        collapsed = !collapsed;
+        const items = getItemsFn();
+        items.forEach(item => { item.style.display = collapsed ? 'none' : ''; });
+        arrow.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+    }
+    labelEl.addEventListener('click', toggle);
+    if (startCollapsed) {
+        const items = getItemsFn();
+        items.forEach(item => { item.style.display = 'none'; });
+        arrow.style.transform = 'rotate(-90deg)';
+    }
+}
+
 async function init() {
     try {
         const res = await fetch(`${API}/server-info`);
@@ -2180,6 +2217,67 @@ async function init() {
                 const adminItems = document.getElementById('nav-admin-items');
                 if (adminSection) adminSection.style.display = 'block';
                 if (adminItems) adminItems.style.display = 'block';
+
+                // Move admin section to the top of sidebar-nav
+                const sidebarNav = document.querySelector('.sidebar-nav');
+                if (sidebarNav && adminSection && adminItems) {
+                    sidebarNav.insertBefore(adminItems, sidebarNav.firstChild);
+                    sidebarNav.insertBefore(adminSection, sidebarNav.firstChild);
+
+                    // Move project selector below admin items, hide New Project button for admin
+                    const projSelectWrap = document.getElementById('sidebar-project-select-wrap');
+                    const newProjWrap = document.getElementById('sidebar-new-project-wrap');
+                    if (projSelectWrap && newProjWrap) {
+                        newProjWrap.style.display = 'none'; // Admin doesn't create projects
+                        const afterAdmin = adminItems.nextSibling;
+                        sidebarNav.insertBefore(projSelectWrap, afterAdmin);
+                        projSelectWrap.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                        projSelectWrap.style.padding = '12px 0 12px 0';
+                    }
+
+                    // Make other sections collapsible (start collapsed)
+                    const sections = [
+                        { label: '대시보드 홈', items: ['nav-dashboard', 'nav-projects', 'nav-groups'] },
+                        { labelId: 'nav-project-section', itemsId: 'nav-project-items' },
+                    ];
+
+                    // Wrap 대시보드 홈
+                    const dashLabel = sidebarNav.querySelector('.nav-section-label:not(#nav-admin-section):not(#nav-project-section)');
+                    if (dashLabel && dashLabel.textContent.includes('대시보드')) {
+                        makeCollapsible(dashLabel, () => {
+                            const items = [];
+                            let el = dashLabel.nextElementSibling;
+                            while (el && !el.classList.contains('nav-section-label')) {
+                                items.push(el);
+                                el = el.nextElementSibling;
+                            }
+                            return items;
+                        }, true);
+                    }
+
+                    // Wrap 현재 프로젝트 작업
+                    const projLabel = document.getElementById('nav-project-section');
+                    const projItems = document.getElementById('nav-project-items');
+                    if (projLabel && projItems) {
+                        makeCollapsible(projLabel, () => [projItems], true);
+                    }
+
+                    // Wrap 전용 배포
+                    const allLabels = sidebarNav.querySelectorAll('.nav-section-label');
+                    allLabels.forEach(label => {
+                        if (label.textContent.includes('전용 배포')) {
+                            makeCollapsible(label, () => {
+                                const items = [];
+                                let el = label.nextElementSibling;
+                                while (el && !el.classList.contains('nav-section-label') && !el.classList.contains('sidebar-footer')) {
+                                    items.push(el);
+                                    el = el.nextElementSibling;
+                                }
+                                return items;
+                            }, true);
+                        }
+                    });
+                }
             }
         }
     } catch (e) { /* ignore */ }
@@ -2896,42 +2994,77 @@ async function loadAdminLogs() {
 
 // ============ ADMIN USERS ============
 
-async function renderAdminUsers() {
+let adminUserSearch = '';
+let adminUserFilterRole = '';
+let adminUserFilterPlan = '';
+let adminUserSort = 'created_at';
+let adminUserOrder = 'asc';
+let adminUserPage = 1;
+
+async function renderAdminUsers(page) {
+    if (page !== undefined) adminUserPage = page;
     const el = document.getElementById('admin-users-content');
-    el.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">로딩 중...</div>';
+    const params = new URLSearchParams();
+    if (adminUserSearch) params.set('search', adminUserSearch);
+    if (adminUserFilterRole) params.set('role', adminUserFilterRole);
+    if (adminUserFilterPlan) params.set('plan', adminUserFilterPlan);
+    params.set('sort', adminUserSort);
+    params.set('order', adminUserOrder);
+    params.set('page', adminUserPage);
+    params.set('limit', 30);
+
     try {
-        const res = await fetch(`${API}/admin/users`);
+        const res = await fetch(`${API}/admin/users?${params}`);
         if (!res.ok) throw new Error('Failed');
-        const users = await res.json();
+        const data = await res.json();
+        const users = data.users;
+        const { page: curPage, total, totalPages } = data.pagination;
         const planColors = { starter: '#8b949e', pro: '#58a6ff', team: '#3fb950', enterprise: '#d29922' };
         const planLabels = { starter: 'Starter', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
         const planIcons = { starter: '🌱', pro: '⚡', team: '🏢', enterprise: '👑' };
+
+        const sortIcon = (col) => adminUserSort === col ? (adminUserOrder === 'asc' ? ' ▲' : ' ▼') : '';
+        const sortClick = (col) => `onclick="adminSortUsers('${col}')"`;
+
         el.innerHTML = `
-        <div style="display:flex; gap:12px; margin-bottom:20px;">
-          ${['starter', 'pro', 'team', 'enterprise'].map(p => {
-            const count = users.filter(u => (u.plan || 'starter') === p).length;
-            return `<div style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 16px; text-align:center;">
-              <div style="font-size:20px; font-weight:700; color:${planColors[p]};">${count}</div>
-              <div style="font-size:12px; color:var(--text-muted);">${planIcons[p]} ${planLabels[p]}</div>
-            </div>`;
-        }).join('')}
+        <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+          <div style="flex:1; min-width:200px; position:relative;">
+            <input id="admin-user-search" type="text" placeholder="🔍 이름 또는 이메일 검색..." value="${escapeHtml(adminUserSearch)}"
+              style="width:100%; padding:10px 14px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; font-size:13px; box-sizing:border-box;"
+              oninput="adminUserSearchDebounce(this.value)">
+          </div>
+          <select id="admin-filter-role" onchange="adminUserFilterRole=this.value; adminUserPage=1; renderAdminUsers();"
+            style="padding:8px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; font-size:13px;">
+            <option value="" ${!adminUserFilterRole ? 'selected' : ''}>모든 역할</option>
+            <option value="admin" ${adminUserFilterRole === 'admin' ? 'selected' : ''}>🛡 Admin</option>
+            <option value="user" ${adminUserFilterRole === 'user' ? 'selected' : ''}>👤 User</option>
+          </select>
+          <select id="admin-filter-plan" onchange="adminUserFilterPlan=this.value; adminUserPage=1; renderAdminUsers();"
+            style="padding:8px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; font-size:13px;">
+            <option value="" ${!adminUserFilterPlan ? 'selected' : ''}>모든 요금제</option>
+            <option value="starter" ${adminUserFilterPlan === 'starter' ? 'selected' : ''}>🌱 Starter</option>
+            <option value="pro" ${adminUserFilterPlan === 'pro' ? 'selected' : ''}>⚡ Pro</option>
+            <option value="team" ${adminUserFilterPlan === 'team' ? 'selected' : ''}>🏢 Team</option>
+            <option value="enterprise" ${adminUserFilterPlan === 'enterprise' ? 'selected' : ''}>👑 Enterprise</option>
+          </select>
+          <div style="font-size:12px; color:var(--text-muted); padding:4px;">총 <strong>${total}</strong>명</div>
         </div>
         <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow-x:auto;">
           <table style="width:100%; min-width:850px; border-collapse:collapse; font-size:13px;">
             <thead>
               <tr style="background:rgba(255,255,255,0.03); text-align:left;">
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">ID</th>
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">사용자명</th>
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">이메일</th>
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">역할</th>
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">요금제</th>
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary); text-align:center;">프로젝트</th>
-                <th style="padding:10px; font-weight:600; color:var(--text-secondary);">가입일</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;" ${sortClick('id')}>ID${sortIcon('id')}</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;" ${sortClick('username')}>사용자명${sortIcon('username')}</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;" ${sortClick('email')}>이메일${sortIcon('email')}</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;" ${sortClick('role')}>역할${sortIcon('role')}</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;" ${sortClick('plan')}>요금제${sortIcon('plan')}</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer; text-align:center;" ${sortClick('project_count')}>프로젝트${sortIcon('project_count')}</th>
+                <th style="padding:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;" ${sortClick('created_at')}>가입일${sortIcon('created_at')}</th>
                 <th style="padding:10px; font-weight:600; color:var(--text-secondary);">관리</th>
               </tr>
             </thead>
             <tbody>
-              ${users.map(u => {
+              ${users.length === 0 ? `<tr><td colspan="8" style="padding:30px; text-align:center; color:var(--text-muted);">검색 결과가 없습니다.</td></tr>` : users.map(u => {
             const plan = u.plan || 'starter';
             return `
               <tr style="border-top:1px solid var(--border);">
@@ -2969,10 +3102,50 @@ async function renderAdminUsers() {
             </tbody>
           </table>
         </div>
-        <div style="margin-top:16px; font-size:13px; color:var(--text-muted);">총 ${users.length}명의 사용자</div>`;
+        ${totalPages > 1 ? `
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:16px;">
+          <button onclick="renderAdminUsers(1)" ${curPage <= 1 ? 'disabled' : ''}
+            style="padding:6px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; cursor:pointer; font-size:12px;">«</button>
+          <button onclick="renderAdminUsers(${curPage - 1})" ${curPage <= 1 ? 'disabled' : ''}
+            style="padding:6px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; cursor:pointer; font-size:12px;">‹ 이전</button>
+          <span style="font-size:13px; color:var(--text-secondary); padding:0 8px;">
+            <strong>${curPage}</strong> / ${totalPages} 페이지
+          </span>
+          <button onclick="renderAdminUsers(${curPage + 1})" ${curPage >= totalPages ? 'disabled' : ''}
+            style="padding:6px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; cursor:pointer; font-size:12px;">다음 ›</button>
+          <button onclick="renderAdminUsers(${totalPages})" ${curPage >= totalPages ? 'disabled' : ''}
+            style="padding:6px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; cursor:pointer; font-size:12px;">»</button>
+        </div>` : `<div style="margin-top:12px; font-size:12px; color:var(--text-muted); text-align:center;">총 ${total}명의 사용자</div>`}`;
+
+        // Restore focus to search input
+        const searchInput = document.getElementById('admin-user-search');
+        if (searchInput && document.activeElement?.id !== 'admin-user-search') {
+            // Don't steal focus
+        }
     } catch (e) {
         el.innerHTML = `<div style="text-align:center; padding:40px; color:var(--danger);">유저 정보를 불러올 수 없습니다.</div>`;
     }
+}
+
+let _adminSearchTimer = null;
+function adminUserSearchDebounce(val) {
+    clearTimeout(_adminSearchTimer);
+    _adminSearchTimer = setTimeout(() => {
+        adminUserSearch = val;
+        adminUserPage = 1;
+        renderAdminUsers();
+    }, 300);
+}
+
+function adminSortUsers(col) {
+    if (adminUserSort === col) {
+        adminUserOrder = adminUserOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        adminUserSort = col;
+        adminUserOrder = 'asc';
+    }
+    adminUserPage = 1;
+    renderAdminUsers();
 }
 
 async function changeUserRole(userId, role) {

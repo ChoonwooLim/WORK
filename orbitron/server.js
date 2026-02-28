@@ -108,9 +108,10 @@ async function start() {
             const existing = await db.queryOne('SELECT id FROM users WHERE email = $1', [process.env.ADMIN_EMAIL]);
             if (!existing) {
                 const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+                const adminUsername = process.env.ADMIN_EMAIL.split('@')[0];
                 await db.queryOne(
                     "INSERT INTO users (username, email, password_hash, role, plan) VALUES ($1, $2, $3, 'admin', 'enterprise') RETURNING id",
-                    ['admin', process.env.ADMIN_EMAIL, hash]
+                    [adminUsername, process.env.ADMIN_EMAIL, hash]
                 );
                 console.log(`🛡 Admin account created: ${process.env.ADMIN_EMAIL}`);
             } else {

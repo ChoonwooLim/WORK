@@ -160,18 +160,59 @@ router.get('/docker', async (req, res) => {
 
 // ============ USER MANAGEMENT ============
 
-// GET /api/admin/users
+// GET /api/admin/users?search=&role=&plan=&sort=&order=&page=&limit=
 router.get('/users', async (req, res) => {
     try {
+        const { search, role, plan, sort = 'created_at', order = 'asc', page = 1, limit = 50 } = req.query;
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 50));
+        const offset = (pageNum - 1) * limitNum;
+        const allowedSorts = ['id', 'username', 'email', 'role', 'plan', 'created_at', 'project_count'];
+        const sortCol = allowedSorts.includes(sort) ? sort : 'created_at';
+        const sortOrder = order === 'desc' ? 'DESC' : 'ASC';
+
+        let whereClauses = [];
+        let params = [];
+        let paramIdx = 1;
+
+        if (search) {
+            whereClauses.push(`(u.username ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx})`);
+            params.push(`%${search}%`);
+            paramIdx++;
+        }
+        if (role && ['admin', 'user'].includes(role)) {
+            whereClauses.push(`u.role = $${paramIdx}`);
+            params.push(role);
+            paramIdx++;
+        }
+        if (plan && ['starter', 'pro', 'team', 'enterprise'].includes(plan)) {
+            whereClauses.push(`COALESCE(u.plan, 'starter') = $${paramIdx}`);
+            params.push(plan);
+            paramIdx++;
+        }
+
+        const whereStr = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+
+        // Count total
+        const countResult = await db.query(`SELECT COUNT(DISTINCT u.id) as total FROM users u ${whereStr}`, params);
+        const total = parseInt(countResult.rows[0].total);
+
+        // Fetch paginated data
         const result = await db.query(`
             SELECT u.id, u.username, u.email, u.role, u.plan, u.created_at,
                    COUNT(p.id) as project_count
             FROM users u
             LEFT JOIN projects p ON p.user_id = u.id
+            ${whereStr}
             GROUP BY u.id
-            ORDER BY u.created_at ASC
-        `);
-        res.json(result.rows);
+            ORDER BY ${sortCol === 'project_count' ? 'project_count' : 'u.' + sortCol} ${sortOrder}
+            LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
+        `, [...params, limitNum, offset]);
+
+        res.json({
+            users: result.rows,
+            pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) }
+        });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

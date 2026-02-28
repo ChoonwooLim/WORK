@@ -27,13 +27,31 @@ const upload = multer({
     }
 });
 
-// GET /api/projects - List all projects for current user
+// Helper: Get project with admin bypass - admins can access any project
+async function getProjectForUser(projectId, user) {
+    if (user.role === 'admin') {
+        return await db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
+    }
+    return await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.userId]);
+}
+
+// GET /api/projects - List all projects for current user (admin sees all, supports ?owner_id= filter)
 router.get('/', async (req, res) => {
     try {
-        const projects = await db.queryAll(
-            'SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC',
-            [req.user.userId]
-        );
+        let query, params;
+        if (req.user.role === 'admin') {
+            if (req.query.owner_id) {
+                query = 'SELECT p.*, u.username as owner_name FROM projects p LEFT JOIN users u ON p.user_id = u.id WHERE p.user_id = $1 ORDER BY p.created_at DESC';
+                params = [req.query.owner_id];
+            } else {
+                query = 'SELECT p.*, u.username as owner_name FROM projects p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC';
+                params = [];
+            }
+        } else {
+            query = 'SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC';
+            params = [req.user.userId];
+        }
+        const projects = await db.queryAll(query, params);
         // Decrypt env_vars before sending to client
         const decryptedProjects = projects.map(p => {
             if (p.env_vars && typeof p.env_vars === 'string') {
@@ -53,7 +71,7 @@ router.get('/', async (req, res) => {
 // GET /api/projects/:id - Get project details
 router.get('/:id', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // Decrypt env_vars before sending to client
@@ -135,6 +153,10 @@ router.put('/:id', async (req, res) => {
 
         const encryptedEnvVars = env_vars ? '"' + encrypt(JSON.stringify(env_vars)) + '"' : null;
 
+        const whereClause = req.user.role === 'admin' ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
+        const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id];
+        if (req.user.role !== 'admin') queryParams.push(req.user.userId);
+
         const project = await db.queryOne(
             `UPDATE projects SET
         name = COALESCE($1, name),
@@ -150,8 +172,8 @@ router.put('/:id', async (req, res) => {
         ai_model = COALESCE($11, ai_model),
         webhook_url = COALESCE($12, webhook_url),
         updated_at = NOW()
-       WHERE id = $13 AND user_id = $14 RETURNING *`,
-            [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id, req.user.userId]
+       ${whereClause} RETURNING *`,
+            queryParams
         );
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
@@ -169,7 +191,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/projects/:id - Delete a project (with name confirmation)
 router.delete('/:id', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // Safety check: require confirm_name to match the project name
@@ -192,7 +214,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/deploy', async (req, res) => {
     try {
         const { commit_hash } = req.body || {};
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // Deploy in background
@@ -209,7 +231,7 @@ router.post('/:id/deploy', async (req, res) => {
 // POST /api/projects/:id/stop - Stop a project
 router.post('/:id/stop', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         await deployer.stop(project);
@@ -222,7 +244,7 @@ router.post('/:id/stop', async (req, res) => {
 // GET /api/projects/:id/stats - Container resource usage
 router.get('/:id/stats', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // If container_id is known (e.g. compose-xxx or specific hash name) use it, otherwise fallback
@@ -323,7 +345,7 @@ router.get('/:id/stats', async (req, res) => {
 // GET /api/projects/:id/commits - Get recent 20 commits for deployment options
 router.get('/:id/commits', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const path = require('path');
@@ -370,7 +392,7 @@ router.get('/:id/commits', async (req, res) => {
 router.post('/:id/rollback', async (req, res) => {
     try {
         const { deployment_id } = req.body;
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const deployment = await db.queryOne('SELECT * FROM deployments WHERE id = $1 AND project_id = $2', [deployment_id, req.params.id]);
@@ -394,7 +416,7 @@ router.post('/:id/exec', async (req, res) => {
         const { command } = req.body;
         if (!command) return res.status(400).json({ error: 'command is required' });
 
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const containerName = project.container_id || `orbitron-${project.subdomain}`;
@@ -435,7 +457,7 @@ router.post('/:id/exec', async (req, res) => {
 // POST /api/projects/:id/clone-backup - Clone repo to GitClones folder for backup
 router.post('/:id/clone-backup', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const path = require('path');
@@ -501,7 +523,7 @@ router.post('/:id/clone-backup', async (req, res) => {
 // POST /api/projects/:id/media-backup - Backup media files to DATA drive
 router.post('/:id/media-backup', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const mediaBackup = require('../services/mediaBackup');
@@ -519,7 +541,7 @@ router.post('/:id/media-backup', async (req, res) => {
 // GET /api/projects/:id/media-backup/status - Get media backup status
 router.get('/:id/media-backup/status', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const mediaBackup = require('../services/mediaBackup');
@@ -533,7 +555,7 @@ router.get('/:id/media-backup/status', async (req, res) => {
 // POST /api/projects/:id/media-restore - Restore media files from backup
 router.post('/:id/media-restore', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const { filename } = req.body || {};
@@ -644,7 +666,7 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
 router.post('/:id/reupload', upload.single('zipfile'), async (req, res) => {
     let tmpPath = null;
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (project.source_type !== 'upload') {
             return res.status(400).json({ error: 'GitHub 프로젝트는 재업로드할 수 없습니다.' });
@@ -708,7 +730,7 @@ router.post('/:id/reupload', upload.single('zipfile'), async (req, res) => {
 // POST /api/projects/:id/project-backup - Backup project to DATA drive
 router.post('/:id/project-backup', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const projectBackup = require('../services/projectBackup');
@@ -726,7 +748,7 @@ router.post('/:id/project-backup', async (req, res) => {
 // GET /api/projects/:id/project-backup/status - Get project backup status
 router.get('/:id/project-backup/status', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const projectBackup = require('../services/projectBackup');
@@ -740,7 +762,7 @@ router.get('/:id/project-backup/status', async (req, res) => {
 // POST /api/projects/:id/project-restore - Restore project from backup
 router.post('/:id/project-restore', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const projectBackup = require('../services/projectBackup');
@@ -758,7 +780,7 @@ router.post('/:id/project-restore', async (req, res) => {
 // POST /api/projects/:id/db-backup - Backup PostgreSQL database
 router.post('/:id/db-backup', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         // Decrypt env_vars before sending to service
@@ -780,7 +802,7 @@ router.post('/:id/db-backup', async (req, res) => {
 // POST /api/projects/:id/db-restore - Restore PostgreSQL database
 router.post('/:id/db-restore', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         // Decrypt env_vars before sending to service
@@ -802,7 +824,7 @@ router.post('/:id/db-restore', async (req, res) => {
 // GET /api/projects/:id/db-backup/status - Get PostgreSQL database backup status
 router.get('/:id/db-backup/status', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         const dbBackup = require('../services/dbBackup');
@@ -817,7 +839,9 @@ router.get('/:id/db-backup/status', async (req, res) => {
 // GET /api/projects/:id/chat - Get AI chat history
 router.get('/:id/chat', async (req, res) => {
     try {
-        const project = await db.queryOne('SELECT ai_chat_history FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        const project = req.user.role === 'admin'
+            ? await db.queryOne('SELECT ai_chat_history FROM projects WHERE id = $1', [req.params.id])
+            : await db.queryOne('SELECT ai_chat_history FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
         let history = [];
@@ -991,7 +1015,9 @@ router.post('/:id/chat', async (req, res) => {
 // DELETE /api/projects/:id/chat - Clear AI chat history
 router.delete('/:id/chat', async (req, res) => {
     try {
-        const result = await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2 AND user_id = $3 RETURNING id', ['[]', req.params.id, req.user.userId]);
+        const result = req.user.role === 'admin'
+            ? await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2 RETURNING id', ['[]', req.params.id])
+            : await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2 AND user_id = $3 RETURNING id', ['[]', req.params.id, req.user.userId]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'Project not found' });
 
         res.json({ message: 'Chat history cleared' });
