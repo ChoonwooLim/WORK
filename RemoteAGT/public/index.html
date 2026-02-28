@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RemoteAGT — AI 원격 지휘·통제 시스템</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🪐</span>
+      <span class="logo-text">RemoteAGT</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">메인</div>
+      <a class="nav-item active" onclick="navigateTo('dashboard')" id="nav-dashboard">
+        <span class="nav-icon">📊</span>
+        <span>대시보드</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('containers')" id="nav-containers">
+        <span class="nav-icon">🐳</span>
+        <span>컨테이너</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('projects')" id="nav-projects">
+        <span class="nav-icon">📦</span>
+        <span>프로젝트</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('tasks')" id="nav-tasks">
+        <span class="nav-icon">📋</span>
+        <span>작업 이력</span>
+      </a>
+
+      <div class="nav-section-label">정보</div>
+      <a class="nav-item" onclick="navigateTo('plan')" id="nav-plan">
+        <span class="nav-icon">📖</span>
+        <span>구축계획서</span>
+      </a>
+      <a class="nav-item" onclick="navigateTo('telegram')" id="nav-telegram">
+        <span class="nav-icon">💬</span>
+        <span>텔레그램 연동</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="server-status" id="server-status">
+        <span class="status-dot online"></span>
+        <span>서버 온라인</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <div class="topbar-title" id="topbar-title">📊 대시보드</div>
+      <div class="topbar-actions">
+        <span class="topbar-time" id="topbar-time"></span>
+      </div>
+    </header>
+
+    <main class="main-content" id="main-content">
+      <!-- Dashboard Page -->
+      <div class="page active" id="page-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon cpu">🖥️</div>
+            <div class="stat-info">
+              <div class="stat-label">CPU</div>
+              <div class="stat-value" id="stat-cpu">—%</div>
+              <div class="stat-bar"><div class="stat-bar-fill cpu-bar" id="cpu-bar"></div></div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon mem">💾</div>
+            <div class="stat-info">
+              <div class="stat-label">메모리</div>
+              <div class="stat-value" id="stat-mem">—%</div>
+              <div class="stat-bar"><div class="stat-bar-fill mem-bar" id="mem-bar"></div></div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon disk">📀</div>
+            <div class="stat-info">
+              <div class="stat-label">디스크</div>
+              <div class="stat-value" id="stat-disk">—%</div>
+              <div class="stat-bar"><div class="stat-bar-fill disk-bar" id="disk-bar"></div></div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon containers">🐳</div>
+            <div class="stat-info">
+              <div class="stat-label">컨테이너</div>
+              <div class="stat-value" id="stat-containers">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title">🐳 Orbitron 컨테이너 현황</div>
+        <div class="container-grid" id="container-grid">
+          <div class="loading">⏳ 데이터 로딩 중...</div>
+        </div>
+
+        <div class="section-title" style="margin-top:24px;">📋 최근 작업</div>
+        <div class="task-list" id="recent-tasks">
+          <div class="empty-state">아직 작업 이력이 없습니다.</div>
+        </div>
+      </div>
+
+      <!-- Containers Page -->
+      <div class="page" id="page-containers">
+        <div class="section-title">🐳 전체 컨테이너 목록</div>
+        <div class="container-table-wrap" id="all-containers">
+          <div class="loading">⏳ 로딩 중...</div>
+        </div>
+      </div>
+
+      <!-- Projects Page -->
+      <div class="page" id="page-projects">
+        <div class="section-title">📦 Orbitron 프로젝트</div>
+        <div class="project-grid" id="project-grid">
+          <div class="loading">⏳ 로딩 중...</div>
+        </div>
+      </div>
+
+      <!-- Tasks Page -->
+      <div class="page" id="page-tasks">
+        <div class="section-title">📋 작업 이력</div>
+        <div class="task-list full" id="all-tasks">
+          <div class="empty-state">작업 이력이 없습니다.</div>
+        </div>
+      </div>
+
+      <!-- Plan Page -->
+      <div class="page" id="page-plan">
+        <div class="plan-container" id="plan-content">
+          <div class="loading">📖 구축계획서를 불러오는 중...</div>
+        </div>
+      </div>
+
+      <!-- Telegram Page -->
+      <div class="page" id="page-telegram">
+        <div class="section-title">💬 텔레그램 봇 연동</div>
+        <div class="telegram-setup">
+          <div class="setup-card">
+            <h3>🤖 텔레그램 봇 설정 방법</h3>
+            <ol>
+              <li><a href="https://t.me/BotFather" target="_blank">@BotFather</a>에게 <code>/newbot</code> 명령으로 봇 생성</li>
+              <li>받은 토큰을 <code>.env</code> 파일의 <code>TELEGRAM_BOT_TOKEN</code>에 입력</li>
+              <li><a href="https://t.me/userinfobot" target="_blank">@userinfobot</a>에서 자신의 Telegram ID 확인</li>
+              <li>ID를 <code>TELEGRAM_ADMIN_ID</code>에 입력</li>
+              <li>서버 재시작: <code>pm2 restart remoteagt</code></li>
+            </ol>
+          </div>
+          <div class="setup-card">
+            <h3>📡 현재 상태</h3>
+            <div id="telegram-status">
+              <p>봇 토큰: <span id="bot-token-status" class="status-badge">확인 중...</span></p>
+              <p>관리자 ID: <span id="admin-id-status" class="status-badge">확인 중...</span></p>
+            </div>
+          </div>
+          <div class="setup-card">
+            <h3>📝 사용 가능한 명령</h3>
+            <table class="cmd-table">
+              <thead><tr><th>명령</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td><code>/status</code></td><td>시스템 상태 전체 리포트</td></tr>
+                <tr><td><code>/containers</code></td><td>컨테이너 목록</td></tr>
+                <tr><td><code>/projects</code></td><td>Orbitron 프로젝트 목록</td></tr>
+                <tr><td><code>/deploy &lt;이름&gt;</code></td><td>프로젝트 배포</td></tr>
+                <tr><td><code>/logs &lt;이름&gt;</code></td><td>컨테이너 로그 조회</td></tr>
+                <tr><td><code>/disk</code></td><td>디스크 사용량</td></tr>
+                <tr><td><code>/plan</code></td><td>구축계획서 보기</td></tr>
+                <tr><td><code>/help</code></td><td>도움말</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
