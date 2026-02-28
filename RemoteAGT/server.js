@@ -45,8 +45,25 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Plan API (public - returns rendered HTML from markdown)
-app.get('/api/plan', async (req, res) => {
+// User Manual API (public - available to all authenticated users)
+app.get('/api/manual', authRequired, async (req, res) => {
+    try {
+        const manualPath = path.join(__dirname, 'docs', 'user-manual.md');
+        const md = fs.readFileSync(manualPath, 'utf-8');
+        const html = simpleMarkdownToHtml(md);
+        res.json({ html });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Plan API (superadmin only - 구축계획서)
+app.get('/api/plan', authRequired, (req, res, next) => {
+    if (req.user.role !== 'superadmin') {
+        return res.status(403).json({ error: '최상위 관리자만 열람 가능합니다.' });
+    }
+    next();
+}, async (req, res) => {
     try {
         const planPath = path.join(__dirname, 'docs', 'plan.md');
         const md = fs.readFileSync(planPath, 'utf-8');

@@ -68,8 +68,9 @@ function navigateTo(page) {
     containers: '🐳 컨테이너',
     projects: '📦 프로젝트',
     tasks: '📋 작업 이력',
-    plan: '📖 구축계획서',
+    manual: '📘 사용 매뉴얼',
     telegram: '💬 텔레그램 연동',
+    plan: '📖 구축계획서',
     'admin-overview': '🛡 관리자 대시보드',
     'admin-users': '👥 사용자 관리',
     'admin-audit': '📜 활동 로그',
@@ -80,6 +81,7 @@ function navigateTo(page) {
   else if (page === 'containers') loadContainers();
   else if (page === 'projects') loadProjects();
   else if (page === 'tasks') loadTasks();
+  else if (page === 'manual') loadManual();
   else if (page === 'plan') loadPlan();
   else if (page === 'telegram') loadTelegramStatus();
   else if (page === 'admin-overview') loadAdminOverview();
@@ -256,14 +258,26 @@ async function loadTasks() {
   }).join('');
 }
 
-// ==================== Plan Page ====================
+// ==================== User Manual Page ====================
+async function loadManual() {
+  const container = document.getElementById('manual-content');
+  const data = await apiFetch('/api/manual');
+  if (data?.html) {
+    container.innerHTML = data.html;
+  } else {
+    container.innerHTML = '<div class="empty-state">사용 매뉴얼을 불러올 수 없습니다.</div>';
+  }
+}
+
+// ==================== Plan Page (Admin Only) ====================
 async function loadPlan() {
   const container = document.getElementById('plan-content');
-  try {
-    const res = await fetch('/api/plan');
-    const data = await res.json();
-    container.innerHTML = data.html || '<div class="empty-state">구축계획서를 불러올 수 없습니다.</div>';
-  } catch { container.innerHTML = '<div class="empty-state">구축계획서 로딩 실패</div>'; }
+  const data = await apiFetch('/api/plan');
+  if (data?.html) {
+    container.innerHTML = data.html;
+  } else {
+    container.innerHTML = '<div class="empty-state">구축계획서를 불러올 수 없습니다. (최상위 관리자 전용)</div>';
+  }
 }
 
 // ==================== Telegram Status ====================

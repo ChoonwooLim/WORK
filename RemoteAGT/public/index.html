@@ -38,9 +38,9 @@
       </a>
 
       <div class="nav-section-label">정보</div>
-      <a class="nav-item" onclick="navigateTo('plan')" id="nav-plan">
-        <span class="nav-icon">📖</span>
-        <span>구축계획서</span>
+      <a class="nav-item" onclick="navigateTo('manual')" id="nav-manual">
+        <span class="nav-icon">📘</span>
+        <span>사용 매뉴얼</span>
       </a>
       <a class="nav-item" onclick="navigateTo('telegram')" id="nav-telegram">
         <span class="nav-icon">💬</span>
@@ -60,6 +60,10 @@
       <a class="nav-item admin-only" onclick="navigateTo('admin-audit')" id="nav-admin-audit" style="display:none;">
         <span class="nav-icon">📜</span>
         <span>활동 로그</span>
+      </a>
+      <a class="nav-item admin-only" onclick="navigateTo('plan')" id="nav-plan" style="display:none;">
+        <span class="nav-icon">📖</span>
+        <span>구축계획서</span>
       </a>
     </nav>
 
@@ -167,7 +171,14 @@
         </div>
       </div>
 
-      <!-- Plan Page -->
+      <!-- User Manual Page -->
+      <div class="page" id="page-manual">
+        <div class="plan-container" id="manual-content">
+          <div class="loading">📘 사용 매뉴얼을 불러오는 중...</div>
+        </div>
+      </div>
+
+      <!-- Plan Page (Admin Only) -->
       <div class="page" id="page-plan">
         <div class="plan-container" id="plan-content">
           <div class="loading">📖 구축계획서를 불러오는 중...</div>
