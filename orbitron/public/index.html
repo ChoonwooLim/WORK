@@ -72,6 +72,17 @@
                 linear-gradient(to bottom, transparent 60%, #05080f 90%);
         }
 
+        /* Orbital VFX Canvas */
+        #orbital-vfx {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
         /* Navbar */
         .navbar {
             display: flex;
@@ -355,6 +366,7 @@
 <body>
 
     <div class="bg-gradient"></div>
+    <canvas id="orbital-vfx"></canvas>
 
     <nav class="navbar">
         <a href="/" class="logo">
@@ -760,6 +772,128 @@ my-project/
                 if (heroBtn) heroBtn.innerHTML = 'Orbitron 가입하기 →';
             }
         });
+    </script>
+
+    <script>
+        // Orbital VFX Animation
+        (function () {
+            const canvas = document.getElementById('orbital-vfx');
+            const ctx = canvas.getContext('2d');
+            let w, h;
+
+            function resize() {
+                w = canvas.width = window.innerWidth;
+                h = canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // Twinkling stars — more concentrated in bottom-right
+            const stars = [];
+            // Regular spread
+            for (let i = 0; i < 60; i++) stars.push({ x: Math.random() * w, y: Math.random() * h, r: Math.random() * 1.5 + 0.3, speed: Math.random() * 0.008 + 0.002, phase: Math.random() * Math.PI * 2 });
+            // Extra stars in bottom-right quadrant
+            for (let i = 0; i < 60; i++) stars.push({ x: w * 0.5 + Math.random() * w * 0.5, y: h * 0.4 + Math.random() * h * 0.6, r: Math.random() * 2 + 0.5, speed: Math.random() * 0.006 + 0.003, phase: Math.random() * Math.PI * 2 });
+
+            // Orbiting satellites — original + more in bottom-right
+            const satellites = [
+                // Original top-left area
+                { cx: w * 0.25, cy: h * 0.35, rx: 180, ry: 60, speed: 0.003, angle: 0, size: 2.5, color: '#c9a84c', trail: [] },
+                { cx: w * 0.3, cy: h * 0.4, rx: 250, ry: 90, speed: -0.002, angle: Math.PI, size: 2, color: '#58a6ff', trail: [] },
+                { cx: w * 0.2, cy: h * 0.3, rx: 120, ry: 45, speed: 0.005, angle: Math.PI / 3, size: 1.8, color: '#bd93f9', trail: [] },
+                // Bottom-right cluster — bigger and more prominent
+                { cx: w * 0.72, cy: h * 0.65, rx: 200, ry: 80, speed: 0.002, angle: 0, size: 3.5, color: '#c9a84c', trail: [] },
+                { cx: w * 0.8, cy: h * 0.55, rx: 280, ry: 120, speed: -0.0018, angle: Math.PI * 0.7, size: 3, color: '#58a6ff', trail: [] },
+                { cx: w * 0.68, cy: h * 0.7, rx: 160, ry: 65, speed: 0.004, angle: Math.PI * 1.2, size: 2.8, color: '#bd93f9', trail: [] },
+                { cx: w * 0.85, cy: h * 0.6, rx: 350, ry: 140, speed: 0.001, angle: Math.PI * 0.3, size: 2.2, color: '#f0c27f', trail: [] },
+                { cx: w * 0.75, cy: h * 0.75, rx: 100, ry: 40, speed: -0.006, angle: 0, size: 2, color: '#ff79c6', trail: [] },
+                { cx: w * 0.65, cy: h * 0.8, rx: 220, ry: 55, speed: 0.0025, angle: Math.PI * 1.8, size: 1.8, color: '#50fa7b', trail: [] },
+            ];
+
+            // Floating particles — more in bottom-right
+            const particles = [];
+            for (let i = 0; i < 20; i++) particles.push({ x: Math.random() * w, y: Math.random() * h, vy: -(Math.random() * 0.15 + 0.05), vx: (Math.random() - 0.5) * 0.1, r: Math.random() * 0.8 + 0.2, alpha: Math.random() * 0.4 + 0.1 });
+            for (let i = 0; i < 30; i++) particles.push({ x: w * 0.5 + Math.random() * w * 0.5, y: h * 0.4 + Math.random() * h * 0.6, vy: -(Math.random() * 0.2 + 0.05), vx: (Math.random() - 0.5) * 0.15, r: Math.random() * 1.2 + 0.3, alpha: Math.random() * 0.5 + 0.1 });
+
+            let time = 0;
+
+            function draw() {
+                ctx.clearRect(0, 0, w, h);
+                time++;
+
+                // Draw twinkling stars
+                stars.forEach(s => {
+                    const twinkle = Math.sin(time * s.speed * 10 + s.phase) * 0.5 + 0.5;
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * 0.6 + 0.1})`;
+                    ctx.fill();
+                    if (s.r > 1) {
+                        ctx.beginPath();
+                        ctx.arc(s.x, s.y, s.r * 3, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * 0.08})`;
+                        ctx.fill();
+                    }
+                });
+
+                // Draw orbiting satellites with trails
+                satellites.forEach(sat => {
+                    sat.angle += sat.speed;
+                    const x = sat.cx + Math.cos(sat.angle) * sat.rx;
+                    const y = sat.cy + Math.sin(sat.angle) * sat.ry;
+                    sat.trail.push({ x, y });
+                    if (sat.trail.length > 50) sat.trail.shift();
+                    const hr = parseInt(sat.color.slice(1, 3), 16), hg = parseInt(sat.color.slice(3, 5), 16), hb = parseInt(sat.color.slice(5, 7), 16);
+                    sat.trail.forEach((pt, i) => {
+                        const a = (i / sat.trail.length) * 0.35;
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, sat.size * 0.4, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(${hr},${hg},${hb},${a})`;
+                        ctx.fill();
+                    });
+                    ctx.beginPath();
+                    ctx.arc(x, y, sat.size, 0, Math.PI * 2);
+                    ctx.fillStyle = sat.color;
+                    ctx.shadowColor = sat.color;
+                    ctx.shadowBlur = 15;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.beginPath();
+                    ctx.arc(x, y, sat.size * 5, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${hr},${hg},${hb},0.05)`;
+                    ctx.fill();
+                });
+
+                // Draw floating particles
+                particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    if (p.y < -10) { p.y = h + 10; p.x = Math.random() * w; }
+                    if (p.x < -10 || p.x > w + 10) p.x = Math.random() * w;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(200, 220, 255, ${p.alpha})`;
+                    ctx.fill();
+                });
+
+                requestAnimationFrame(draw);
+            }
+
+            // Recalculate satellite centers on resize
+            window.addEventListener('resize', () => {
+                satellites[0].cx = w * 0.25; satellites[0].cy = h * 0.35;
+                satellites[1].cx = w * 0.3; satellites[1].cy = h * 0.4;
+                satellites[2].cx = w * 0.2; satellites[2].cy = h * 0.3;
+                satellites[3].cx = w * 0.72; satellites[3].cy = h * 0.65;
+                satellites[4].cx = w * 0.8; satellites[4].cy = h * 0.55;
+                satellites[5].cx = w * 0.68; satellites[5].cy = h * 0.7;
+                satellites[6].cx = w * 0.85; satellites[6].cy = h * 0.6;
+                satellites[7].cx = w * 0.75; satellites[7].cy = h * 0.75;
+                satellites[8].cx = w * 0.65; satellites[8].cy = h * 0.8;
+            });
+
+            draw();
+        })();
     </script>
 </body>
 
