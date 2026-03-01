@@ -15,15 +15,31 @@ class DockerService {
     // Build a Docker image for a project (or skip if Compose)
     async buildImage(project) {
         const projectDir = path.join(PROJECTS_DIR, project.subdomain);
+        const buildStart = Date.now();
+        let detailLogs = '';
+
+        detailLogs += `\n${'═'.repeat(60)}\n`;
+        detailLogs += `🔨 Docker 빌드 시작 — ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}\n`;
+        detailLogs += `  프로젝트: ${project.name} (${project.subdomain})\n`;
+        detailLogs += `  소스 경로: ${projectDir}\n`;
 
         // --- Compose Check Bypass ---
         if (fs.existsSync(path.join(projectDir, 'docker-compose.yml')) || fs.existsSync(path.join(projectDir, 'docker-compose.yaml'))) {
+            detailLogs += `  빌드 방식: Docker Compose\n`;
+            const cmd = `cd ${projectDir} && docker compose pull && docker compose build`;
+            detailLogs += `  실행 명령: ${cmd}\n`;
+            detailLogs += `${'─'.repeat(60)}\n`;
             return new Promise((resolve, reject) => {
-                exec(`cd ${projectDir} && docker compose pull && docker compose build`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                    const elapsed = ((Date.now() - buildStart) / 1000).toFixed(1);
                     if (error) {
-                        reject(new Error(`Compose Build failed: ${stderr}`));
+                        detailLogs += stdout + stderr;
+                        detailLogs += `\n❌ Compose 빌드 실패 (${elapsed}초 경과)\n`;
+                        reject(new Error(`Compose Build failed:\n${detailLogs}\n${stderr}`));
                     } else {
-                        resolve({ isCompose: true, logs: stdout + stderr });
+                        detailLogs += stdout + stderr;
+                        detailLogs += `\n✅ Compose 빌드 완료 (${elapsed}초 소요)\n`;
+                        resolve({ isCompose: true, logs: detailLogs });
                     }
                 });
             });
@@ -41,16 +57,45 @@ class DockerService {
             }
         }
         if (!useCustom) {
+            const detected = this.detectProjectType(projectDir, project);
+            detailLogs += `  자동 감지 타입: ${detected.type}${detected.subdir ? ` (서브디렉토리: ${detected.subdir})` : ''}\n`;
+            if (detected.frontend) detailLogs += `  프론트엔드: ${detected.frontend.path} (${detected.frontend.framework})\n`;
+            if (detected.backend) detailLogs += `  백엔드: ${detected.backend.path} (${detected.backend.runtime}/${detected.backend.framework})\n`;
             const dockerfile = this.generateDockerfile(project, projectDir);
             fs.writeFileSync(dockerfilePath, dockerfile);
+            detailLogs += `  빌드 방식: 자동 생성 Dockerfile\n`;
+        } else {
+            // Log custom Dockerfile info
+            const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf-8');
+            const stageCount = (dockerfileContent.match(/^FROM /gm) || []).length;
+            const exposeMatch = dockerfileContent.match(/EXPOSE\s+(\S+)/m);
+            detailLogs += `  빌드 방식: 사용자 정의 Dockerfile (# CUSTOM)\n`;
+            detailLogs += `  빌드 스테이지 수: ${stageCount}\n`;
+            if (exposeMatch) detailLogs += `  노출 포트: ${exposeMatch[1]}\n`;
         }
 
+        detailLogs += `  이미지 이름: ${imageName}\n`;
+        const buildCmd = `docker build --no-cache -t ${imageName} ${projectDir}`;
+        detailLogs += `  실행 명령: ${buildCmd}\n`;
+        detailLogs += `${'─'.repeat(60)}\n`;
+
         return new Promise((resolve, reject) => {
-            exec(`docker build --no-cache -t ${imageName} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+            exec(buildCmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                const elapsed = ((Date.now() - buildStart) / 1000).toFixed(1);
                 if (error) {
-                    reject(new Error(`Build failed: ${stderr}`));
+                    detailLogs += stdout + stderr;
+                    detailLogs += `\n❌ 빌드 실패 (${elapsed}초 경과)\n`;
+                    detailLogs += `${'═'.repeat(60)}\n`;
+                    reject(new Error(`Build failed:\n${detailLogs}\n${stderr}`));
                 } else {
-                    resolve({ imageName, logs: stdout + stderr });
+                    detailLogs += stdout + stderr;
+                    // Log image size
+                    exec(`docker images ${imageName} --format '{{.Size}}'`, (e, sizeOut) => {
+                        if (!e && sizeOut.trim()) detailLogs += `\n📦 이미지 크기: ${sizeOut.trim()}`;
+                        detailLogs += `\n✅ 빌드 완료 (${elapsed}초 소요)\n`;
+                        detailLogs += `${'═'.repeat(60)}\n`;
+                        resolve({ imageName, logs: detailLogs });
+                    });
                 }
             });
         });
@@ -498,25 +543,34 @@ EXPOSE ${port}
         const containerName = `orbitron-${project.subdomain}-${deployHash}`;
         let port = project.port || 3000;
 
+        let startLogs = '';
+        startLogs += `\n${'═'.repeat(60)}\n`;
+        startLogs += `🚀 컨테이너 시작 — ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}\n`;
+        startLogs += `  이미지: ${imageName}\n`;
+        startLogs += `  컨테이너명: ${containerName}\n`;
+
         // Build env vars string (filter out internal Orbitron keys)
         const envVars = project.env_vars || {};
-        const envFlags = Object.entries(envVars)
-            .filter(([k]) => !k.startsWith('_ORBITRON_'))
-            .map(([k, v]) => {
-                const escapedVal = String(v).replace(/'/g, "'\\''");
+        const envKeys = Object.keys(envVars).filter(k => !k.startsWith('_ORBITRON_'));
+        const envFlags = envKeys
+            .map(k => {
+                const escapedVal = String(envVars[k]).replace(/'/g, "'\\''");
                 return `-e ${k}='${escapedVal}'`;
             })
             .join(' ');
+        startLogs += `  환경변수: ${envKeys.length}개 (${envKeys.join(', ') || '없음'})\n`;
 
         // ── Feature 1: Auto-mount persistent volumes ──
         const hostBaseDir = path.join(PROJECTS_DIR, project.subdomain || project.id, '_volumes');
         let volumeFlags = '';
+        const mountList = [];
 
         if (envVars.UPLOAD_DIR) {
             // Explicit UPLOAD_DIR from env
             const uploadPath = envVars.UPLOAD_DIR;
             try { await fs.promises.mkdir(uploadPath, { recursive: true }); } catch { }
             volumeFlags = `-v ${uploadPath}:${uploadPath}`;
+            mountList.push(`${uploadPath} → ${uploadPath}`);
         } else {
             // Auto-mount common upload/media/data directories
             const PERSIST_DIRS = ['/app/uploads', '/app/media', '/app/data', '/app/public/uploads'];
@@ -526,14 +580,17 @@ EXPOSE ${port}
                 const hostDir = path.join(hostBaseDir, dirName);
                 try { await fs.promises.mkdir(hostDir, { recursive: true }); } catch { }
                 mounts.push(`-v ${hostDir}:${dir}`);
+                mountList.push(`${hostDir} → ${dir}`);
             }
             volumeFlags = mounts.join(' ');
         }
+        startLogs += `  볼륨 마운트: ${mountList.length}개\n`;
+        mountList.forEach(m => { startLogs += `    📁 ${m}\n`; });
 
         // ── Feature 2: Port conflict auto-resolution ──
         const isWorker = project.type === 'worker';
+        const originalPort = port;
         if (!isWorker) {
-            const originalPort = port;
             let attempts = 0;
             while (attempts < 20) {
                 try {
@@ -544,21 +601,39 @@ EXPOSE ${port}
                 } catch { break; }
             }
             if (port !== originalPort) {
+                startLogs += `  ⚡ 포트 충돌 감지: ${originalPort} → ${port} (자동 변경)\n`;
                 console.log(`⚡ Port ${originalPort} in use → auto-assigned ${port} for ${project.name}`);
+            } else {
+                startLogs += `  포트: ${port}\n`;
             }
+        } else {
+            startLogs += `  포트: 없음 (백그라운드 워커)\n`;
         }
         const portFlags = isWorker ? '' : `-p ${port}:${port}`;
 
         // ── Feature 3: Log rotation (prevent disk fill) ──
         const logFlags = '--log-opt max-size=10m --log-opt max-file=3';
 
+        const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${logFlags} ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
+        startLogs += `  네트워크: orbitron_internal\n`;
+        startLogs += `  재시작 정책: unless-stopped\n`;
+        startLogs += `  로그 로테이션: max-size=10m, max-file=3\n`;
+        startLogs += `${'─'.repeat(60)}\n`;
+        startLogs += `  실행 명령:\n  ${cmd}\n`;
+        startLogs += `${'─'.repeat(60)}\n`;
+
         return new Promise((resolve, reject) => {
-            const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${logFlags} ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
             exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
                 if (error) {
-                    reject(new Error(`Start failed: ${stderr}`));
+                    startLogs += `\n❌ 컨테이너 시작 실패\n  오류: ${stderr}\n`;
+                    startLogs += `${'═'.repeat(60)}\n`;
+                    reject(new Error(`Start failed:\n${startLogs}\n${stderr}`));
                 } else {
-                    resolve({ containerId: stdout.trim(), containerName, port });
+                    const containerId = stdout.trim();
+                    startLogs += `\n✅ 컨테이너 시작 성공\n`;
+                    startLogs += `  Container ID: ${containerId.substring(0, 12)}\n`;
+                    startLogs += `${'═'.repeat(60)}\n`;
+                    resolve({ containerId, containerName, port, startLogs });
                 }
             });
         });

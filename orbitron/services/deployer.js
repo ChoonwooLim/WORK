@@ -119,6 +119,14 @@ class Deployer extends EventEmitter {
                     this.emitProgress(project.id, 'clone', '소스 코드를 가져오는 중...');
                     logs += await this.cloneOrPull(project, projectDir, commitHash);
                     logs += '\n--- Clone/Pull complete ---\n';
+                    // Add latest commit info for debugging
+                    try {
+                        const { stdout: commitInfo } = await execAsync(
+                            `cd ${projectDir} && git log -1 --format='  커밋: %H%n  메시지: %s%n  작성자: %an%n  날짜: %ci%n  브랜치: '$(git branch --show-current)`,
+                            { maxBuffer: 1024 * 1024 }
+                        );
+                        logs += `\n📋 현재 소스 코드 정보:\n${commitInfo}\n`;
+                    } catch { }
                     this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
                 }
 
@@ -342,6 +350,7 @@ class Deployer extends EventEmitter {
                         if (startRes.logs) logs += startRes.logs + '\n';
                     } else {
                         startRes = await dockerService.startContainer(project);
+                        if (startRes.startLogs) logs += startRes.startLogs;
                     }
 
                     containerId = startRes.containerId;
