@@ -151,12 +151,14 @@ class DockerService {
         return { type: 'static', subdir: null };
     }
 
-    // ── Fullstack auto-detection: find frontend + backend pair ──
+    // ── Fullstack auto-detection: find frontend + backend pair + extra frontend apps ──
     _detectFullstack(projectDir) {
         const frontendMarkers = ['package.json'];
         const backendMarkers = { python: 'requirements.txt', node: 'package.json' };
         const frontendHints = ['frontend', 'client', 'web', 'app'];
         const backendHints = ['backend', 'server', 'api'];
+        // Directories with package.json + build script that are NOT backend are candidate extra frontend apps
+        const extraAppExcludes = ['node_modules', 'dist', 'build', '.git', '_volumes', '__pycache__'];
 
         // Helper: detect frontend framework from package.json
         const detectFrontendFramework = (pkgPath) => {
@@ -193,11 +195,28 @@ class DockerService {
             return null;
         };
 
+        // Helper: check if a directory is a buildable frontend app
+        const isBuildableApp = (dirPath) => {
+            const pkgPath = path.join(dirPath, 'package.json');
+            if (!fs.existsSync(pkgPath)) return null;
+            try {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                if (!pkg.scripts?.build) return null;
+                const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+                // Must look like a frontend app (has a UI framework or build tool)
+                if (deps['react'] || deps['vue'] || deps['svelte'] || deps['@angular/core'] ||
+                    deps['vite'] || deps['react-scripts'] || deps['@vitejs/plugin-react']) {
+                    return detectFrontendFramework(pkgPath);
+                }
+                return null;
+            } catch { return null; }
+        };
+
         // Scan: check 1-depth and 2-depth subdirectories
         const scanDirs = [projectDir];
         try {
             const topDirs = fs.readdirSync(projectDir, { withFileTypes: true })
-                .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules' && d.name !== 'dist');
+                .filter(d => d.isDirectory() && !d.name.startsWith('.') && !extraAppExcludes.includes(d.name));
             for (const d of topDirs) {
                 scanDirs.push(path.join(projectDir, d.name));
             }
@@ -210,14 +229,14 @@ class DockerService {
 
             try {
                 const children = fs.readdirSync(scanRoot, { withFileTypes: true })
-                    .filter(d => d.isDirectory() && !d.name.startsWith('.'));
+                    .filter(d => d.isDirectory() && !d.name.startsWith('.') && !extraAppExcludes.includes(d.name));
 
                 for (const child of children) {
                     const childPath = path.join(scanRoot, child.name);
                     const relPath = path.relative(projectDir, childPath);
                     const nameLower = child.name.toLowerCase();
 
-                    // Detect frontend
+                    // Detect primary frontend
                     if (frontendHints.some(h => nameLower.includes(h))) {
                         const pkgPath = path.join(childPath, 'package.json');
                         if (fs.existsSync(pkgPath)) {
@@ -248,14 +267,43 @@ class DockerService {
                     }
                 }
 
-                // If we found both frontend and backend, return fullstack
+                // If we found both frontend and backend, detect extra frontend apps
                 if (frontendDir && backendDir) {
-                    console.log(`🔍 Fullstack detected: frontend=${frontendRelPath} (${frontendFramework}), backend=${backendRelPath} (${backendInfo.runtime}/${backendInfo.framework})`);
+                    const extraFrontends = [];
+
+                    // Scan all directories in scanRoot for additional buildable frontend apps
+                    for (const child of children) {
+                        const childPath = path.join(scanRoot, child.name);
+                        const relPath = path.relative(projectDir, childPath);
+
+                        // Skip the primary frontend and backend directories
+                        if (childPath === frontendDir || childPath === backendDir) continue;
+
+                        // Check if this directory is a buildable frontend app
+                        const fw = isBuildableApp(childPath);
+                        if (fw) {
+                            // Derive a short serve path from the directory name
+                            const servePath = child.name.toLowerCase()
+                                .replace(/[^a-z0-9-]/g, '-')
+                                .replace(/-+/g, '-')
+                                .replace(/^-|-$/g, '');
+                            extraFrontends.push({
+                                path: relPath,
+                                framework: fw,
+                                servePath,  // Will be served at /{servePath}/
+                                name: child.name,
+                            });
+                            console.log(`🔍 Extra frontend app detected: ${relPath} (${fw}) → /${servePath}/`);
+                        }
+                    }
+
+                    console.log(`🔍 Fullstack detected: frontend=${frontendRelPath} (${frontendFramework}), backend=${backendRelPath} (${backendInfo.runtime}/${backendInfo.framework})${extraFrontends.length ? `, +${extraFrontends.length} extra app(s)` : ''}`);
                     return {
                         type: 'fullstack',
                         subdir: null,
                         frontend: { path: frontendRelPath, framework: frontendFramework },
-                        backend: { path: backendRelPath, ...backendInfo }
+                        backend: { path: backendRelPath, ...backendInfo },
+                        extraFrontends,  // Additional frontend apps to build and serve
                     };
                 }
             } catch { }
@@ -264,16 +312,57 @@ class DockerService {
         return null; // No fullstack pattern found
     }
 
-    // ── Generate SPA wrapper script for Python backends ──
-    generateSpaWrapper(backendModule) {
+    // ── Generate SPA wrapper script for Python backends (with multi-app support) ──
+    generateSpaWrapper(backendModule, extraFrontends = []) {
         const [moduleName, appName] = backendModule.split(':');
-        return `"""Auto-generated by Orbitron: SPA wrapper for fullstack deployment."""
+
+        // Generate extra-app serving blocks
+        let extraAppBlocks = '';
+        let extraExcludes = '';
+        if (extraFrontends.length > 0) {
+            for (const app of extraFrontends) {
+                const staticDir = `${app.servePath.replace(/-/g, '_')}_static`;
+                extraAppBlocks += `
+# ── Extra App: ${app.name} (served at /${app.servePath}/) ──
+_EXTRA_DIR_${staticDir.toUpperCase()} = "/app/${staticDir}"
+if os.path.isdir(_EXTRA_DIR_${staticDir.toUpperCase()}) and os.path.isfile(os.path.join(_EXTRA_DIR_${staticDir.toUpperCase()}, "index.html")):
+    for d in os.listdir(_EXTRA_DIR_${staticDir.toUpperCase()}):
+        dp = os.path.join(_EXTRA_DIR_${staticDir.toUpperCase()}, d)
+        if os.path.isdir(dp):
+            app.mount(f"/${app.servePath}/{d}", StaticFiles(directory=dp), name=f"extra-${app.servePath}-{d}")
+
+    for fname in ["manifest.json", "sw.js", "vite.svg"]:
+        fpath = os.path.join(_EXTRA_DIR_${staticDir.toUpperCase()}, fname)
+        if os.path.isfile(fpath):
+            def _make_h(p, sn="${app.servePath}"):
+                def h(): return FileResponse(p)
+                h.__name__ = f"serve_{sn}_{os.path.basename(p).replace('.','_')}"
+                return h
+            app.get(f"/${app.servePath}/{fname}")(_make_h(fpath))
+
+    @app.get("/${app.servePath}")
+    @app.get("/${app.servePath}/")
+    def _serve_${staticDir}_root():
+        return FileResponse(os.path.join(_EXTRA_DIR_${staticDir.toUpperCase()}, "index.html"))
+
+    @app.get("/${app.servePath}/{path:path}")
+    def _serve_${staticDir}_spa(path: str):
+        sf = os.path.join(_EXTRA_DIR_${staticDir.toUpperCase()}, path)
+        if os.path.isfile(sf): return FileResponse(sf)
+        return FileResponse(os.path.join(_EXTRA_DIR_${staticDir.toUpperCase()}, "index.html"))
+`;
+                extraExcludes += `
+            not p.startswith("/${app.servePath}/") and`;
+            }
+        }
+
+        return `"""Auto-generated by Orbitron: SPA wrapper for fullstack deployment (multi-app support)."""
 import os
 from ${moduleName} import ${appName} as app
 from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-
+${extraAppBlocks}
 STATIC = "/app/static"
 
 if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
@@ -300,7 +389,7 @@ if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
         p = request.url.path
         if (request.method == "GET" and
             not p.startswith("/api/") and
-            not p.startswith("/uploads/") and
+            not p.startswith("/uploads/") and${extraExcludes}
             not p.startswith("/docs") and
             not p.startswith("/openapi") and
             not p.startswith("/redoc")):
@@ -318,10 +407,11 @@ if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
         const { type, subdir } = detected;
         const copyFrom = subdir ? `${subdir}/` : '.';
 
-        // ── Fullstack: multi-stage build (frontend + backend) ──
+        // ── Fullstack: multi-stage build (frontend + backend + extra apps) ──
         if (type === 'fullstack') {
             const fe = detected.frontend;
             const be = detected.backend;
+            const extras = detected.extraFrontends || [];
 
             if (be.runtime === 'python') {
                 const startModule = '_orbitron_spa:app';
@@ -331,21 +421,47 @@ if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
                 const needsPg = reqContent.includes('psycopg') || reqContent.includes('asyncpg');
                 const pgInstall = needsPg ? 'RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*\n\n' : '';
 
-                // Write SPA wrapper script
-                const spaWrapper = this.generateSpaWrapper(be.module || 'main:app');
+                // Write SPA wrapper script (with extra app support)
+                const spaWrapper = this.generateSpaWrapper(be.module || 'main:app', extras);
                 fs.writeFileSync(path.join(projectDir, '_orbitron_spa.py'), spaWrapper);
-                console.log(`📝 Auto-generated _orbitron_spa.py for ${project.name}`);
+                console.log(`📝 Auto-generated _orbitron_spa.py for ${project.name} (${1 + extras.length} app(s))`);
 
-                return `# ===== AUTO-GENERATED by Orbitron (fullstack: ${fe.framework} + ${be.framework}) =====
+                // Build extra frontend stages
+                let extraStages = '';
+                let extraCopies = '';
+                for (let i = 0; i < extras.length; i++) {
+                    const ex = extras[i];
+                    const stageName = `extra-app-${i}`;
+                    const staticDir = `${ex.servePath.replace(/-/g, '_')}_static`;
+                    extraStages += `
+# Stage ${i + 2}: Build extra app "${ex.name}" → /${ex.servePath}/
+FROM node:20-slim AS ${stageName}
+WORKDIR /build
+COPY ${ex.path}/package*.json ./
+RUN npm ci
+COPY ${ex.path}/ ./
+ENV VITE_API_URL=""
+RUN npm run build && \\\\
+    find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
+`;
+                    extraCopies += `COPY --from=${stageName} /build/dist /app/${staticDir}\n`;
+                }
+
+                const totalStages = 2 + extras.length;
+                const extraLabels = extras.map(e => e.name).join(', ');
+
+                return `# ===== AUTO-GENERATED by Orbitron (fullstack: ${fe.framework} + ${be.framework}${extras.length ? ` + ${extras.length} extra app(s): ${extraLabels}` : ''}) =====
+# Stage 1: Build primary frontend
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY ${fe.path}/package*.json ./
 RUN npm ci
 COPY ${fe.path}/ ./
 ENV VITE_API_URL=""
-RUN npm run build && \\
+RUN npm run build && \\\\
     find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
-
+${extraStages}
+# Stage ${totalStages}: Production image
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -356,7 +472,7 @@ COPY ${be.path}/ ./
 COPY _orbitron_spa.py ./
 
 COPY --from=frontend-build /build/dist /app/static
-
+${extraCopies}
 EXPOSE \${PORT:-${port}}
 
 CMD ["sh", "-c", "uvicorn ${startModule} --host 0.0.0.0 --port \${PORT:-${port}}"]
@@ -370,7 +486,7 @@ WORKDIR /build
 COPY ${fe.path}/package*.json ./
 RUN npm ci
 COPY ${fe.path}/ ./
-RUN npm run build && \\
+RUN npm run build && \\\\
     find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
 
 FROM node:20-slim
