@@ -215,7 +215,7 @@
             <a href="/features.html" class="active">기능 소개</a>
             <a href="/pricing.html">요금제</a>
             <a href="/docs.html">문서</a>
-            <a href="https://ragt.twinverse.org" target="_blank">RemoteAGT</a>
+            <a href="https://RemoteAGT.twinverse.org" target="_blank">RemoteAGT</a>
             <a href="/index-en.html">EN</a>
             <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
         </div>
@@ -289,6 +289,53 @@
                 <div class="card-icon">📜</div>
                 <h3>Infrastructure-as-Code</h3>
                 <p>대시보드 조작 없이 레포지토리 내 정의된 단일 `orbitron.yaml` 코드를 시스템이 파싱하여 환경 변수, 포트 번호, 빌드 커맨드 설정을 즉각 덮어씌웁니다.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- RemoteAGT Section -->
+    <section class="features" id="remoteagt" style="padding-top:0;">
+        <h2 class="section-title" style="margin-top:0;">🪐 RemoteAGT — AI 원격 지휘·통제</h2>
+        <p
+            style="text-align:center; color:var(--text-muted); margin-top:-40px; margin-bottom:48px; max-width:700px; margin-left:auto; margin-right:auto;">
+            텔레그램·카카오톡 메신저에서 서버 상태 확인, 컨테이너 관리, 원격 배포까지. 스마트폰 하나로 인프라를 손바닥 위에 올려놓으세요.
+        </p>
+        <div class="grid">
+            <div class="card">
+                <div class="card-icon">📡</div>
+                <h3>AI 원격 지휘·통제 시스템</h3>
+                <p>RemoteAGT는 Orbitron의 두뇌 역할을 하는 원격 관제 시스템입니다. 서버 CPU·메모리·디스크 상태, 컨테이너 목록, 프로젝트 현황을 실시간 대시보드로 한눈에 파악하고,
+                    원격으로 배포 명령을 내릴 수 있습니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">💬</div>
+                <h3>텔레그램 봇 연동</h3>
+                <p>텔레그램 봇을 통해 <code>/status</code>, <code>/containers</code>, <code>/deploy</code> 등의 명령으로
+                    이동 중에도 스마트폰에서 곧바로 서버를 관리합니다. 배포 결과와 시스템 알림이 실시간으로 채팅방에 리포트됩니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">💛</div>
+                <h3>카카오톡 챗봇 연동</h3>
+                <p>한국에서 가장 친숙한 메신저, 카카오톡에서도 동일한 원격 관제가 가능합니다. 카카오 i 오픈빌더 스킬 서버로 연결되어 서버 상태 확인, 컨테이너 로그 조회, 프로젝트 배포를 카카오톡
+                    대화방에서 수행합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📊</div>
+                <h3>실시간 시스템 모니터링</h3>
+                <p>CPU 사용률, 메모리 점유율, 디스크 용량, 컨테이너 가동 현황을 시각적 프로그레스바와 함께 실시간으로 감시합니다. 관리자 대시보드에서 전체 사용자, 주간 활성 유저, 오늘 로그인
+                    수 등의 통계도 제공합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🛡</div>
+                <h3>역할 기반 접근 제어 (RBAC)</h3>
+                <p>최상위 관리자(SuperAdmin), 관리자(Admin), 일반 사용자(User) 3단계 권한 시스템으로 보안 격리합니다. 사용자 활동 감사 로그(Audit Log)가 자동으로
+                    기록되어 누가 언제 무엇을 했는지 추적합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔄</div>
+                <h3>원격 배포 & 로그 조회</h3>
+                <p>메신저 채팅방이나 RemoteAGT 웹 대시보드에서 프로젝트를 선택하여 원클릭으로 재배포하고, 실시간 컨테이너 로그를 즉시 확인합니다. 배포 실패 시 에러 내역이 자동으로
+                    텔레그램/카카오톡으로 전송됩니다.</p>
             </div>
         </div>
     </section>

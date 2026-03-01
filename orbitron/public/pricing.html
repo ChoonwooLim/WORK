@@ -672,7 +672,7 @@
             <a href="/features.html">기능 소개</a>
             <a href="/pricing.html" class="active">요금제</a>
             <a href="/docs.html">문서</a>
-            <a href="https://ragt.twinverse.org" target="_blank">RemoteAGT</a>
+            <a href="https://RemoteAGT.twinverse.org" target="_blank">RemoteAGT</a>
             <a href="/index-en.html">EN</a>
             <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
         </div>
@@ -720,6 +720,7 @@
                     <li>최대 10명 팀 멤버 협업</li>
                     <li>무제한 프로젝트 & 환경</li>
                     <li>AI 에러 분석 (Claude / Gemini)</li>
+                    <li>RemoteAGT 원격 관제 (텔레그램/카카오톡)</li>
                     <li>프리뷰 환경 테스트</li>
                     <li>채팅 서포트</li>
                 </ul>
@@ -738,7 +739,7 @@
                 <ul class="plan-features">
                     <li>1 TB 대역폭 포함</li>
                     <li>무제한 팀 멤버</li>
-                    <li>감사 로그 (Audit Logs)</li>
+                    <li>RemoteAGT RBAC & 감사 로그</li>
                     <li>GPU 스트리밍 우선 할당</li>
                     <li>프라이빗 네트워크 확장</li>
                     <li>프리미엄 서포트</li>
@@ -883,6 +884,26 @@
                     <li>초고속 로딩 최적화</li>
                 </ul>
                 <a href="/dashboard" class="compute-card-btn">자세히 보기 →</a>
+            </div>
+
+            <div class="compute-card">
+                <div class="compute-card-header">
+                    <div class="compute-card-title">🪐 RemoteAGT</div>
+                    <div class="compute-card-price">
+                        <div class="from">시작가</div>
+                        <div class="amount">무료</div>
+                        <div class="period">Pro 이상</div>
+                    </div>
+                </div>
+                <ul class="compute-features">
+                    <li>AI 원격 지휘·통제 대시보드</li>
+                    <li>텔레그램 봇 원격 관제</li>
+                    <li>카카오톡 챗봇 연동</li>
+                    <li>실시간 시스템 모니터링</li>
+                    <li>원격 배포 & 로그 조회</li>
+                    <li>역할 기반 접근 제어 (RBAC)</li>
+                </ul>
+                <a href="https://RemoteAGT.twinverse.org" target="_blank" class="compute-card-btn">자세히 보기 →</a>
             </div>
         </div>
     </section>
@@ -1166,6 +1187,53 @@
                         <td>환경 변수 관리</td>
                         <td class="check">✓</td>
                         <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+
+                    <!-- RemoteAGT -->
+                    <tr class="cat-row">
+                        <td colspan="5">🪐 RemoteAGT (원격 관제)</td>
+                    </tr>
+                    <tr>
+                        <td>RemoteAGT 원격 대시보드</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>텔레그램 봇 원격 관제</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>카카오톡 챗봇 원격 관제</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>실시간 시스템 모니터링</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>역할 기반 접근 제어 (RBAC)</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
+                        <td class="check">✓</td>
+                        <td class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>활동 감사 로그 (Audit)</td>
+                        <td class="cross">—</td>
+                        <td class="cross">—</td>
                         <td class="check">✓</td>
                         <td class="check">✓</td>
                     </tr>
