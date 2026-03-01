@@ -33,6 +33,7 @@ app.use('/api/groups', authMiddleware, require('./routes/groups'));
 app.use('/api/projects', authMiddleware, require('./routes/source'));
 app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 app.use('/api/admin', authMiddleware, require('./middleware/adminAuth'), require('./routes/admin'));
+app.use('/api/issues', authMiddleware, require('./routes/issues'));
 
 // Health check
 app.get('/api/health', (req, res) => {

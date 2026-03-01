@@ -199,10 +199,36 @@ function buildFileTree(baseDir, currentDir, depth = 0, maxDepth = 4) {
  * Collect source files for AI context
  */
 function collectSourceContext(projectDir) {
-    const MAX_FILES = 20;
-    const MAX_LINES = 150;
+    const MAX_FILES = 25;
+    const MAX_LINES = 200;
     const files = [];
 
+    // Phase 1: Priority files — always collect critical config files first
+    const priorityFiles = [
+        'Dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+        'package.json', 'requirements.txt', 'pyproject.toml',
+        '.env.example', '.env.production',
+        'orbitron.yaml', 'next.config.js', 'next.config.mjs',
+        'vite.config.js', 'vite.config.ts', 'tsconfig.json',
+        'nginx.conf', 'Procfile'
+    ];
+
+    for (const pf of priorityFiles) {
+        if (files.length >= MAX_FILES) break;
+        const fullPath = path.join(projectDir, pf);
+        try {
+            if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+                const stat = fs.statSync(fullPath);
+                if (stat.size > MAX_FILE_SIZE) continue;
+                const content = fs.readFileSync(fullPath, 'utf-8');
+                const lines = content.split('\n');
+                const trimmed = lines.slice(0, MAX_LINES).join('\n');
+                files.push(`--- ${pf} (${lines.length} lines, PRIORITY) ---\n${trimmed}${lines.length > MAX_LINES ? '\n... (truncated)' : ''}`);
+            }
+        } catch { }
+    }
+
+    // Phase 2: Walk remaining source files
     const walk = (dir, depth = 0) => {
         if (depth > 3 || files.length >= MAX_FILES) return;
         try {
@@ -217,13 +243,15 @@ function collectSourceContext(projectDir) {
                 } else if (entry.isFile()) {
                     const ext = path.extname(entry.name).toLowerCase();
                     if (SOURCE_EXTENSIONS.has(ext)) {
+                        const relPath = path.relative(projectDir, fullPath);
+                        // Skip if already collected as priority file
+                        if (files.some(f => f.includes(`--- ${relPath} `))) continue;
                         try {
                             const stat = fs.statSync(fullPath);
                             if (stat.size > MAX_FILE_SIZE) continue;
                             const content = fs.readFileSync(fullPath, 'utf-8');
                             const lines = content.split('\n');
                             const trimmed = lines.slice(0, MAX_LINES).join('\n');
-                            const relPath = path.relative(projectDir, fullPath);
                             files.push(`--- ${relPath} (${lines.length} lines) ---\n${trimmed}${lines.length > MAX_LINES ? '\n... (truncated)' : ''}`);
                         } catch { }
                     }

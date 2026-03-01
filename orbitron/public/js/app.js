@@ -133,6 +133,7 @@ function navigateTo(page) {
         'project-settings': `⚙️ ${currentProject?.name || ''} — 설정`,
         'project-ai': `💬 ${currentProject?.name || ''} — AI 어시스턴트`,
         'groups': '📂 프로젝트 그룹',
+        'issues': '🐛 이슈 보드',
         'group-overview': `📂 ${currentGroup?.name || ''} — 서비스 목록`,
         'admin-system': '🖥 시스템 모니터',
         'admin-users': '👥 유저 관리',
@@ -182,6 +183,7 @@ function navigateTo(page) {
 
     if (page === 'groups') loadGroups();
     if (page === 'group-overview') renderGroupOverview();
+    if (page === 'issues') loadIssues();
     if (page === 'admin-system') renderAdminSystem();
     if (page === 'admin-users') renderAdminUsers();
     if (page === 'admin-projects') renderAdminProjects();
@@ -1107,7 +1109,7 @@ async function saveSettings() {
     try {
         const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
         const custom_domain = document.getElementById('set-custom-domain')?.value?.trim() || null;
-        const ai_model = document.getElementById('set-ai-model')?.value || 'claude-4-6-opus-20260205';
+        const ai_model = document.getElementById('set-ai-model')?.value || 'claude-4-6-sonnet-20260217';
 
         const anthropicKey = document.getElementById('set-anthropic-key')?.value?.trim();
         const geminiKey = document.getElementById('set-gemini-key')?.value?.trim();
@@ -3324,6 +3326,10 @@ function renderAdminProjectsTable(projects) {
         <div style="font-size:13px; color:var(--text-muted);">중지됨</div>
       </div>
     </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; display:flex; align-items:center; gap:8px;">🌐 전체 프로젝트</h3>
+      <button class="btn btn-primary" onclick="openNewProjectModal()">+ 새 프로젝트 생성</button>
+    </div>
     <div class="admin-search-bar">
       <input type="text" id="admin-proj-search" placeholder="🔍 프로젝트 이름, 소유자 검색..." value="${escapeHtml(searchVal)}" oninput="debounceAdminProjectSearch()">
       <select id="admin-proj-status" onchange="applyAdminProjectFilter()">
@@ -3398,4 +3404,170 @@ function applyAdminProjectFilter() {
         filtered = filtered.filter(p => p.owner_name === owner);
     }
     renderAdminProjectsTable(filtered);
+}
+
+// ============ ISSUES BOARD ============
+
+async function loadIssues() {
+    const el = document.getElementById('issues-list');
+    const category = document.getElementById('issue-filter-category')?.value || '';
+    const status = document.getElementById('issue-filter-status')?.value || '';
+    const params = new URLSearchParams();
+    if (category) params.set('category', category);
+    if (status) params.set('status', status);
+
+    try {
+        const res = await fetch(`${API}/issues?${params}`);
+        if (!res.ok) throw new Error('Failed');
+        const issues = await res.json();
+
+        if (issues.length === 0) {
+            el.innerHTML = `<div style="text-align:center; padding:60px; color:var(--text-muted);">
+                <div style="font-size:48px; margin-bottom:16px;">🐛</div>
+                <h3 style="color:var(--text-secondary); margin-bottom:8px;">이슈가 없습니다</h3>
+                <p>"+ 새 이슈" 버튼을 눌러 첫 이슈를 등록하세요.</p>
+            </div>`;
+            return;
+        }
+
+        el.innerHTML = issues.map(issue => renderIssueCard(issue)).join('');
+    } catch (e) {
+        el.innerHTML = `<div style="text-align:center; padding:40px; color:var(--danger);">이슈를 불러올 수 없습니다.</div>`;
+    }
+}
+
+function renderIssueCard(issue) {
+    const catIcons = { bug: '🐛', error: '❌', feature: '✨', improvement: '🔧' };
+    const catLabels = { bug: '버그', error: '오류', feature: '기능개선', improvement: '개선' };
+    const statusColors = { open: '#f85149', in_progress: '#d29922', resolved: '#3fb950', closed: '#484f58' };
+    const statusLabels = { open: '미해결', in_progress: '진행중', resolved: '해결됨', closed: '닫힘' };
+    const priorityIcons = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
+    const priorityLabels = { critical: '긴급', high: '높음', medium: '보통', low: '낮음' };
+
+    const cat = issue.category || 'bug';
+    const st = issue.status || 'open';
+    const pri = issue.priority || 'medium';
+    const desc = (issue.description || '').substring(0, 200);
+    const sol = issue.solution || '';
+    const date = new Date(issue.created_at).toLocaleDateString('ko-KR');
+
+    return `
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; transition:border-color 0.2s;"
+         onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                <span style="font-size:16px;">${catIcons[cat]}</span>
+                <span style="font-weight:600; font-size:15px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(issue.title)}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; margin-left:12px;">
+                <span style="font-size:12px; padding:2px 8px; border-radius:12px; background:rgba(255,255,255,0.06); color:var(--text-secondary);">
+                    ${priorityIcons[pri]} ${priorityLabels[pri]}
+                </span>
+                <span style="font-size:12px; padding:2px 8px; border-radius:12px; background:rgba(${st === 'open' ? '248,81,73' : st === 'in_progress' ? '210,153,34' : st === 'resolved' ? '63,185,80' : '72,79,88'},0.15); color:${statusColors[st]};">
+                    ${statusLabels[st]}
+                </span>
+            </div>
+        </div>
+        ${desc ? `<div style="font-size:13px; color:var(--text-secondary); margin-bottom:8px; line-height:1.5;">${escapeHtml(desc)}${issue.description?.length > 200 ? '...' : ''}</div>` : ''}
+        ${sol ? `<div style="font-size:12px; color:var(--success); background:rgba(63,185,80,0.08); border:1px solid rgba(63,185,80,0.2); border-radius:6px; padding:8px 10px; margin-bottom:8px;"><strong>💡 해결:</strong> ${escapeHtml(sol.substring(0, 150))}${sol.length > 150 ? '...' : ''}</div>` : ''}
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px; font-size:12px; color:var(--text-muted);">
+                <span>${catLabels[cat]}</span>
+                ${issue.project_name ? `<span>📦 ${escapeHtml(issue.project_name)}</span>` : ''}
+                <span>${date}</span>
+            </div>
+            <div style="display:flex; gap:4px;">
+                <button class="btn btn-sm btn-ghost" onclick="editIssue(${issue.id})" title="수정">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteIssue(${issue.id})" title="삭제" style="color:var(--danger);">🗑</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function openIssueModal(issue = null) {
+    const modal = document.getElementById('issue-modal');
+    modal.classList.add('active');
+
+    // Populate project dropdown
+    const projSelect = document.getElementById('issue-project');
+    projSelect.innerHTML = '<option value="">없음</option>';
+    if (allProjectsCache) {
+        allProjectsCache.forEach(p => {
+            projSelect.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+        });
+    }
+
+    if (issue) {
+        document.getElementById('issue-modal-title').textContent = '✏️ 이슈 수정';
+        document.getElementById('issue-edit-id').value = issue.id;
+        document.getElementById('issue-title').value = issue.title || '';
+        document.getElementById('issue-category').value = issue.category || 'bug';
+        document.getElementById('issue-priority').value = issue.priority || 'medium';
+        document.getElementById('issue-status').value = issue.status || 'open';
+        document.getElementById('issue-project').value = issue.project_id || '';
+        document.getElementById('issue-description').value = issue.description || '';
+        document.getElementById('issue-solution').value = issue.solution || '';
+    } else {
+        document.getElementById('issue-modal-title').textContent = '🐛 새 이슈 등록';
+        document.getElementById('issue-edit-id').value = '';
+        document.getElementById('issue-title').value = '';
+        document.getElementById('issue-category').value = 'bug';
+        document.getElementById('issue-priority').value = 'medium';
+        document.getElementById('issue-status').value = 'open';
+        document.getElementById('issue-project').value = '';
+        document.getElementById('issue-description').value = '';
+        document.getElementById('issue-solution').value = '';
+    }
+    document.getElementById('issue-title').focus();
+}
+
+function closeIssueModal() {
+    document.getElementById('issue-modal').classList.remove('active');
+}
+
+async function saveIssue() {
+    const editId = document.getElementById('issue-edit-id').value;
+    const data = {
+        title: document.getElementById('issue-title').value.trim(),
+        category: document.getElementById('issue-category').value,
+        priority: document.getElementById('issue-priority').value,
+        status: document.getElementById('issue-status').value,
+        project_id: document.getElementById('issue-project').value || null,
+        description: document.getElementById('issue-description').value.trim(),
+        solution: document.getElementById('issue-solution').value.trim(),
+    };
+    if (!data.title) { toast('제목은 필수입니다.', 'error'); return; }
+
+    try {
+        const url = editId ? `${API}/issues/${editId}` : `${API}/issues`;
+        const method = editId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        toast(editId ? '이슈가 수정되었습니다.' : '이슈가 등록되었습니다!', 'success');
+        closeIssueModal();
+        loadIssues();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function editIssue(id) {
+    try {
+        const res = await fetch(`${API}/issues`);
+        const issues = await res.json();
+        const issue = issues.find(i => i.id === id);
+        if (issue) openIssueModal(issue);
+    } catch (e) { toast('이슈를 불러올 수 없습니다.', 'error'); }
+}
+
+async function deleteIssue(id) {
+    if (!confirm('이 이슈를 삭제하시겠습니까?')) return;
+    try {
+        const res = await fetch(`${API}/issues/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed');
+        toast('이슈가 삭제되었습니다.', 'success');
+        loadIssues();
+    } catch (e) { toast('삭제 실패', 'error'); }
 }

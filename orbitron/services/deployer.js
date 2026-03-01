@@ -569,6 +569,22 @@ class Deployer extends EventEmitter {
                                         });
                                     }
 
+                                    // Save to Error Knowledge DB for future reference
+                                    try {
+                                        const errorKnowledge = require('./errorKnowledge');
+                                        await errorKnowledge.saveKnowledge({
+                                            errorMessage: logs.substring(0, 5000),
+                                            rootCause: patchResult.summary,
+                                            solution: patchResult.patches.map(p => `${p.file}: ${p.explanation}`).join('\n'),
+                                            patches: patchResult.patches,
+                                            projectType: project.type || 'web',
+                                            source: 'auto_repair',
+                                            projectId: project.id
+                                        });
+                                    } catch (knowledgeErr) {
+                                        console.error('[Deployer] Knowledge save failed:', knowledgeErr.message);
+                                    }
+
                                     return retryResult;
                                 } else {
                                     logs += '\n  ❌ AI 수정 후에도 빌드 실패 — 원본 복구 중...\n';

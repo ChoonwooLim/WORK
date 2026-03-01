@@ -12,7 +12,7 @@ class AIAutoRepair {
      * Analyze build/deploy error and generate code patches
      * Returns: { patches: [{ file, original, modified, explanation }], summary } | null
      */
-    async analyzeAndGeneratePatch(logs, projectDir, aiModel = 'claude-4-6-opus-20260205', envVars = {}) {
+    async analyzeAndGeneratePatch(logs, projectDir, aiModel = 'claude-4-6-sonnet-20260217', envVars = {}) {
         const anthropicKey = envVars.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
         const geminiKey = envVars.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
@@ -21,44 +21,74 @@ class AIAutoRepair {
             return null;
         }
 
-        // Collect relevant source files (max 10 files, max 500 lines each)
+        // Collect relevant source files with priority ordering
         const sourceContext = this._collectSourceFiles(projectDir);
         if (!sourceContext) return null;
 
-        const recentLogs = logs.split('\n').slice(-150).join('\n');
+        // Smart log extraction: find error lines and include context around them
+        const logLines = logs.split('\n');
+        const errorPatterns = /error|ERR!|failed|FATAL|exception|Cannot find|Module not found|ENOENT|EACCES|ECONNREFUSED|exit code|SyntaxError|TypeError|ReferenceError/i;
+        let errorIdx = -1;
+        for (let i = logLines.length - 1; i >= 0; i--) {
+            if (errorPatterns.test(logLines[i])) { errorIdx = i; break; }
+        }
+        const startIdx = errorIdx > 0 ? Math.max(0, errorIdx - 80) : Math.max(0, logLines.length - 300);
+        const recentLogs = logLines.slice(startIdx, startIdx + 300).join('\n');
 
-        const prompt = `You are an expert DevOps engineer. A deployment has FAILED with the error logs below.
-Your job is to generate EXACT code patches to fix the issue.
+        const prompt = `당신은 시니어 DevOps 엔지니어입니다. 배포가 실패했습니다.
+에러 로그를 분석하고 정확한 코드 패치를 생성하세요.
 
-RULES:
-1. Only fix deployment/build/configuration errors (missing imports, wrong paths, port issues, dependency errors, environment config)
-2. Do NOT modify business logic
-3. Return ONLY valid JSON — no markdown, no code fences, no explanation outside JSON
-4. Each patch must specify the exact file path (relative to project root), the exact original text to replace, and the exact replacement text
-5. Keep patches minimal — change only what's necessary
+## 규칙
+1. 배포/빌드/설정 오류만 수정하세요 (누락된 import, 잘못된 경로, 포트 문제, 의존성 오류, 환경 설정)
+2. 비즈니스 로직은 수정하지 마세요
+3. 반드시 유효한 JSON만 반환하세요 — 마크다운, 코드 펜스, JSON 외 설명 없이
+4. 각 패치는 프로젝트 루트 기준 정확한 파일 경로, 교체할 원본 텍스트, 교체 텍스트를 포함
+5. 최소한의 변경만 하세요
 
-ERROR LOGS:
+## 흔한 배포 오류 패턴 (이 패턴을 우선 확인)
+- Dockerfile 오류: COPY 경로, base 이미지, RUN 명령어 문법
+- package.json: 누락된 의존성, 잘못된 scripts
+- 포트 불일치: Dockerfile EXPOSE와 실제 앱 포트가 달라서 연결 실패
+- 환경변수 누락: DATABASE_URL, API 키 등이 코드에서 참조되지만 설정되지 않음
+- 파일 경로 오류: import/require 경로가 실제 파일 위치와 불일치
+- Python: requirements.txt 누락, 잘못된 모듈명
+
+## 에러 로그
 ${recentLogs}
 
-PROJECT SOURCE FILES:
+## 프로젝트 소스 파일
 ${sourceContext}
 
-Respond with this exact JSON structure:
+다음 JSON 구조로만 응답하세요:
 {
   "canFix": true,
-  "summary": "Brief description of what was wrong and what the fix does",
+  "summary": "무엇이 잘못되었고 어떻게 수정하는지 한국어로 간략 설명",
   "patches": [
     {
       "file": "relative/path/to/file.js",
-      "original": "exact original text to find and replace",
-      "modified": "exact replacement text",
-      "explanation": "why this change fixes the error"
+      "original": "교체할 정확한 원본 텍스트",
+      "modified": "교체 텍스트",
+      "explanation": "이 변경이 에러를 수정하는 이유"
     }
   ]
 }
 
-If you CANNOT fix this error (e.g., it requires business logic changes or external service fixes), respond:
-{"canFix": false, "summary": "reason why auto-fix is not possible"}`;
+자동 수정이 불가능한 경우 (비즈니스 로직 변경, 외부 서비스 문제 등):
+{"canFix": false, "summary": "자동 수정이 불가능한 이유"}`;
+
+        // RAG: Search knowledge DB for similar past errors
+        let knowledgeRef = '';
+        try {
+            const errorKnowledge = require('./errorKnowledge');
+            const similar = await errorKnowledge.findSimilar(recentLogs, null);
+            if (similar.length > 0) {
+                knowledgeRef = '\n\n## 참고: 과거 유사 에러 해결 사례\n';
+                for (const k of similar) {
+                    knowledgeRef += `- 패턴: ${k.error_pattern}\n  원인: ${k.root_cause}\n  해결: ${k.solution}\n`;
+                }
+                prompt += knowledgeRef;
+            }
+        } catch (e) { /* knowledge DB not available yet */ }
 
         try {
             console.log(`[AI AutoRepair] Requesting patch generation via ${aiModel}...`);
@@ -244,36 +274,68 @@ If you CANNOT fix this error (e.g., it requires business logic changes or extern
 
     /**
      * Collect relevant source files for AI context
-     * Returns formatted string of file contents
+     * Priority-ordered: critical config files first, then source code
      */
     _collectSourceFiles(projectDir) {
-        const EXTENSIONS = ['.js', '.ts', '.jsx', '.tsx', '.py', '.json', '.yaml', '.yml', '.toml', '.cfg', '.env'];
-        const SKIP_DIRS = ['node_modules', '.git', '__pycache__', 'dist', 'build', '.next', 'venv', '.venv'];
-        const MAX_FILES = 15;
-        const MAX_LINES_PER_FILE = 200;
+        const EXTENSIONS = ['.js', '.ts', '.jsx', '.tsx', '.py', '.json', '.yaml', '.yml', '.toml', '.cfg', '.env', '.html', '.css'];
+        const SKIP_DIRS = ['node_modules', '.git', '__pycache__', 'dist', 'build', '.next', 'venv', '.venv', '.cache', 'coverage'];
+        const MAX_FILES = 25;
+        const MAX_LINES_PER_FILE = 300;
 
         const files = [];
 
+        // Phase 1: Priority files — always collect these first
+        const priorityFiles = [
+            'Dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+            'package.json', 'requirements.txt', 'pyproject.toml',
+            '.env', '.env.example', '.env.production',
+            'orbitron.yaml', 'next.config.js', 'next.config.mjs', 'next.config.ts',
+            'vite.config.js', 'vite.config.ts', 'tsconfig.json',
+            'nginx.conf', 'Procfile'
+        ];
+
+        for (const pf of priorityFiles) {
+            if (files.length >= MAX_FILES) break;
+            const fullPath = path.join(projectDir, pf);
+            try {
+                if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+                    const content = fs.readFileSync(fullPath, 'utf-8');
+                    const lines = content.split('\n');
+                    const trimmed = lines.slice(0, MAX_LINES_PER_FILE).join('\n');
+                    files.push(`--- ${pf} (${lines.length} lines, PRIORITY) ---\n${trimmed}`);
+                }
+            } catch { }
+        }
+
+        // Phase 2: Walk remaining source files
         const walk = (dir, depth = 0) => {
-            if (depth > 3 || files.length >= MAX_FILES) return;
+            if (depth > 4 || files.length >= MAX_FILES) return;
             try {
                 const entries = fs.readdirSync(dir, { withFileTypes: true });
-                for (const entry of entries) {
+                // Sort: files first (higher chance of being relevant), then dirs
+                const sorted = entries.sort((a, b) => {
+                    if (a.isFile() && b.isDirectory()) return -1;
+                    if (a.isDirectory() && b.isFile()) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+                for (const entry of sorted) {
                     if (files.length >= MAX_FILES) break;
                     const fullPath = path.join(dir, entry.name);
                     if (entry.isDirectory()) {
-                        if (!SKIP_DIRS.includes(entry.name)) {
+                        if (!SKIP_DIRS.includes(entry.name) && !entry.name.startsWith('.')) {
                             walk(fullPath, depth + 1);
                         }
                     } else if (entry.isFile()) {
                         const ext = path.extname(entry.name).toLowerCase();
                         if (EXTENSIONS.includes(ext)) {
+                            // Skip if already collected as priority file
+                            const relPath = path.relative(projectDir, fullPath);
+                            if (files.some(f => f.includes(`--- ${relPath} `))) continue;
                             try {
                                 const content = fs.readFileSync(fullPath, 'utf-8');
                                 const lines = content.split('\n');
                                 const trimmed = lines.slice(0, MAX_LINES_PER_FILE).join('\n');
-                                const relPath = path.relative(projectDir, fullPath);
-                                files.push(`--- ${relPath} ---\n${trimmed}`);
+                                files.push(`--- ${relPath} (${lines.length} lines) ---\n${trimmed}`);
                             } catch { }
                         }
                     }

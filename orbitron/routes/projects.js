@@ -131,7 +131,7 @@ router.post('/', async (req, res) => {
                 user_id, name, github_url, branch, build_command, start_command, 
                 port, subdomain, env_vars, auto_deploy, source_type, ai_model, type
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'github', $11, $12) RETURNING *`,
-            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false, ai_model || 'claude-4-6-opus-20260205', projectType]
+            [req.user.userId, name, github_url, branch || 'main', build_command, start_command, projectPort, projectSubdomain, encryptedEnvVars, auto_deploy !== false, ai_model || 'claude-4-6-sonnet-20260217', projectType]
         );
 
         res.status(201).json(project);
@@ -892,7 +892,7 @@ router.post('/:id/chat', async (req, res) => {
         }
 
         const aiAnalyzer = require('../services/aiAnalyzer');
-        const model = project.ai_model || 'claude-4-6-opus-20260205';
+        const model = project.ai_model || 'claude-4-6-sonnet-20260217';
 
         // Build project context for AI
         const projectContext = {
@@ -921,6 +921,20 @@ router.post('/:id/chat', async (req, res) => {
             try {
                 const { collectSourceContext } = require('./source');
                 projectContext.sourceContext = collectSourceContext(projectDir);
+
+                // Always include Dockerfile and docker-compose.yml if they exist
+                const criticalFiles = ['Dockerfile', 'docker-compose.yml', 'docker-compose.yaml'];
+                let buildContext = '';
+                for (const cf of criticalFiles) {
+                    const cfPath = path.join(projectDir, cf);
+                    if (fs.existsSync(cfPath)) {
+                        const content = fs.readFileSync(cfPath, 'utf-8');
+                        buildContext += `\n### ${cf}\n\`\`\`\n${content}\n\`\`\`\n`;
+                    }
+                }
+                if (buildContext) {
+                    projectContext.buildConfig = buildContext;
+                }
             } catch (e) {
                 console.error('[AI Chat] Source collection failed:', e.message);
             }
@@ -956,6 +970,26 @@ router.post('/:id/chat', async (req, res) => {
                                 patches: patchResult.patches.map(p => ({ file: p.file, explanation: p.explanation })),
                                 summary: patchResult.summary,
                             });
+
+                            // Save to Error Knowledge DB
+                            try {
+                                const errorKnowledge = require('../services/errorKnowledge');
+                                const lastDeployment = await db.queryOne(
+                                    'SELECT logs FROM deployments WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
+                                    [project.id]
+                                );
+                                await errorKnowledge.saveKnowledge({
+                                    errorMessage: (lastDeployment?.logs || '').substring(0, 5000),
+                                    rootCause: patchResult.summary,
+                                    solution: patchResult.patches.map(p => `${p.file}: ${p.explanation}`).join('\n'),
+                                    patches: patchResult.patches,
+                                    projectType: project.type || 'web',
+                                    source: 'chat_fix',
+                                    projectId: project.id
+                                });
+                            } catch (knErr) {
+                                console.error('[AI Chat] Knowledge save failed:', knErr.message);
+                            }
                         } else {
                             actionResults.push({ action: 'FIX_AND_DEPLOY', success: false, message: '⚠️ 패치를 적용하지 못했습니다.' });
                         }
@@ -1021,6 +1055,38 @@ router.delete('/:id/chat', async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ error: 'Project not found' });
 
         res.json({ message: 'Chat history cleared' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/projects/knowledge - List all accumulated error knowledge
+router.get('/knowledge/list', async (req, res) => {
+    try {
+        const errorKnowledge = require('../services/errorKnowledge');
+        const entries = await errorKnowledge.getAllKnowledge(100);
+        res.json({ knowledge: entries, total: entries.length });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/projects/knowledge - Manually add knowledge entry
+router.post('/knowledge', async (req, res) => {
+    try {
+        const { errorMessage, rootCause, solution, projectType } = req.body;
+        if (!errorMessage || !rootCause || !solution) {
+            return res.status(400).json({ error: 'errorMessage, rootCause, solution are required' });
+        }
+        const errorKnowledge = require('../services/errorKnowledge');
+        const id = await errorKnowledge.saveKnowledge({
+            errorMessage,
+            rootCause,
+            solution,
+            projectType: projectType || 'web',
+            source: 'manual'
+        });
+        res.json({ success: true, id });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

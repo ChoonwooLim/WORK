@@ -62,7 +62,7 @@ DO $$ BEGIN
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
     
     -- New AI model choice column
-    ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50) DEFAULT 'claude-4-6-opus-20260205';
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50) DEFAULT 'claude-4-6-sonnet-20260217';
 
     -- New AI Chat History column
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_chat_history JSONB DEFAULT '[]'::jsonb;
@@ -100,4 +100,35 @@ CREATE TABLE IF NOT EXISTS deployments (
     logs TEXT DEFAULT '',
     started_at TIMESTAMP DEFAULT NOW(),
     finished_at TIMESTAMP
+);
+
+-- Error Knowledge table (AI 경험치 축적)
+CREATE TABLE IF NOT EXISTS error_knowledge (
+    id SERIAL PRIMARY KEY,
+    error_pattern VARCHAR(500) NOT NULL,
+    error_message TEXT NOT NULL,
+    root_cause TEXT NOT NULL,
+    solution TEXT NOT NULL,
+    patches JSONB DEFAULT '[]'::jsonb,
+    project_type VARCHAR(50) DEFAULT 'web',
+    source VARCHAR(20) DEFAULT 'auto_repair',
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    success_count INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Issues tracking table (이슈 게시판)
+CREATE TABLE IF NOT EXISTS issues (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(300) NOT NULL,
+    category VARCHAR(30) DEFAULT 'bug',
+    status VARCHAR(30) DEFAULT 'open',
+    priority VARCHAR(20) DEFAULT 'medium',
+    description TEXT DEFAULT '',
+    solution TEXT DEFAULT '',
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
