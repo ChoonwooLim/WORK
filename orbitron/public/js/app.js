@@ -2321,8 +2321,7 @@ async function init() {
                     // Move project selector below admin items, hide New Project button for admin
                     const projSelectWrap = document.getElementById('sidebar-project-select-wrap');
                     const newProjWrap = document.getElementById('sidebar-new-project-wrap');
-                    if (projSelectWrap && newProjWrap) {
-                        newProjWrap.style.display = 'none'; // Admin doesn't create projects
+                    if (projSelectWrap) {
                         const afterAdmin = adminItems.nextSibling;
                         sidebarNav.insertBefore(projSelectWrap, afterAdmin);
                         projSelectWrap.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
