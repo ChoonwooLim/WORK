@@ -10,9 +10,12 @@ Node.js, Python(Django/FastAPI), Go, Rust 라이브 서버나 REST API를 배포
 
 Orbitron은 전 세계에서 가장 많이 쓰이는 백엔드 생태계를 별도의 잡다한 설정(Dockerfile 등) 없이 소스 코드만으로 즉시 구별하고 빌드해 냅니다.
 
-*   **Node.js**: `package.json` 하나만 있으면 됩니다. (Express.js, NestJS 등 완벽 지원)
-*   **Python**: `requirements.txt` 나 `Pipfile` 을 감지하여 패키지를 설치하고 구동합니다.
+*   **Node.js**: `package.json` 하나만 있으면 됩니다. (Express.js, NestJS, Fastify, Koa 완벽 지원)
+*   **Python**: `requirements.txt` 나 `Pipfile` 을 감지하여 패키지를 설치하고 구동합니다. (FastAPI, Django, Flask 자동 감지)
 *   **Go & Rust**: 컴파일 언어의 특성에 맞춰 알아서 빌드 후 초경량 바이너리 이미지만을 띄웁니다.
+*   **Ruby, PHP, Java**: `Gemfile`, `composer.json`, `pom.xml`/`build.gradle` 감지 지원
+
+> 🧠 **Smart Project Analyzer (2026.03 신규)**: 배포 시 프로젝트 구조를 자동 스캔하여 런타임, 프레임워크, 포트, 빌드 명령어까지 100% 자동 감지합니다. `orbitron.yaml` 없이도 최적의 설정이 적용됩니다. [자세히 보기 →](#/ai-analyzer)
 
 ---
 
