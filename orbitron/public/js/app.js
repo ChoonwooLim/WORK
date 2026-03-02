@@ -281,6 +281,8 @@ async function loadProjects() {
         // Auto-select if needed
         if (!currentProject && allProjectsCache.length > 0) {
             await onGlobalProjectSelect(allProjectsCache[0].id, false);
+        } else if (!currentProject && allProjectsCache.length === 0) {
+            navigateTo(currentPage);
         }
 
         // For dashboard display: admin shows only selected project's owner's projects
@@ -2440,6 +2442,16 @@ async function init() {
         const token = getToken();
         if (token) {
             const payload = JSON.parse(atob(token.split('.')[1]));
+
+            // Populating Sidebar User Profile
+            const profileName = document.getElementById('sidebar-user-name');
+            const profileRole = document.getElementById('sidebar-user-role');
+            const profileAvatar = document.getElementById('sidebar-user-avatar');
+            if (profileName) profileName.textContent = payload.username || '알 수 없음';
+            if (profileRole) profileRole.textContent = payload.role === 'admin' ? 'Admin' : 'Viewer';
+            if (profileAvatar && payload.username) profileAvatar.textContent = payload.username.charAt(0).toUpperCase();
+
+            // Admin features
             if (payload.role === 'admin') {
                 const adminSection = document.getElementById('nav-admin-section');
                 const adminItems = document.getElementById('nav-admin-items');
