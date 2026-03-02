@@ -5,8 +5,27 @@ let currentProject = null;
 let serverHost = 'localhost';
 let currentPage = 'dashboard';
 
-const getToken = () => localStorage.getItem('orbitron_token');
-const setToken = (t) => localStorage.setItem('orbitron_token', t);
+const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+};
+
+const getToken = () => {
+    let token = localStorage.getItem('orbitron_token');
+    if (!token) {
+        token = getCookie('twinverse_token');
+        if (token) localStorage.setItem('orbitron_token', token);
+    }
+    return token;
+};
+
+const setToken = (t) => {
+    localStorage.setItem('orbitron_token', t);
+    // Sync token across *.twinverse.org domain
+    document.cookie = `twinverse_token=${t}; domain=.twinverse.org; path=/; max-age=604800; samesite=lax`;
+};
 
 // SSO Config
 const REMOTEAGT_ORIGIN = window.location.hostname === 'localhost'
@@ -121,6 +140,7 @@ async function login() {
 function logout() {
     localStorage.removeItem('orbitron_token');
     document.cookie = 'orbitron_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = 'twinverse_token=; domain=.twinverse.org; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     // SSO: logout from RemoteAGT too
     ssoLogoutRemoteAGT();
     setTimeout(() => { window.location.href = '/'; }, 600);
@@ -202,6 +222,7 @@ function navigateTo(page) {
 
     actions.innerHTML = `
         <a class="btn btn-sm btn-ghost" href="/" style="text-decoration:none; display:flex; align-items:center; gap:6px;">🏠 홈</a>
+        <a class="btn btn-sm btn-ghost" href="https://remoteagt.twinverse.org" target="_blank" style="text-decoration:none; display:flex; align-items:center; gap:6px; color: #58a6ff;">🌐 RemoteAGT</a>
         <button class="btn btn-sm btn-ghost" onclick="logout()" style="display:flex; align-items:center; gap:6px;">⏏ 로그아웃</button>
     `;
 

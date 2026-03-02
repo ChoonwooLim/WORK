@@ -465,18 +465,23 @@
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>🤖 AI 기반 에러 분석 및 챗봇 연동</h4>
+                        <h4>🤖 AI 기반 에러 분석 및 지식 검색 연동 (RAG)</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <p><strong>💡 소개:</strong> 배포가 실패하거나 시스템이 멈췄을 때 붉게 출력되는 외계어 같은 로그를, 천재 개발자(Claude, Gemini)가 1초
-                            만에 분석하여 "이 부분에 패스워드가 틀렸으니 이 코드로 고치세요"라고 한글로 친절히 답변하고 과외해주는 인공지능 분석 기능입니다.</p>
+                        <p><strong>💡 소개:</strong> 배포가 실패하거나 시스템이 멈췄을 때 붉게 출력되는 외계어 같은 로그를, 천재 개발자(Claude 3.7, Gemini
+                            2.5)가 1초
+                            만에 분석하여 "이 부분에 패스워드가 틀렸으니 이 코드로 고치세요"라고 한글로 친절히 답변하고 과외해주는 인공지능 분석 기능입니다. 특히 최근 도입된
+                            <strong>지식 데이터베이스(Knowledge DB) 검색 아키텍처</strong>를 통해 이전 배포에서의 시행착오와 해결책을 시스템이 자가 학습하여 더욱 정확한
+                            솔루션을 제안합니다.
+                        </p>
                         <p><strong>✅ 사용 예시:</strong> 코딩 초보자나 문제가 어디서 발생했는지 오리무중인 베테랑 모두, 구글에 에러 코드를 붙여넣기하며 허비하던 수많은 시간을
-                            클릭 한 번의 AI 가이드라인으로 해결하여 퇴근 시간을 앞당깁니다.</p>
+                            클릭 한 번의 AI 가이드라인으로 해결하여 퇴근 시간을 앞당깁니다. 이전에 풀었던 유사한 에러가 있다면 시스템이 과거의 기억을 꺼내어 즉시 정답을 알려줍니다.</p>
                         <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
                         <h4>🛠 사용 방법:</h4>
                         <p>1. 프로젝트 대시보드의 우측 상단 <code>설정(Settings)</code> 탭으로 이동합니다.<br>
-                            2. <code>🤖 AI 에러 분석 모델 설정</code>의 드롭다운 선택상자에서 사용할 언어 모델(Claude 3.5/Google Gemini)을 취향껏
+                            2. <code>🤖 AI 에러 분석 모델 설정</code>의 드롭다운 선택상자에서 사용할 언어 모델(Claude 3.7 Sonnet / Google Gemini
+                            2.5 Flash)을 취향껏
                             고릅니다.<br>
                             3. 옆의 <code>발급받기</code> 버튼을 눌러 Anthropic 콘솔 또는 Google AI Studio에서 (다량 무료 제공되는) API Key를 복사해
                             붙여넣습니다.<br>
@@ -487,21 +492,25 @@
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>🗄 매니지드 데이터베이스 (Managed DB)</h4>
+                        <h4>🗄 매니지드 데이터베이스 백업 및 연동 시스템</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
                         <p><strong>💡 소개:</strong> 서버에 검은 화면(터미널)을 열어 데이터베이스를 복잡하게 수동 설치할 필요 없이, 버튼 조작으로 즉각 PostgreSQL이나
-                            Redis 저장소를 발급받는 기능입니다.</p>
-                        <p><strong>✅ 사용 예시:</strong> 새로운 커뮤니티 사이트를 론칭하면서 회원들의 민감한 비밀번호나 결제 정보를 저장할 안전한 DB 그릇이 필요할 때, 클릭
-                            3번만으로 완벽히 세팅된 데이터베이스 서버를 가져다 씁니다.</p>
+                            Redis 저장소를 발급받는 기능입니다. 또한 외부 DB나 직접 환경변수로 <code>DATABASE_URL</code>을 연결한 앱에서도 <strong>원클릭 DB
+                                백업 및 다운로드 기능</strong>을 완벽하게 지원합니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 새로운 커뮤니티 사이트를 론칭하면서 회원들의 민감한 비밀번호를 저장할 그릇이 필요할 때 원클릭으로 DB를 생성하거나,
+                            매주 금요일 퇴근 전 대시보드의 백업 버튼을 눌러 프로덕션 DB 전체를 <code>.sql</code> 파일로 안전히 로컬 PC에 보관하고 싶을 때 사용합니다.
+                        </p>
                         <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
                         <h4>🛠 사용 방법:</h4>
-                        <p>1. 대시보드의 <code>+ New Project</code> 버튼을 누른 후 상단 <code>🗄 데이터베이스</code> 탭을 선택합니다.<br>
-                            2. <code>PostgreSQL</code> 또는 <code>Redis</code>를 선택하고 프로젝트 생성을 누릅니다.<br>
-                            3. 완성된 후 프로젝트 개요 메인화면에 나타나는 <code>postgresql://devuser:devpass123@your-db:5432...</code> 형태의
-                            <strong>내부 접속 주소(Connection String)</strong>를 복사합니다.<br>
-                            4. 연결하고자 하는 다른 Orbitron 앱 설정(환경변수)에 해당 주소를 통째로 붙여넣어 사용하시면 됩니다.
+                        <p>1. 대시보드의 <code>+ New Project</code> 버튼을 누른 후 상단 <code>🗄 데이터베이스</code> 탭을 선택해 DB를 즉시
+                            만듭니다.<br>
+                            2. 완성된 후 프로젝트 개요 메인화면에 나타나는 <code>postgresql://devuser:devpass123@your-db:5432...</code> 형태의
+                            <strong>내부 접속 주소(Connection String)</strong>를 복사하거나, 본인의 외부 DB 주소를 준비합니다.<br>
+                            3. 연결하고자 하는 다른 Orbitron 앱 설정(환경변수)에 해당 주소를 통째로 <code>DATABASE_URL</code>이라는 이름으로 넣습니다.<br>
+                            4. 이제 해당 앱 대시보드로 가보면 우측에 <strong>"DB 다운로드"</strong> 탭이 새로 스마트하게 활성화되며, 원할 때마다 언제든 전체 데이터를
+                            덤프해 백업받을 수 있습니다.
                         </p>
                     </div>
                 </div>
@@ -561,16 +570,48 @@
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>🌐 Cloudflare 인그레스 보안</h4>
+                        <h4>🌐 Cloudflare 파이프라인 및 통합 인증(SSO) 연동</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <p><strong>💡 소개:</strong> 내 서비스가 인터넷에 드러날 때, 아무런 주소로 나가는 것이 아니라 글로벌 방화벽인 Cloudflare의 보안 파이프 터널을
-                            통해서만 세상에 안전하게 고정 URL을 받아 노출되는 기술입니다.</p>
-                        <p><strong>✅ 사용 예시:</strong> 공유기 포트포워딩(포트 개방) 방법을 전혀 몰라도, 시스템이 배포 즉시
-                            <code>https://my-app.twinverse.org</code> 같은 https 도메인을 발급해 주고, 디도스(DDoS) 해킹 핑도 전부 방어막으로 튕겨
-                            내줍니다.
+                        <p><strong>💡 소개:</strong> 내 서비스가 인터넷에 드러날 때, 글로벌 방화벽인 Cloudflare의 보안 터널을
+                            통해서 세상에 안전하게 고정 URL을 받아 노출될 뿐만 아니라, <strong><code>*.twinverse.org</code> 도메인을 기반으로 시스템간 완벽한
+                                쿠키 SSO(통합 로그인)</strong>를 제공합니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 배포 즉시 <code>https://my-app.twinverse.org</code> 같은 주소를 발급해 주고 디도스를
+                            방어할 뿐만 아니라, Orbitron에 로그인한 사용자는 RemoteAGT 등 다른 연계 시스템에 접근할 때도 재로그인 없이 즉시 관리자/뷰어 권한을 공유받아
+                            통과하게 됩니다.
                         </p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>⚡ 커밋 타임머신 기반 롤백 & 리소스 차트</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 최신 배포가 망가졌을 때 1초 만에 과거의 안정적인 상태로 시간을 되돌리는 기능(Commit Rollback)과, 각
+                            프로젝트 컨테이너가 CPU와 RAM을 얼마나 쓰고 있는지 실시간 그래프로 점검하는 하이브리드 모니터링 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> "아까 낮에 배포했던 버전이 더 낫네" 싶을 때, 대시보드에서 <code>과거 배포(커밋 해시) 선택</code> 창을
+                            열어 클릭 한 번에 즉시 해당 시점으로 롤백합니다. 또한 프로젝트 카드를 열면 즉시 뜨는 리소스 차트를 통해 램 누수가 없는지 직관적으로 감시할 수 있습니다.</p>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>📢 KakaoTalk 자동 알림봇 연동</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <p><strong>💡 소개:</strong> 개발자가 하루 종일 모니터를 쳐다볼 필요 없이, Orbitron이 배포 성공/실패 여부나 서버의 긴급 상황을 여러분의
+                            <strong>카카오톡 스레드(알림톡)</strong>로 즉각 전송해 주는 기능입니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 외근 중이거나 밥을 먹고 있을 때 폰으로 "프로젝트 A가 방금 빌드 실패했습니다. 원인: 메모리 부족"이라는 카톡 알림을
+                            즉시 받아보고 대처할 수 있습니다.</p>
+                        <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
+                        <h4>🛠 사용 방법:</h4>
+                        <p>1. Orbitron 설정(Settings) 메뉴로 이동합니다.<br>
+                            2. <code>카카오톡 연동</code> 섹션에서 지침에 따라 알림봇 토큰(Token)을 발급받아 기입합니다.<br>
+                            3. 이후 발생하는 배포 이벤트와 에러 상황들이 자동으로 연결된 톡방으로 전송됩니다.</p>
                     </div>
                 </div>
 
@@ -581,9 +622,10 @@
                     </div>
                     <div class="accordion-body">
                         <p><strong>💡 소개:</strong> 프로젝트 운영 중 발생하는 미디어나 소스 코드 파일의 유실을 막기 위해, 주기적으로 물리적 DATA 드라이브에 전부 압축하여
-                            안전히 백업 저장(아카이브) 해두는 기능입니다.</p>
-                        <p><strong>✅ 사용 예시:</strong> 대규모 코드 업데이트 전이나, 사용자가 올려놓은 수천 장의 이미지가 날아갈까 봐 두려울 때 사이드바의
-                            <code>백업하기</code> 버튼 한 번 클릭으로 방공호에 스냅샷을 만들어 대비합니다.
+                            안전히 백업 저장(아카이브) 해두는 기능입니다. <strong>특히 최근 추가된 GitHub Clone 동기화 버튼</strong>을 클릭하면 리모트 코드가 즉시
+                            오프라인 안전지대에 Clone 됩니다.</p>
+                        <p><strong>✅ 사용 예시:</strong> 대규모 코드 업데이트 전이나 리포지토리가 날아갈까 봐 두려울 때 사이드바의 <code>백업하기</code> 및 대시보드의
+                            특정 버튼을 클릭하여 방공호에 스냅샷을 만들어 대비합니다.
                         </p>
                     </div>
                 </div>
