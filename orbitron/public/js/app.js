@@ -65,7 +65,12 @@ function isAdminUser() {
     try {
         const token = getToken();
         if (!token) return false;
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        const payload = JSON.parse(jsonPayload);
         return payload.role === 'admin';
     } catch (e) { return false; }
 }
@@ -73,7 +78,12 @@ function isViewerUser() {
     try {
         const token = getToken();
         if (!token) return false;
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        const payload = JSON.parse(jsonPayload);
         return payload.role === 'viewer';
     } catch (e) { return false; }
 }
@@ -220,7 +230,35 @@ function navigateTo(page) {
         // Redundant project actions removed at user's request
     }
 
+    let userInfoHtml = '';
+    try {
+        const token = getToken();
+        if (token) {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            const payload = JSON.parse(jsonPayload);
+            const username = escapeHtml(payload.username || '알 수 없음');
+            const role = payload.role === 'admin' ? 'Admin' : 'Viewer';
+            const initial = username.charAt(0).toUpperCase();
+            userInfoHtml = `
+                <div style="display:flex; align-items:center; gap:8px; margin-right:8px; padding-right:12px; border-right:1px solid rgba(255,255,255,0.1);">
+                    <div style="width:24px; height:24px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold; color:#fff;">
+                        ${initial}
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+                        <span style="font-size:12px; font-weight:600; color:var(--text-primary); line-height:1;">${username}</span>
+                        <span style="font-size:10px; color:var(--text-muted); line-height:1; margin-top:3px; text-transform:uppercase;">${role}</span>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (e) { /* ignore */ }
+
     actions.innerHTML = `
+        ${userInfoHtml}
         <a class="btn btn-sm btn-ghost" href="/" style="text-decoration:none; display:flex; align-items:center; gap:6px;">🏠 홈</a>
         <a class="btn btn-sm btn-ghost" href="https://remoteagt.twinverse.org" target="_blank" style="text-decoration:none; display:flex; align-items:center; gap:6px; color: #58a6ff;">🌐 RemoteAGT</a>
         <button class="btn btn-sm btn-ghost" onclick="logout()" style="display:flex; align-items:center; gap:6px;">⏏ 로그아웃</button>
@@ -2441,7 +2479,12 @@ async function init() {
     try {
         const token = getToken();
         if (token) {
-            const payload = JSON.parse(atob(token.split('.')[1]));
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            const payload = JSON.parse(jsonPayload);
 
             // Populating Sidebar User Profile
             const profileName = document.getElementById('sidebar-user-name');
