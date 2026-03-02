@@ -24,13 +24,14 @@ const getToken = () => {
 const setToken = (t) => {
     localStorage.setItem('orbitron_token', t);
     // Sync token across *.twinverse.org domain
-    document.cookie = `twinverse_token=${t}; domain=.twinverse.org; path=/; max-age=604800; samesite=lax`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const domainStr = isLocal ? '' : 'domain=.twinverse.org; ';
+    document.cookie = `twinverse_token=${t}; ${domainStr}path=/; max-age=604800; samesite=lax`;
 };
 
 // SSO Config
-const REMOTEAGT_ORIGIN = window.location.hostname === 'localhost'
-    ? 'http://localhost:4100'
-    : 'https://remoteagt.twinverse.org';
+const originIsLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const REMOTEAGT_ORIGIN = originIsLocal ? `http://${window.location.hostname}:4100` : 'https://remoteagt.twinverse.org';
 
 // Sync token to RemoteAGT via hidden iframe
 function ssoSyncToRemoteAGT(token, user) {
@@ -150,7 +151,9 @@ async function login() {
 function logout() {
     localStorage.removeItem('orbitron_token');
     document.cookie = 'orbitron_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    document.cookie = 'twinverse_token=; domain=.twinverse.org; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const domainStr = isLocal ? '' : 'domain=.twinverse.org; ';
+    document.cookie = `twinverse_token=; ${domainStr}path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
     // SSO: logout from RemoteAGT too
     ssoLogoutRemoteAGT();
     setTimeout(() => { window.location.href = '/'; }, 600);
