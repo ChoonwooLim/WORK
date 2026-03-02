@@ -15,6 +15,18 @@ function isAdminUser() {
         return payload.role === 'admin';
     } catch (e) { return false; }
 }
+function isViewerUser() {
+    try {
+        const token = getToken();
+        if (!token) return false;
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.role === 'viewer';
+    } catch (e) { return false; }
+}
+function viewerBlock() {
+    toast('🔒 읽기 전용 계정입니다. 관리자에게 권한 승격을 요청하세요.', 'error');
+    return false;
+}
 
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
@@ -764,6 +776,7 @@ function handleFileSelect(input, dropzoneId) {
 }
 
 async function createProject() {
+    if (isViewerUser()) return viewerBlock();
     if (currentSourceTab === 'upload') {
         return createUploadProject('upload');
     }
@@ -941,6 +954,7 @@ async function doReupload(projectId, input) {
 }
 
 async function deployProject(id, commitHash = null) {
+    if (isViewerUser()) return viewerBlock();
     try {
         openDeployModal(id);
         const body = commitHash ? JSON.stringify({ commit_hash: commitHash }) : '{}';
@@ -1034,6 +1048,7 @@ async function confirmDeleteProject() {
 
 // Legacy wrapper for backward compatibility
 async function deleteProject(id) {
+    if (isViewerUser()) return viewerBlock();
     const name = currentProject?.name || '';
     openDeleteModal(id, name);
 }
@@ -2295,6 +2310,19 @@ async function init() {
     } catch (e) { /* fallback to localhost */ }
     loadProjects();
 
+    // Show viewer read-only banner
+    if (isViewerUser()) {
+        const banner = document.createElement('div');
+        banner.id = 'viewer-banner';
+        banner.style.cssText = 'background:linear-gradient(135deg,rgba(255,184,0,0.15),rgba(255,140,0,0.1)); border:1px solid rgba(255,184,0,0.3); color:#ffb800; padding:10px 16px; border-radius:10px; margin:12px 16px; font-size:13px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px;';
+        banner.innerHTML = '🔒 읽기 전용 계정 — 메뉴를 둘러볼 수 있지만, 프로젝트 생성·배포·수정은 불가합니다.';
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) sidebar.insertBefore(banner, sidebar.querySelector('.sidebar-nav'));
+        // Hide create project button
+        const newProjBtn = document.getElementById('sidebar-new-project-wrap');
+        if (newProjBtn) newProjBtn.style.display = 'none';
+    }
+
     // Check admin role from JWT and show admin nav
     try {
         const token = getToken();
@@ -3132,6 +3160,7 @@ async function renderAdminUsers(page) {
             <option value="" ${!adminUserFilterRole ? 'selected' : ''}>모든 역할</option>
             <option value="admin" ${adminUserFilterRole === 'admin' ? 'selected' : ''}>🛡 Admin</option>
             <option value="user" ${adminUserFilterRole === 'user' ? 'selected' : ''}>👤 User</option>
+            <option value="viewer" ${adminUserFilterRole === 'viewer' ? 'selected' : ''}>👁 Viewer</option>
           </select>
           <select id="admin-filter-plan" onchange="adminUserFilterPlan=this.value; adminUserPage=1; renderAdminUsers();"
             style="padding:8px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; font-size:13px;">
@@ -3166,8 +3195,8 @@ async function renderAdminUsers(page) {
                 <td style="padding:8px 10px; font-weight:600; white-space:nowrap;">${escapeHtml(u.username)}</td>
                 <td style="padding:8px 10px; color:var(--text-secondary); font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(u.email)}</td>
                 <td style="padding:8px 10px;">
-                  <span style="background:${u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;">
-                    ${u.role === 'admin' ? '🛡 Admin' : '👤 User'}
+                  <span style="background:${u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : u.role === 'viewer' ? 'rgba(255,184,0,0.15);color:#ffb800;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;">
+                    ${u.role === 'admin' ? '🛡 Admin' : u.role === 'viewer' ? '👁 Viewer' : '👤 User'}
                   </span>
                 </td>
                 <td style="padding:8px 10px;">
@@ -3180,6 +3209,7 @@ async function renderAdminUsers(page) {
                 <td style="padding:8px 10px;">
                   <div style="display:flex; gap:4px;">
                     <select onchange="changeUserRole(${u.id}, this.value)" style="padding:3px 4px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
+                      <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>Viewer</option>
                       <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
                       <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
                     </select>

@@ -180,7 +180,7 @@ router.get('/users', async (req, res) => {
             params.push(`%${search}%`);
             paramIdx++;
         }
-        if (role && ['admin', 'user'].includes(role)) {
+        if (role && ['admin', 'user', 'viewer'].includes(role)) {
             whereClauses.push(`u.role = $${paramIdx}`);
             params.push(role);
             paramIdx++;
@@ -222,8 +222,8 @@ router.get('/users', async (req, res) => {
 router.patch('/users/:id/role', async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
-    if (!['admin', 'user'].includes(role)) {
-        return res.status(400).json({ error: 'Invalid role. Must be "admin" or "user".' });
+    if (!['admin', 'user', 'viewer'].includes(role)) {
+        return res.status(400).json({ error: 'Invalid role. Must be "admin", "user", or "viewer".' });
     }
     // Prevent self-demotion
     if (parseInt(id) === req.user.userId && role !== 'admin') {

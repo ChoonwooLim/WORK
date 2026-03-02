@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(200) UNIQUE NOT NULL,
     password_hash VARCHAR(200) NOT NULL,
-    role VARCHAR(20) DEFAULT 'user',
+    role VARCHAR(20) DEFAULT 'viewer',
     created_at TIMESTAMP DEFAULT NOW()
 );
 
