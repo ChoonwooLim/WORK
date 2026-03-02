@@ -1304,6 +1304,7 @@ async function loadDeployments() {
         }
         document.getElementById('deployments-content').innerHTML = deployments.map(d => {
             const duration = d.finished_at && d.started_at ? formatDuration(new Date(d.finished_at) - new Date(d.started_at)) : '---';
+            const logSize = d.log_size ? `(${(d.log_size / 1024).toFixed(1)}KB)` : '';
             return `
       <div class="deploy-item">
         <span class="deploy-status ${d.status}">${statusLabel(d.status)}</span>
@@ -1311,11 +1312,60 @@ async function loadDeployments() {
           <div class="deploy-commit">${d.commit_hash ? d.commit_hash.substring(0, 7) : '---'} ${escapeHtml(d.commit_message || '')}</div>
           <div class="deploy-time">${timeAgo(d.started_at)} · ⏱ ${duration}</div>
         </div>
+        <button class="btn btn-sm btn-ghost" onclick="viewDeployLog(${currentProject.id}, ${d.id})" title="배포 로그 보기">📋 로그 ${logSize}</button>
         ${d.status === 'success' && d.commit_hash ? `<button class="btn btn-sm btn-ghost btn-rollback" onclick="rollbackTo(${d.id})">↩ 롤백</button>` : ''}
       </div>`;
         }).join('');
     } catch (error) {
         document.getElementById('deployments-content').innerHTML = '<p style="color:var(--danger);">로드 실패</p>';
+    }
+}
+
+async function viewDeployLog(projectId, deploymentId) {
+    const modal = document.getElementById('deploy-modal');
+    modal.classList.add('active');
+    document.getElementById('deploy-modal-title').textContent = `📋 배포 로그 #${deploymentId}`;
+    document.getElementById('deploy-progress-fill').style.width = '100%';
+    document.getElementById('deploy-progress-fill').className = 'deploy-progress-fill';
+    document.getElementById('deploy-progress-label').textContent = '로그를 불러오는 중...';
+    document.getElementById('deploy-steps').innerHTML = '';
+    const logViewer = document.getElementById('deploy-log-viewer');
+    logViewer.textContent = '로딩 중...';
+    logViewer.classList.remove('collapsed');
+
+    try {
+        const res = await fetch(`${API}/deployments/${projectId}/log/${deploymentId}`, {
+            headers: { Authorization: `Bearer ${getToken()}` }
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            logViewer.textContent = `❌ ${data.error}`;
+            return;
+        }
+
+        const statusIcon = data.status === 'success' ? '✅' : data.status === 'failed' ? '❌' : '🔄';
+        const started = data.started_at ? new Date(data.started_at).toLocaleString('ko-KR') : '---';
+        const finished = data.finished_at ? new Date(data.finished_at).toLocaleString('ko-KR') : '진행 중';
+        const duration = data.started_at && data.finished_at
+            ? formatDuration(new Date(data.finished_at) - new Date(data.started_at))
+            : '---';
+
+        document.getElementById('deploy-modal-title').textContent = `${statusIcon} 배포 로그 #${deploymentId}`;
+        document.getElementById('deploy-progress-label').textContent =
+            `${started} → ${finished} (소요: ${duration})`;
+
+        if (data.status === 'success') {
+            document.getElementById('deploy-progress-fill').classList.add('done');
+        } else if (data.status === 'failed') {
+            document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
+            document.getElementById('deploy-progress-fill').classList.add('done');
+        }
+
+        logViewer.textContent = data.logs || '(로그 없음)';
+        logViewer.scrollTop = 0;
+    } catch (err) {
+        logViewer.textContent = `❌ 로그 조회 실패: ${err.message}`;
     }
 }
 

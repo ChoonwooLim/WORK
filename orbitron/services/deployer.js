@@ -72,6 +72,20 @@ class Deployer extends EventEmitter {
         const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
         let deploymentId;
         let logs = '';
+        const startTime = Date.now();
+
+        // Helper: save logs to DB at intermediate points
+        const saveLogs = async (status = 'building') => {
+            if (!deploymentId) return;
+            try {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                const logWithTime = logs + `\n⏱ 경과 시간: ${elapsed}초\n`;
+                await db.query(
+                    `UPDATE deployments SET logs = $1, status = $2 WHERE id = $3`,
+                    [logWithTime, status, deploymentId]
+                );
+            } catch (e) { /* log save failure is non-critical */ }
+        };
 
         try {
             // Create deployment record
@@ -81,6 +95,11 @@ class Deployer extends EventEmitter {
                 [project.id, commitHash, commitMessage]
             );
             deploymentId = deployment.id;
+            logs += `📋 배포 시작: ${new Date().toLocaleString('ko-KR')}\n`;
+            logs += `   프로젝트: ${project.name} (${project.subdomain})\n`;
+            logs += `   커밋: ${commitHash || '최신'}\n`;
+            logs += `   배포 ID: #${deploymentId}\n`;
+            logs += '═'.repeat(50) + '\n';
 
             // Update project status
             await db.query(`UPDATE projects SET status = 'building' WHERE id = $1`, [project.id]);
@@ -140,6 +159,7 @@ class Deployer extends EventEmitter {
                         logs += `\n📋 현재 소스 코드 정보:\n${commitInfo}\n`;
                     } catch { }
                     this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
+                    await saveLogs();
                 }
 
                 // ═══════════════════════════════════════════════════════════
@@ -330,6 +350,7 @@ class Deployer extends EventEmitter {
                     }
                     logs += '\n--- Build complete ---\n';
                     this.emitProgress(project.id, 'build', 'Docker 빌드 완료');
+                    await saveLogs();
                 } catch (buildError) {
                     // ── Feature 8: Rollback to previous image on build failure ──
                     if (previousImageId) {
@@ -439,10 +460,7 @@ class Deployer extends EventEmitter {
                 `UPDATE projects SET status = 'running', container_id = $1, tunnel_url = $2, updated_at = NOW() WHERE id = $3`,
                 [isCompose ? containerId : containerName, tunnelUrl, project.id]
             );
-            await db.query(
-                `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,
-                [logs, deploymentId]
-            );
+            await saveLogs();
 
             // ── Feature 5: Auto DB migration ──
             if (containerId && containerName) {
@@ -550,6 +568,11 @@ class Deployer extends EventEmitter {
                             }
 
                             try {
+                                logs += `     📂 작업 디렉토리: ${projectDir}\n`;
+                                logs += `     🔧 명령어:\n${hookCmd.split('\n').map(l => '        ' + l).join('\n')}\n`;
+                                logs += `     ⏳ 실행 중...\n`;
+                                await saveLogs();
+
                                 const { stdout: hookOut, stderr: hookErr } = await execAsync(
                                     hookCmd,
                                     {
@@ -560,16 +583,24 @@ class Deployer extends EventEmitter {
                                         shell: '/bin/bash'
                                     }
                                 );
-                                const output = (hookOut + hookErr).trim();
-                                if (output) {
-                                    // Show last 5 lines of output
-                                    const lastLines = output.split('\n').slice(-5).join('\n');
-                                    logs += `     ${lastLines.replace(/\n/g, '\n     ')}\n`;
+                                // Show FULL output for transparency
+                                if (hookOut && hookOut.trim()) {
+                                    logs += `\n     ── stdout ──\n`;
+                                    logs += hookOut.trim().split('\n').map(l => '     ' + l).join('\n') + '\n';
+                                }
+                                if (hookErr && hookErr.trim()) {
+                                    logs += `\n     ── stderr ──\n`;
+                                    logs += hookErr.trim().split('\n').map(l => '     ' + l).join('\n') + '\n';
                                 }
                                 logs += `  ✅ 훅 "${hookName}" 완료\n`;
+                                await saveLogs();
                             } catch (hookErr) {
-                                const errMsg = hookErr.message.split('\n').slice(0, 3).join('\n');
-                                logs += `  ❌ 훅 "${hookName}" 실패: ${errMsg}\n`;
+                                // Show last 20 lines of error for debugging
+                                const errLines = (hookErr.stderr || hookErr.stdout || hookErr.message || '').trim().split('\n');
+                                const errDetail = errLines.slice(-20).join('\n');
+                                logs += `\n  ❌ 훅 "${hookName}" 실패:\n`;
+                                logs += errDetail.split('\n').map(l => '     ' + l).join('\n') + '\n';
+                                await saveLogs();
                             }
                         }
                     }
@@ -578,7 +609,16 @@ class Deployer extends EventEmitter {
                 }
             }
 
-            logs += '\n✅ Deployment successful!\n';
+            logs += '\n═'.repeat(50) + '\n';
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            logs += `✅ 배포 성공! (총 소요 시간: ${elapsed}초)\n`;
+            logs += `   완료 시간: ${new Date().toLocaleString('ko-KR')}\n`;
+
+            // Final log save with 'success' status
+            await db.query(
+                `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,
+                [logs, deploymentId]
+            );
 
             // Clean up old Blue-Green containers AFTER successful routing
             if (containerName && !isWorker) {
@@ -592,7 +632,7 @@ class Deployer extends EventEmitter {
             if (project.webhook_url) {
                 notifier.sendNotification(project.webhook_url, {
                     title: '🚀 배포 성공',
-                    message: `프로젝트가 성공적으로 배포되었습니다.`,
+                    message: `프로젝트가 성공적으로 배포되었습니다. (소요 시간: ${elapsed}초)`,
                     project: project.name,
                     url: tunnelUrl || project.custom_domain,
                     status: 'success'

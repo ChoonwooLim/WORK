@@ -7,10 +7,24 @@ const dockerService = require('../services/docker');
 router.get('/:projectId', async (req, res) => {
     try {
         const deployments = await db.queryAll(
-            'SELECT * FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT 20',
+            'SELECT id, project_id, commit_hash, commit_message, status, started_at, finished_at, LENGTH(logs) as log_size FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT 20',
             [req.params.projectId]
         );
         res.json(deployments);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/deployments/:projectId/log/:deploymentId - Get full deployment log
+router.get('/:projectId/log/:deploymentId', async (req, res) => {
+    try {
+        const deployment = await db.queryOne(
+            'SELECT id, project_id, commit_hash, commit_message, status, logs, started_at, finished_at FROM deployments WHERE id = $1 AND project_id = $2',
+            [req.params.deploymentId, req.params.projectId]
+        );
+        if (!deployment) return res.status(404).json({ error: 'Deployment not found' });
+        res.json(deployment);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
