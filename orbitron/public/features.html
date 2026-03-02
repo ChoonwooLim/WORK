@@ -289,7 +289,37 @@
             <div class="card">
                 <div class="card-icon">📜</div>
                 <h3>Infrastructure-as-Code</h3>
-                <p>대시보드 조작 없이 레포지토리 내 정의된 단일 `orbitron.yaml` 코드를 시스템이 파싱하여 환경 변수, 포트 번호, 빌드 커맨드 설정을 즉각 덮어씌웁니다.</p>
+                <p>대시보드 조작 없이 레포지토리 내 정의된 단일 <code>orbitron.yaml</code> 코드를 시스템이 파싱하여 환경 변수, 포트 번호, 빌드 커맨드 설정을 즉각
+                    덮어씌웁니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🧠</div>
+                <h3>Smart Project Analyzer</h3>
+                <p>배포 시 런타임(Node.js, Python, Go 등), 프레임워크(FastAPI, Vite, Next.js 등 20종+), 서비스 타입, 포트, 빌드 명령어, 서비스 간
+                    의존관계를 100% 자동 감지합니다. <code>orbitron.yaml</code> 없이도 완벽한 배포가 가능합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">☁️</div>
+                <h3>Cloudflare Pages 자동 배포</h3>
+                <p><code>type: static</code> 서비스를 감지하면 Cloudflare Pages CDN에 자동 빌드/배포합니다. 환경변수 빌드 타임 주입, 멀티 프론트엔드 동시 배포를
+                    지원하며 전 세계 에지 네트워크에서 초고속 서빙됩니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📦</div>
+                <h3>멀티 서비스 오케스트레이션</h3>
+                <p><code>orbitron.yaml</code>의 <code>services</code> 배열로 백엔드, 프론트엔드, 직원앱 등 여러 서비스를 한 번에 정의합니다.
+                    <code>from:</code> 참조로 서비스 간 URL을 자동 연결하고, 의존관계 기반으로 배포 순서를 결정합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🪝</div>
+                <h3>PostDeploy 훅</h3>
+                <p>메인 배포 완료 후 커스텀 명령어를 자동 실행합니다. CF Pages 추가 배포, DB 시딩, 슬랙 알림 전송 등을 <code>postDeploy:</code> 배열로 정의하면
+                    환경변수 주입과 함께 순서대로 실행됩니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📚</div>
+                <h3>Error Knowledge DB</h3>
+                <p>AI가 분석한 에러 패턴과 해결책을 자동 저장하는 학습형 데이터베이스입니다. 같은 에러 재발 시 과거 해결책을 즉시 제안하여, 시간이 지날수록 더 빠르게 문제를 해결합니다.</p>
             </div>
         </div>
     </section>

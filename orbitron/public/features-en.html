@@ -275,6 +275,39 @@
                     complex containers—Node.js, Redis, Celery Workers—are orchestrated and deployed together as one
                     cohesive system.</p>
             </div>
+            <div class="card">
+                <div class="card-icon">🧠</div>
+                <h3>Smart Project Analyzer</h3>
+                <p>Automatically detects runtimes (Node.js, Python, Go, etc.), frameworks (FastAPI, Vite, Next.js, etc.
+                    20+), service types, ports, build commands, and inter-service dependencies. Deploy perfectly even
+                    without <code>orbitron.yaml</code>.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">☁️</div>
+                <h3>Cloudflare Pages Auto-Deploy</h3>
+                <p>When a <code>type: static</code> service is detected, it's automatically built and deployed to
+                    Cloudflare Pages CDN. Supports build-time env injection and multi-frontend simultaneous deployments
+                    across global edge network.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📦</div>
+                <h3>Multi-Service Orchestration</h3>
+                <p>Define backend, frontend, and staff apps in a single <code>services</code> array. Use
+                    <code>from:</code> references to auto-link service URLs, with dependency-based deployment ordering.
+                </p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🪝</div>
+                <h3>PostDeploy Hooks</h3>
+                <p>Automatically execute custom commands after main deployment completes. Define CF Pages deploys, DB
+                    seeding, Slack notifications in <code>postDeploy:</code> with env injection.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📚</div>
+                <h3>Error Knowledge DB</h3>
+                <p>A self-learning database that stores AI-analyzed error patterns and solutions. On recurring errors,
+                    past solutions are instantly suggested—getting smarter over time.</p>
+            </div>
         </div>
     </section>
 
