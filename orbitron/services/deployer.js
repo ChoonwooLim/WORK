@@ -12,6 +12,8 @@ const mediaBackup = require('./mediaBackup');
 const projectBackup = require('./projectBackup');
 const aiAnalyzer = require('./aiAnalyzer');
 const aiAutoRepair = require('./aiAutoRepair');
+const cfPagesDeployer = require('./cfPagesDeployer');
+const projectAnalyzer = require('./projectAnalyzer');
 const notifier = require('./notifier');
 const { encrypt, decrypt } = require('../db/crypto');
 const yaml = require('js-yaml');
@@ -130,82 +132,118 @@ class Deployer extends EventEmitter {
                     this.emitProgress(project.id, 'clone', '소스 코드 가져오기 완료');
                 }
 
-                // Step 1.2: Check for orbitron.yaml (Infra as Code)
-                const yamlPath = path.join(projectDir, 'orbitron.yaml');
-                if (fs.existsSync(yamlPath)) {
-                    this.emitProgress(project.id, 'clone', 'orbitron.yaml 감지됨 (IaC 적용)');
-                    logs += '\n--- Detected orbitron.yaml, applying Infrastructure-as-Code configurations ---\n';
-                    try {
-                        const fileContents = fs.readFileSync(yamlPath, 'utf8');
-                        const parsedYaml = yaml.load(fileContents);
+                // ═══════════════════════════════════════════════════════════
+                // Step 1.2: 🧠 Smart Project Analysis
+                // Replaces legacy orbitron.yaml-only handling with full
+                // project structure analysis. Works with or without yaml.
+                // ═══════════════════════════════════════════════════════════
+                this.emitProgress(project.id, 'clone', '🧠 프로젝트 구조 분석 중...');
+                const manifest = projectAnalyzer.analyze(projectDir, project);
+                logs += projectAnalyzer.formatManifestLog(manifest);
 
-                        // Handle fullstack type from orbitron.yaml
-                        if (parsedYaml && parsedYaml.type === 'fullstack' && parsedYaml.frontend && parsedYaml.backend) {
-                            logs += '  📦 Fullstack configuration detected in orbitron.yaml\n';
-                            // Store fullstack config in env_vars so docker.js can read it
-                            project.env_vars = project.env_vars || {};
-                            project.env_vars._ORBITRON_FULLSTACK = JSON.stringify({
-                                frontend: parsedYaml.frontend,
-                                backend: parsedYaml.backend,
-                                spa: parsedYaml.spa !== false
-                            });
-                            logs += `  - Frontend: ${parsedYaml.frontend.path} (build: ${parsedYaml.frontend.build || 'npm run build'})\n`;
-                            logs += `  - Backend: ${parsedYaml.backend.path} (runtime: ${parsedYaml.backend.runtime || 'auto'})\n`;
-                            if (parsedYaml.backend.port) {
-                                project.port = parsedYaml.backend.port;
-                            }
-                        }
+                // ── Apply overrides from manifest's web/backend service ──
+                const mainWebService = manifest.services.find(s => s.type === 'web');
+                if (mainWebService) {
+                    // Handle fullstack type from orbitron.yaml (backward compat)
+                    const yamlPath = path.join(projectDir, 'orbitron.yaml');
+                    if (fs.existsSync(yamlPath)) {
+                        try {
+                            const parsedYaml = yaml.load(fs.readFileSync(yamlPath, 'utf8'));
 
-                        if (parsedYaml && parsedYaml.services && parsedYaml.services.web) {
-                            const webService = parsedYaml.services.web;
-                            let updates = [];
-                            let params = [];
-                            let valIndex = 1;
-
-                            if (webService.build_command !== undefined) {
-                                project.build_command = webService.build_command;
-                                updates.push(`build_command = $${valIndex++}`);
-                                params.push(project.build_command);
-                                logs += `  - Override build_command: ${project.build_command}\n`;
-                            }
-                            if (webService.start_command !== undefined) {
-                                project.start_command = webService.start_command;
-                                updates.push(`start_command = $${valIndex++}`);
-                                params.push(project.start_command);
-                                logs += `  - Override start_command: ${project.start_command}\n`;
-                            }
-                            if (webService.port !== undefined) {
-                                project.port = webService.port;
-                                updates.push(`port = $${valIndex++}`);
-                                params.push(project.port);
-                                logs += `  - Override port: ${project.port}\n`;
-                            }
-                            if (webService.env) {
-                                const newEnv = { ...project.env_vars };
-                                webService.env.forEach(envStr => {
-                                    const splitIdx = envStr.indexOf('=');
-                                    if (splitIdx > 0) {
-                                        const k = envStr.substring(0, splitIdx).trim();
-                                        const v = envStr.substring(splitIdx + 1).trim();
-                                        newEnv[k] = v;
-                                    }
+                            // Legacy fullstack type support
+                            if (parsedYaml && parsedYaml.type === 'fullstack' && parsedYaml.frontend && parsedYaml.backend) {
+                                logs += '  📦 Fullstack configuration detected in orbitron.yaml\n';
+                                project.env_vars = project.env_vars || {};
+                                project.env_vars._ORBITRON_FULLSTACK = JSON.stringify({
+                                    frontend: parsedYaml.frontend,
+                                    backend: parsedYaml.backend,
+                                    spa: parsedYaml.spa !== false
                                 });
-                                project.env_vars = newEnv;
-                                // Need to encrypt to save mapping properly in DB JSONB column
-                                const encryptedEnvVars = '"' + encrypt(JSON.stringify(newEnv || {})) + '"';
-                                updates.push(`env_vars = $${valIndex++}`);
-                                params.push(encryptedEnvVars);
-                                logs += `  - Override env_vars: ${Object.keys(newEnv).length} keys securely applied\n`;
+                                logs += `  - Frontend: ${parsedYaml.frontend.path} (build: ${parsedYaml.frontend.build || 'npm run build'})\n`;
+                                logs += `  - Backend: ${parsedYaml.backend.path} (runtime: ${parsedYaml.backend.runtime || 'auto'})\n`;
+                                if (parsedYaml.backend.port) {
+                                    project.port = parsedYaml.backend.port;
+                                }
                             }
 
-                            if (updates.length > 0) {
-                                params.push(project.id);
-                                await db.query(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${valIndex}`, params);
-                                logs += '  > Synced overrides to Dashboard Database.\n';
+                            // Legacy services.web override support
+                            if (parsedYaml && parsedYaml.services && parsedYaml.services.web) {
+                                const webService = parsedYaml.services.web;
+                                let updates = [];
+                                let params = [];
+                                let valIndex = 1;
+
+                                if (webService.build_command !== undefined) {
+                                    project.build_command = webService.build_command;
+                                    updates.push(`build_command = $${valIndex++}`);
+                                    params.push(project.build_command);
+                                    logs += `  - Override build_command: ${project.build_command}\n`;
+                                }
+                                if (webService.start_command !== undefined) {
+                                    project.start_command = webService.start_command;
+                                    updates.push(`start_command = $${valIndex++}`);
+                                    params.push(project.start_command);
+                                    logs += `  - Override start_command: ${project.start_command}\n`;
+                                }
+                                if (webService.port !== undefined) {
+                                    project.port = webService.port;
+                                    updates.push(`port = $${valIndex++}`);
+                                    params.push(project.port);
+                                    logs += `  - Override port: ${project.port}\n`;
+                                }
+                                if (webService.env) {
+                                    const newEnv = { ...project.env_vars };
+                                    webService.env.forEach(envStr => {
+                                        const splitIdx = envStr.indexOf('=');
+                                        if (splitIdx > 0) {
+                                            const k = envStr.substring(0, splitIdx).trim();
+                                            const v = envStr.substring(splitIdx + 1).trim();
+                                            newEnv[k] = v;
+                                        }
+                                    });
+                                    project.env_vars = newEnv;
+                                    const encryptedEnvVars = '"' + encrypt(JSON.stringify(newEnv || {})) + '"';
+                                    updates.push(`env_vars = $${valIndex++}`);
+                                    params.push(encryptedEnvVars);
+                                    logs += `  - Override env_vars: ${Object.keys(newEnv).length} keys securely applied\n`;
+                                }
+
+                                if (updates.length > 0) {
+                                    params.push(project.id);
+                                    await db.query(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${valIndex}`, params);
+                                    logs += '  > Synced overrides to Dashboard Database.\n';
+                                }
                             }
+                        } catch (e) {
+                            logs += `\n⚠️ Legacy orbitron.yaml processing error: ${e.message}\n`;
                         }
-                    } catch (e) {
-                        logs += `\n⚠️ Failed to parse or apply orbitron.yaml: ${e.message}\n`;
+                    }
+
+                    // Apply main web service port from manifest (if not already set)
+                    if (!project.port && mainWebService.port) {
+                        project.port = mainWebService.port;
+                        logs += `  - Auto-detected port: ${project.port}\n`;
+                    }
+                }
+
+                // ── Multi-Service: Deploy all static/sub-services ──
+                const staticServices = manifest.services.filter(s => s.deployTarget === 'cf-pages');
+                if (staticServices.length > 0) {
+                    logs += `\n📄 Static 서비스 ${staticServices.length}개 감지 — Cloudflare Pages 자동 배포 시작\n`;
+                    this.emitProgress(project.id, 'clone', `Static 서비스 ${staticServices.length}개 CF Pages 배포 중...`);
+
+                    for (const svc of staticServices) {
+                        const svcDir = path.join(projectDir, svc.rootDir);
+                        if (!fs.existsSync(svcDir)) {
+                            logs += `  ⚠️ 서비스 디렉토리 없음: ${svc.rootDir} — 건너김\n`;
+                            continue;
+                        }
+                        try {
+                            const result = await cfPagesDeployer.buildAndDeploy(svc, svcDir);
+                            logs += result.logs;
+                        } catch (cfErr) {
+                            logs += `  ⚠️ CF Pages 배포 실패 (${svc.name}): ${cfErr.message}\n`;
+                        }
                     }
                 }
 
