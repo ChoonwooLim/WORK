@@ -126,7 +126,34 @@ class CfPagesDeployer {
             logs += `  ✅ CF Pages 프로젝트 "${projectName}" 이미 존재\n`;
         }
 
-        // Step 2: Build the static site
+        // Step 2: Build the static site with env vars injected
+        // ⚠️ CRITICAL: Vite/React replace import.meta.env.VITE_* at BUILD TIME
+        // Without injecting env vars here, production builds fall back to localhost
+        const buildEnv = { ...process.env };
+        if (service.env && Array.isArray(service.env)) {
+            for (const envItem of service.env) {
+                if (envItem.key && envItem.value) {
+                    buildEnv[envItem.key] = envItem.value;
+                }
+                // Support 'from:' references that were already resolved
+                if (envItem.key && envItem.resolved) {
+                    buildEnv[envItem.key] = envItem.resolved;
+                }
+            }
+            const envKeys = service.env.filter(e => e.key).map(e => e.key);
+            if (envKeys.length > 0) {
+                logs += `  🔑 빌드 환경변수 주입: ${envKeys.join(', ')}\n`;
+            }
+        }
+        // Also inject envRefs that were resolved by the analyzer
+        if (service.envRefs && typeof service.envRefs === 'object') {
+            for (const [key, value] of Object.entries(service.envRefs)) {
+                if (!buildEnv[key] && typeof value === 'string' && !value.startsWith('service.') && !value.startsWith('database.')) {
+                    buildEnv[key] = value;
+                }
+            }
+        }
+
         logs += `  🔨 빌드 중: ${buildCmd}\n`;
         try {
             // Check if node_modules exists, skip npm install if so
@@ -137,7 +164,7 @@ class CfPagesDeployer {
 
             const { stdout: buildOut, stderr: buildErr } = await execAsync(
                 effectiveBuildCmd,
-                { cwd: serviceDir, timeout: 120000, maxBuffer: 1024 * 1024 * 10 }
+                { cwd: serviceDir, timeout: 120000, maxBuffer: 1024 * 1024 * 10, env: buildEnv }
             );
             logs += `  ✅ 빌드 완료\n`;
         } catch (e) {
@@ -145,7 +172,7 @@ class CfPagesDeployer {
             try {
                 const { stdout: retryOut } = await execAsync(
                     buildCmd,
-                    { cwd: serviceDir, timeout: 120000, maxBuffer: 1024 * 1024 * 10 }
+                    { cwd: serviceDir, timeout: 120000, maxBuffer: 1024 * 1024 * 10, env: buildEnv }
                 );
                 logs += `  ✅ 빌드 완료 (재시도)\n`;
             } catch (e2) {

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron - 최신 업데이트</title>
+    <meta name="description" content="Orbitron의 최신 기능 추가, 버그 수정, 개선 사항을 확인하세요.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #05080f;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.4);
+            --purple: #bd93f9;
+            --purple-glow: rgba(189, 147, 249, 0.4);
+            --pink: #ff79c6;
+            --green: #50fa7b;
+            --orange: #ffb86c;
+            --red: #ff5555;
+            --cyan: #8be9fd;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Background */
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: radial-gradient(ellipse at 30% 20%, rgba(88, 166, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(189, 147, 249, 0.06) 0%, transparent 50%),
+                var(--bg-dark);
+        }
+
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 48px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-left: 24px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-main);
+        }
+
+        .nav-links a.active {
+            color: var(--accent);
+        }
+
+        .btn-login {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Hero */
+        .changelog-hero {
+            text-align: center;
+            padding: 80px 24px 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .changelog-hero h1 {
+            font-size: 48px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .changelog-hero p {
+            font-size: 18px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Timeline Container */
+        .timeline-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+
+        /* Version Block */
+        .version-block {
+            position: relative;
+            margin-bottom: 48px;
+            padding-left: 40px;
+        }
+
+        .version-block::before {
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 32px;
+            bottom: -48px;
+            width: 2px;
+            background: linear-gradient(to bottom, rgba(88, 166, 255, 0.4), rgba(189, 147, 249, 0.1));
+        }
+
+        .version-block:last-child::before {
+            display: none;
+        }
+
+        .version-dot {
+            position: absolute;
+            left: 4px;
+            top: 8px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 12px var(--accent-glow);
+            border: 3px solid var(--bg-dark);
+        }
+
+        .version-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .version-tag {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 28px;
+            color: var(--text-main);
+        }
+
+        .version-date {
+            font-size: 14px;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 12px;
+            border-radius: 100px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .version-title {
+            font-size: 16px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            font-style: italic;
+        }
+
+        /* Change Items */
+        .change-list {
+            list-style: none;
+        }
+
+        .change-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .change-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .change-badge {
+            flex-shrink: 0;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .badge-feature {
+            background: rgba(80, 250, 123, 0.15);
+            color: var(--green);
+            border: 1px solid rgba(80, 250, 123, 0.3);
+        }
+
+        .badge-fix {
+            background: rgba(255, 85, 85, 0.15);
+            color: var(--red);
+            border: 1px solid rgba(255, 85, 85, 0.3);
+        }
+
+        .badge-improve {
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+        }
+
+        .badge-docs {
+            background: rgba(255, 184, 108, 0.15);
+            color: var(--orange);
+            border: 1px solid rgba(255, 184, 108, 0.3);
+        }
+
+        .badge-security {
+            background: rgba(189, 147, 249, 0.15);
+            color: var(--purple);
+            border: 1px solid rgba(189, 147, 249, 0.3);
+        }
+
+        .change-content {
+            flex: 1;
+        }
+
+        .change-content strong {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .change-content p {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        /* Subscribe CTA */
+        .subscribe-cta {
+            text-align: center;
+            padding: 60px 24px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .subscribe-cta h3 {
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+
+        .subscribe-cta p {
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+
+        .subscribe-cta .btn-primary {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            color: white;
+            padding: 14px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            box-shadow: 0 8px 32px var(--purple-glow);
+            transition: all 0.3s;
+        }
+
+        .subscribe-cta .btn-primary:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 16px 20px;
+            }
+
+            .nav-links a {
+                margin-left: 12px;
+                font-size: 13px;
+            }
+
+            .changelog-hero h1 {
+                font-size: 32px;
+            }
+
+            .version-tag {
+                font-size: 22px;
+            }
+
+            .change-item {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-gradient"></div>
+
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span style="font-size: 28px;">🪐</span> Orbitron
+        </a>
+        <div class="nav-links">
+            <a href="/features.html">기능 소개</a>
+            <a href="/pricing.html">요금제</a>
+            <a href="/docs.html">문서</a>
+            <a href="/changelog.html" class="active">업데이트</a>
+            <a href="https://RemoteAGT.twinverse.org" target="_blank">RemoteAGT</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
+        </div>
+    </nav>
+
+    <section class="changelog-hero">
+        <h1>🚀 최신 업데이트</h1>
+        <p>Orbitron에 새로 추가되거나 개선되는 모든 기능과 변경 사항을 한눈에 확인하세요.</p>
+    </section>
+
+    <div class="timeline-container">
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.5.0 — 2026-03-02                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.5.0</span>
+                <span class="version-date">2026년 3월 2일</span>
+            </div>
+            <p class="version-title">🧠 Genius Deployer — 스마트 프로젝트 분석 & 멀티 서비스 배포</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Smart Project Analyzer — 프로젝트 구조 자동 분석기</strong>
+                        <p>배포 시 런타임(Node.js, Python, Go 등), 프레임워크(FastAPI, Vite, Next.js 등 20종+), 서비스 타입, 포트, 빌드 명령어,
+                            의존관계를 100% 자동 감지합니다. orbitron.yaml 없이도 완벽한 배포가 가능합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>멀티 서비스 orbitron.yaml 지원</strong>
+                        <p>하나의 레포에 백엔드, 프론트엔드, 직원앱 등 여러 서비스를 services 배열로 정의하면 각 서비스를 자동으로 올바른 타겟(Docker/CF Pages)에
+                            배포합니다. <code>from:</code> 참조 문법으로 서비스 간 URL을 자동 연결합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Cloudflare Pages 정적 사이트 자동 배포</strong>
+                        <p><code>type: static</code> 서비스를 감지하면 Cloudflare Pages CDN에 자동 빌드/배포합니다. 전 세계 에지 네트워크에서 초고속으로
+                            서빙되며, 멀티 프론트엔드 동시 배포도 지원합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>PostDeploy 훅 — 배포 후 커스텀 명령 실행</strong>
+                        <p>orbitron.yaml에 <code>postDeploy:</code> 배열을 정의하여 메인 배포 완료 후 추가 명령어를 자동 실행합니다. 환경변수 주입, 3분
+                            타임아웃, 성공/실패 로그 기록을 지원합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">버그수정</span>
+                    <div class="change-content">
+                        <strong>정적 서비스 빌드 시 환경변수 미주입 수정</strong>
+                        <p>Vite/React 정적 서비스 빌드 시 <code>VITE_API_URL</code> 등 환경변수가 주입되지 않아 프로덕션에서 localhost로 API를 요청하던
+                            크리티컬 버그를 수정했습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-docs">문서</span>
+                    <div class="change-content">
+                        <strong>배포 문서 5개 페이지 대규모 업데이트</strong>
+                        <p>IaC 가이드, 정적 사이트, AI 분석기, 핵심 개념, 웹 서비스 문서에 멀티 서비스 배포, Smart Analyzer, CF Pages 자동 배포, Error
+                            Knowledge DB 내용을 추가했습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.4.0 — 2026-02-28                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.4.0</span>
+                <span class="version-date">2026년 2월 28일</span>
+            </div>
+            <p class="version-title">🤖 AI 에러 지식 데이터베이스 & 디스크 최적화</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Error Knowledge DB — AI 에러 학습 시스템</strong>
+                        <p>AI가 분석한 에러 패턴과 해결책을 자동 저장하여, 같은 에러 재발 시 즉시 과거 해결책을 제안합니다. 시간이 지날수록 더 빠르게 문제를 해결하는 학습형 배포
+                            플랫폼입니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>Docker 이미지 HDD 마이그레이션</strong>
+                        <p>Docker 이미지와 빌드 캐시를 SSD에서 HDD로 마이그레이션하여 SSD 디스크 공간을 최적화했습니다. 사이트 성능에 영향 없이 수십 GB의 공간을 확보합니다.
+                        </p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.3.0 — 2026-02-22                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.3.0</span>
+                <span class="version-date">2026년 2월 22일</span>
+            </div>
+            <p class="version-title">📊 대시보드 리소스 모니터링 & 백업 강화</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>프로젝트 카드 실시간 리소스 통계</strong>
+                        <p>대시보드 프로젝트 목록에서 CPU, 메모리, 업타임, 네트워크 I/O를 실시간으로 확인할 수 있습니다. 개별 페이지 진입 없이 한눈에 모든 프로젝트를 모니터링합니다.
+                        </p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>외부 DB 백업 지원 (DATABASE_URL 기반)</strong>
+                        <p>PostgreSQL 백업 기능이 확장되어, DATABASE_URL 환경변수로 연결된 외부 데이터베이스도 원클릭 백업이 가능합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>미디어 파일 백업 서비스</strong>
+                        <p>프로젝트 내 미디어 파일(이미지, 문서 등)을 DATA 드라이브에 자동 백업합니다. 수동 백업/복원 기능과 배포 시스템 연동을 제공합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Git 레포 로컬 클론 백업</strong>
+                        <p>GitHub URL 옆 'Clone' 버튼으로 레포를 로컬 백업 디렉토리에 클론합니다. 이미 존재하면 git pull로 업데이트됩니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.2.0 — 2026-02-21                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.2.0</span>
+                <span class="version-date">2026년 2월 21일</span>
+            </div>
+            <p class="version-title">🎯 커밋 선택 배포 & AI 채팅 개선</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>특정 커밋 선택 배포</strong>
+                        <p>배포 시 특정 Git 커밋을 선택하여 배포할 수 있습니다. 최신 커밋이 아닌 특정 시점의 코드로 롤백하거나 테스트 배포가 가능합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">버그수정</span>
+                    <div class="change-content">
+                        <strong>AI 채팅 API 키 로딩 오류 수정</strong>
+                        <p>AI 채팅 기능에서 "API key missing" 에러와 리셋 버튼 미동작 문제를 해결했습니다. 기본 모델이 Claude 4.6 Sonnet으로 설정됩니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>요금제 페이지 신규</strong>
+                        <p>플랜별 가격, 컴퓨트 비용, 기능 비교 표, 인터랙티브 FAQ 아코디언이 포함된 요금제 페이지를 추가했습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.1.0 — 2026-02-20                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.1.0</span>
+                <span class="version-date">2026년 2월 20일</span>
+            </div>
+            <p class="version-title">🏗 초기 프로덕션 안정화</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>GitHub Webhook 자동 배포 (CI/CD)</strong>
+                        <p>GitHub 레포지토리에 Push하면 자동으로 감지하여 무중단 배포를 실행합니다. Blue-Green 스위칭으로 다운타임 제로를 보장합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>AI 에러 분석 어시스턴트</strong>
+                        <p>배포 실패 시 Claude/Gemini AI가 에러 로그를 분석하여 한국어로 원인과 해결책을 제시합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Unreal Engine 픽셀 스트리밍</strong>
+                        <p>듀얼 GPU 로드밸런싱이 적용된 Unreal Engine 픽셀 스트리밍 서버를 원클릭 배포합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-security">보안</span>
+                    <div class="change-content">
+                        <strong>Cloudflare Tunnel 자동 보안 인그레스</strong>
+                        <p>모든 배포 프로젝트에 Cloudflare Tunnel을 통한 HTTPS 보안 접속과 DDoS 방어를 자동 적용합니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+
+    <section class="subscribe-cta">
+        <h3>📬 새 업데이트를 놓치지 마세요</h3>
+        <p>Orbitron의 최신 기능을 가장 먼저 경험하세요.</p>
+        <a href="/dashboard" class="btn-primary">Orbitron 시작하기 →</a>
+    </section>
+
+    <footer>
+        &copy; 2026 Orbitron - Twinverse Corporation. All rights reserved.
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('orbitron_token');
+            const navBtn = document.getElementById('nav-auth-btn');
+            if (token && navBtn) navBtn.innerHTML = '대시보드 관리';
+        });
+    </script>
+</body>
+
+</html>

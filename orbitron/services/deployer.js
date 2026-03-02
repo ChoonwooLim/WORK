@@ -510,6 +510,64 @@ class Deployer extends EventEmitter {
                 logs += `\n⚠️ 프로젝트 백업 건너뜀: ${e.message}\n`;
             }
 
+            // ── PostDeploy Hooks: run custom post-deployment commands ──
+            const yamlPathForHooks = path.join(projectDir, 'orbitron.yaml');
+            if (fs.existsSync(yamlPathForHooks)) {
+                try {
+                    const hookYaml = yaml.load(fs.readFileSync(yamlPathForHooks, 'utf8'));
+                    if (hookYaml.postDeploy && Array.isArray(hookYaml.postDeploy)) {
+                        logs += `\n🪝 PostDeploy 훅 ${hookYaml.postDeploy.length}개 실행 시작\n`;
+                        this.emitProgress(project.id, 'tunnel', `PostDeploy 훅 ${hookYaml.postDeploy.length}개 실행 중...`);
+
+                        for (const hook of hookYaml.postDeploy) {
+                            const hookName = hook.name || 'unnamed-hook';
+                            const hookCmd = hook.command;
+                            if (!hookCmd) {
+                                logs += `  ⚠️ 훅 "${hookName}": 명령어 없음 — 건너뜀\n`;
+                                continue;
+                            }
+
+                            logs += `\n  🔧 훅 실행: "${hookName}"\n`;
+
+                            // Build env vars for this hook
+                            const hookEnv = { ...process.env };
+                            if (hook.env && Array.isArray(hook.env)) {
+                                for (const envItem of hook.env) {
+                                    if (envItem.key && envItem.value) {
+                                        hookEnv[envItem.key] = envItem.value;
+                                    }
+                                }
+                            }
+
+                            try {
+                                const { stdout: hookOut, stderr: hookErr } = await execAsync(
+                                    hookCmd,
+                                    {
+                                        cwd: projectDir,
+                                        timeout: 180000, // 3분 타임아웃
+                                        maxBuffer: 1024 * 1024 * 10,
+                                        env: hookEnv,
+                                        shell: '/bin/bash'
+                                    }
+                                );
+                                const output = (hookOut + hookErr).trim();
+                                if (output) {
+                                    // Show last 5 lines of output
+                                    const lastLines = output.split('\n').slice(-5).join('\n');
+                                    logs += `     ${lastLines.replace(/\n/g, '\n     ')}\n`;
+                                }
+                                logs += `  ✅ 훅 "${hookName}" 완료\n`;
+                            } catch (hookErr) {
+                                const errMsg = hookErr.message.split('\n').slice(0, 3).join('\n');
+                                logs += `  ❌ 훅 "${hookName}" 실패: ${errMsg}\n`;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    logs += `\n⚠️ PostDeploy 훅 파싱 실패: ${e.message}\n`;
+                }
+            }
+
             logs += '\n✅ Deployment successful!\n';
 
             // Clean up old Blue-Green containers AFTER successful routing

@@ -85,6 +85,7 @@ class ProjectAnalyzer {
                     deployTarget: svc.type === 'static' ? 'cf-pages' : 'docker',
                     dependencies: [],
                     envRefs: {},
+                    env: svc.env || [],  // Pass raw env array for build-time injection
                     pwa: svc.pwa || false,
                     healthCheck: svc.healthCheck || null,
                     routes: svc.routes || null,
