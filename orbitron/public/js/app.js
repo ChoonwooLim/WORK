@@ -1515,7 +1515,7 @@ async function loadResourceStats(projectId) {
         if (!monitor) return;
         const cpuVal = parseFloat(stats.cpu) || 0;
         const memVal = parseFloat(stats.memPercent) || 0;
-        const uptime = formatUptime(stats.uptime || 0);
+        const uptime = formatUptime((stats.uptime || 0) / 1000);
         monitor.innerHTML = `
         <div class="resource-grid">
           <div class="resource-card"><div class="resource-label">💻 CPU</div><div class="resource-value" style="color:var(--accent)">${cpuVal.toFixed(1)}%</div><div class="resource-bar"><div class="resource-bar-fill cpu" style="width:${Math.min(cpuVal, 100)}%"></div></div></div>
@@ -1536,7 +1536,7 @@ async function loadDashboardResourceStats() {
             if (res.ok) {
                 const stats = await res.json();
                 const cpuVal = parseFloat(stats.cpu) || 0;
-                const uptime = formatUptime(stats.uptime || 0);
+                const uptime = formatUptime((stats.uptime || 0) / 1000);
                 el.innerHTML = `
                     <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">💻 <span style="color:var(--accent); font-weight:600;">${cpuVal.toFixed(1)}%</span></div>
                     <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">🧠 <span style="color:var(--purple); font-weight:600;">${stats.memUsage}</span></div>
@@ -2139,13 +2139,7 @@ function timeAgo(dateStr) {
     return `${Math.floor(seconds / 86400)}일 전`;
 }
 
-function formatUptime(ms) {
-    const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}초`;
-    if (s < 3600) return `${Math.floor(s / 60)}분`;
-    if (s < 86400) return `${Math.floor(s / 3600)}시간 ${Math.floor((s % 3600) / 60)}분`;
-    return `${Math.floor(s / 86400)}일 ${Math.floor((s % 86400) / 3600)}시간`;
-}
+
 
 function formatDuration(ms) {
     const s = Math.floor(ms / 1000);
