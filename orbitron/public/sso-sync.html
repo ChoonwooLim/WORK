@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Token Sync</title>
+</head>
+
+<body>
+    <script>
+        // SSO Token Receiver for Orbitron
+        // Listens for postMessage from RemoteAGT to sync JWT token
+        window.addEventListener('message', (e) => {
+            // Accept messages from RemoteAGT domain
+            const allowedOrigins = [
+                'https://remoteagt.twinverse.org',
+                'http://localhost:4100'
+            ];
+            if (!allowedOrigins.includes(e.origin)) return;
+
+            const { action, token, user } = e.data || {};
+
+            if (action === 'sso_login' && token) {
+                localStorage.setItem('orbitron_token', token);
+                if (user) localStorage.setItem('orbitron_user', JSON.stringify(user));
+                e.source.postMessage({ action: 'sso_ack', site: 'orbitron' }, e.origin);
+            } else if (action === 'sso_logout') {
+                localStorage.removeItem('orbitron_token');
+                localStorage.removeItem('orbitron_user');
+                e.source.postMessage({ action: 'sso_ack', site: 'orbitron' }, e.origin);
+            } else if (action === 'sso_check') {
+                const existingToken = localStorage.getItem('orbitron_token');
+                e.source.postMessage({ action: 'sso_token', site: 'orbitron', token: existingToken }, e.origin);
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -7,6 +7,41 @@ let currentPage = 'dashboard';
 
 const getToken = () => localStorage.getItem('orbitron_token');
 const setToken = (t) => localStorage.setItem('orbitron_token', t);
+
+// SSO Config
+const REMOTEAGT_ORIGIN = window.location.hostname === 'localhost'
+    ? 'http://localhost:4100'
+    : 'https://remoteagt.twinverse.org';
+
+// Sync token to RemoteAGT via hidden iframe
+function ssoSyncToRemoteAGT(token, user) {
+    try {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = `${REMOTEAGT_ORIGIN}/sso-sync.html`;
+        iframe.onload = () => {
+            iframe.contentWindow.postMessage(
+                { action: 'sso_login', token, user },
+                REMOTEAGT_ORIGIN
+            );
+            setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) { } }, 500);
+        };
+        iframe.onerror = () => { try { document.body.removeChild(iframe); } catch (e) { } };
+        document.body.appendChild(iframe);
+    } catch (e) { /* SSO sync is best-effort */ }
+}
+function ssoLogoutRemoteAGT() {
+    try {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = `${REMOTEAGT_ORIGIN}/sso-sync.html`;
+        iframe.onload = () => {
+            iframe.contentWindow.postMessage({ action: 'sso_logout' }, REMOTEAGT_ORIGIN);
+            setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) { } }, 500);
+        };
+        document.body.appendChild(iframe);
+    } catch (e) { }
+}
 function isAdminUser() {
     try {
         const token = getToken();
@@ -73,6 +108,8 @@ async function login() {
         const data = await res.json();
         if (!res.ok) { errorEl.textContent = data.error || '로그인 실패'; return; }
         setToken(data.token);
+        // SSO: sync token to RemoteAGT
+        ssoSyncToRemoteAGT(data.token, data.user);
         document.getElementById('login-modal').classList.remove('active');
         document.getElementById('input-login-email').value = '';
         document.getElementById('input-login-password').value = '';
@@ -84,7 +121,9 @@ async function login() {
 function logout() {
     localStorage.removeItem('orbitron_token');
     document.cookie = 'orbitron_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    window.location.href = '/';
+    // SSO: logout from RemoteAGT too
+    ssoLogoutRemoteAGT();
+    setTimeout(() => { window.location.href = '/'; }, 600);
 }
 
 async function register() {
@@ -106,6 +145,8 @@ async function register() {
         const data = await res.json();
         if (!res.ok) { errorEl.textContent = data.error || '회원가입 실패'; return; }
         setToken(data.token);
+        // SSO: sync token to RemoteAGT
+        ssoSyncToRemoteAGT(data.token, data.user);
         document.getElementById('login-modal').classList.remove('active');
         toast(`${data.user.username}님, 가입을 환영합니다! 🎉`, 'success');
         init();
