@@ -20,6 +20,16 @@ const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
 
+// Find orbitron.yaml regardless of case (Linux is case-sensitive)
+function findOrbitronYaml(dir) {
+    const candidates = ['orbitron.yaml', 'Orbitron.yaml', 'orbitron.yml', 'Orbitron.yml'];
+    for (const name of candidates) {
+        const fullPath = path.join(dir, name);
+        if (fs.existsSync(fullPath)) return fullPath;
+    }
+    return null;
+}
+
 const DEPLOY_STEPS = [
     { id: 'clone', label: '📥 소스 코드 가져오기', progress: 15 },
     { id: 'build', label: '🔨 Docker 이미지 빌드', progress: 45 },
@@ -145,8 +155,8 @@ class Deployer extends EventEmitter {
                 const mainWebService = manifest.services.find(s => s.type === 'web');
                 if (mainWebService) {
                     // Handle fullstack type from orbitron.yaml (backward compat)
-                    const yamlPath = path.join(projectDir, 'orbitron.yaml');
-                    if (fs.existsSync(yamlPath)) {
+                    const yamlPath = findOrbitronYaml(projectDir);
+                    if (yamlPath) {
                         try {
                             const parsedYaml = yaml.load(fs.readFileSync(yamlPath, 'utf8'));
 
@@ -511,12 +521,12 @@ class Deployer extends EventEmitter {
             }
 
             // ── PostDeploy Hooks: run custom post-deployment commands ──
-            const yamlPathForHooks = path.join(projectDir, 'orbitron.yaml');
-            if (fs.existsSync(yamlPathForHooks)) {
+            const yamlPathForHooks = findOrbitronYaml(projectDir);
+            if (yamlPathForHooks) {
                 try {
                     const hookYaml = yaml.load(fs.readFileSync(yamlPathForHooks, 'utf8'));
                     if (hookYaml.postDeploy && Array.isArray(hookYaml.postDeploy)) {
-                        logs += `\n🪝 PostDeploy 훅 ${hookYaml.postDeploy.length}개 실행 시작\n`;
+                        logs += `\n🪝 PostDeploy 훅 ${hookYaml.postDeploy.length}개 실행 시작 (${path.basename(yamlPathForHooks)})\n`;
                         this.emitProgress(project.id, 'tunnel', `PostDeploy 훅 ${hookYaml.postDeploy.length}개 실행 중...`);
 
                         for (const hook of hookYaml.postDeploy) {
@@ -544,7 +554,7 @@ class Deployer extends EventEmitter {
                                     hookCmd,
                                     {
                                         cwd: projectDir,
-                                        timeout: 180000, // 3분 타임아웃
+                                        timeout: 300000, // 5분 타임아웃 (npm install + build + wrangler deploy)
                                         maxBuffer: 1024 * 1024 * 10,
                                         env: hookEnv,
                                         shell: '/bin/bash'
