@@ -226,7 +226,7 @@ router.patch('/users/:id/role', async (req, res) => {
         return res.status(400).json({ error: 'Invalid role. Must be "admin", "user", or "viewer".' });
     }
     // Prevent self-demotion
-    if (parseInt(id) === req.user.userId && role !== 'admin') {
+    if (parseInt(id) === req.user.userId && role !== 'admin' && role !== 'superadmin') {
         return res.status(400).json({ error: 'Cannot change your own role.' });
     }
     try {

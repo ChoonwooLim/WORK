@@ -29,7 +29,7 @@ const upload = multer({
 
 // Helper: Get project with admin bypass - admins can access any project
 async function getProjectForUser(projectId, user) {
-    if (user.role === 'admin') {
+    if (user.role === 'admin' || user.role === 'superadmin') {
         return await db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
     }
     return await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.userId]);
@@ -39,7 +39,7 @@ async function getProjectForUser(projectId, user) {
 router.get('/', async (req, res) => {
     try {
         let query, params;
-        if (req.user.role === 'admin') {
+        if (req.user.role === 'admin' || req.user.role === 'superadmin') {
             if (req.query.owner_id) {
                 query = 'SELECT p.*, u.username as owner_name FROM projects p LEFT JOIN users u ON p.user_id = u.id WHERE p.user_id = $1 ORDER BY p.created_at DESC';
                 params = [req.query.owner_id];
@@ -153,9 +153,9 @@ router.put('/:id', async (req, res) => {
 
         const encryptedEnvVars = env_vars ? '"' + encrypt(JSON.stringify(env_vars)) + '"' : null;
 
-        const whereClause = req.user.role === 'admin' ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
+        const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
         const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id];
-        if (req.user.role !== 'admin') queryParams.push(req.user.userId);
+        if (req.user.role !== 'admin' && req.user.role !== 'superadmin') queryParams.push(req.user.userId);
 
         const project = await db.queryOne(
             `UPDATE projects SET
@@ -839,7 +839,7 @@ router.get('/:id/db-backup/status', async (req, res) => {
 // GET /api/projects/:id/chat - Get AI chat history
 router.get('/:id/chat', async (req, res) => {
     try {
-        const project = req.user.role === 'admin'
+        const project = (req.user.role === 'admin' || req.user.role === 'superadmin')
             ? await db.queryOne('SELECT ai_chat_history FROM projects WHERE id = $1', [req.params.id])
             : await db.queryOne('SELECT ai_chat_history FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
         if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -1049,7 +1049,7 @@ router.post('/:id/chat', async (req, res) => {
 // DELETE /api/projects/:id/chat - Clear AI chat history
 router.delete('/:id/chat', async (req, res) => {
     try {
-        const result = req.user.role === 'admin'
+        const result = (req.user.role === 'admin' || req.user.role === 'superadmin')
             ? await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2 RETURNING id', ['[]', req.params.id])
             : await db.query('UPDATE projects SET ai_chat_history = $1 WHERE id = $2 AND user_id = $3 RETURNING id', ['[]', req.params.id, req.user.userId]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'Project not found' });

@@ -72,7 +72,7 @@ function isAdminUser() {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
         }).join(''));
         const payload = JSON.parse(jsonPayload);
-        return payload.role === 'admin';
+        return payload.role === 'admin' || payload.role === 'superadmin';
     } catch (e) { return false; }
 }
 function isViewerUser() {
@@ -244,7 +244,7 @@ function navigateTo(page) {
             }).join(''));
             const payload = JSON.parse(jsonPayload);
             const username = escapeHtml(payload.username || '알 수 없음');
-            const role = payload.role === 'admin' ? 'Admin' : 'Viewer';
+            const role = payload.role === 'superadmin' ? 'Super Admin' : (payload.role === 'admin' ? 'Admin' : 'Viewer');
             const initial = username.charAt(0).toUpperCase();
             userInfoHtml = `
                 <div style="display:flex; align-items:center; gap:8px; margin-right:8px; padding-right:12px; border-right:1px solid rgba(255,255,255,0.1);">
@@ -2494,11 +2494,11 @@ async function init() {
             const profileRole = document.getElementById('sidebar-user-role');
             const profileAvatar = document.getElementById('sidebar-user-avatar');
             if (profileName) profileName.textContent = payload.username || '알 수 없음';
-            if (profileRole) profileRole.textContent = payload.role === 'admin' ? 'Admin' : 'Viewer';
+            if (profileRole) profileRole.textContent = payload.role === 'superadmin' ? 'Super Admin' : (payload.role === 'admin' ? 'Admin' : 'Viewer');
             if (profileAvatar && payload.username) profileAvatar.textContent = payload.username.charAt(0).toUpperCase();
 
             // Admin features
-            if (payload.role === 'admin') {
+            if (payload.role === 'admin' || payload.role === 'superadmin') {
                 const adminSection = document.getElementById('nav-admin-section');
                 const adminItems = document.getElementById('nav-admin-items');
                 if (adminSection) adminSection.style.display = 'block';
@@ -3328,6 +3328,7 @@ async function renderAdminUsers(page) {
           <select id="admin-filter-role" onchange="adminUserFilterRole=this.value; adminUserPage=1; renderAdminUsers();"
             style="padding:8px 10px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; font-size:13px;">
             <option value="" ${!adminUserFilterRole ? 'selected' : ''}>모든 역할</option>
+            <option value="superadmin" ${adminUserFilterRole === 'superadmin' ? 'selected' : ''}>👑 Super Admin</option>
             <option value="admin" ${adminUserFilterRole === 'admin' ? 'selected' : ''}>🛡 Admin</option>
             <option value="user" ${adminUserFilterRole === 'user' ? 'selected' : ''}>👤 User</option>
             <option value="viewer" ${adminUserFilterRole === 'viewer' ? 'selected' : ''}>👁 Viewer</option>
@@ -3365,8 +3366,8 @@ async function renderAdminUsers(page) {
                 <td style="padding:8px 10px; font-weight:600; white-space:nowrap;">${escapeHtml(u.username)}</td>
                 <td style="padding:8px 10px; color:var(--text-secondary); font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(u.email)}</td>
                 <td style="padding:8px 10px;">
-                  <span style="background:${u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : u.role === 'viewer' ? 'rgba(255,184,0,0.15);color:#ffb800;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;">
-                    ${u.role === 'admin' ? '🛡 Admin' : u.role === 'viewer' ? '👁 Viewer' : '👤 User'}
+                  <span style="background:${u.role === 'superadmin' ? 'rgba(255,100,100,0.2);color:#ff6464;' : u.role === 'admin' ? 'rgba(189,147,249,0.2);color:#bd93f9;' : u.role === 'viewer' ? 'rgba(255,184,0,0.15);color:#ffb800;' : 'rgba(255,255,255,0.08);color:var(--text-secondary);'}; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;">
+                    ${u.role === 'superadmin' ? '👑 Super Admin' : u.role === 'admin' ? '🛡 Admin' : u.role === 'viewer' ? '👁 Viewer' : '👤 User'}
                   </span>
                 </td>
                 <td style="padding:8px 10px;">
@@ -3382,6 +3383,7 @@ async function renderAdminUsers(page) {
                       <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>Viewer</option>
                       <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
                       <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                      <option value="superadmin" ${u.role === 'superadmin' ? 'selected' : ''}>Super Admin</option>
                     </select>
                     <select onchange="changeUserPlan(${u.id}, this.value)" style="padding:3px 4px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
                       <option value="starter" ${plan === 'starter' ? 'selected' : ''}>🌱 Starter</option>
