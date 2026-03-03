@@ -263,7 +263,7 @@ function navigateTo(page) {
     actions.innerHTML = `
         ${userInfoHtml}
         <a class="btn btn-sm btn-ghost" href="/" style="text-decoration:none; display:flex; align-items:center; gap:6px;">🏠 홈</a>
-        <a class="btn btn-sm btn-ghost" href="${REMOTEAGT_ORIGIN}" target="_blank" style="text-decoration:none; display:flex; align-items:center; gap:6px; color: #58a6ff;">🌐 RemoteAGT</a>
+        <a class="btn btn-sm btn-ghost" href="${REMOTEAGT_ORIGIN}" style="text-decoration:none; display:flex; align-items:center; gap:6px; color: #58a6ff;">🌐 RemoteAGT</a>
         <button class="btn btn-sm btn-ghost" onclick="logout()" style="display:flex; align-items:center; gap:6px;">⏏ 로그아웃</button>
     `;
 
