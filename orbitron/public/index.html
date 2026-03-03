@@ -382,7 +382,12 @@
             <a href="/pricing.html">요금제</a>
             <a href="/docs.html">문서</a>
             <a href="/changelog.html">업데이트</a>
-            <a href="https://RemoteAGT.twinverse.org" target="_blank">RemoteAGT</a>
+            <a href="https://RemoteAGT.twinverse.org" target="_blank" id="remoteagt-nav-link">RemoteAGT</a>
+            <script>
+                if (!window.location.hostname.includes('twinverse.org')) {
+                    document.getElementById('remoteagt-nav-link').href = window.location.protocol + '//' + window.location.hostname + ':4100';
+                }
+            </script>
             <a href="/index-en.html">EN</a>
             <div id="nav-user-profile"
                 style="display:none; align-items:center; gap:8px; margin-left:24px; margin-right:8px; padding-right:12px; border-right:1px solid rgba(255,255,255,0.1);">
@@ -647,7 +652,8 @@
                     <div class="accordion-body">
                         <p><strong>💡 소개:</strong> 실제 스마트폰 기기나 봇 토큰 없이도 브라우저 내에서 AI 명령을 완벽하게 테스트할 수 있도록,
                             <b>RemoteAGT</b>
-                            대시보드 내에 스마트폰 화면과 똑같이 렌더링되는 텔레그램 및 카카오 알림톡 봇 시뮬레이터를 구축했습니다.</p>
+                            대시보드 내에 스마트폰 화면과 똑같이 렌더링되는 텔레그램 및 카카오 알림톡 봇 시뮬레이터를 구축했습니다.
+                        </p>
 
                         <p class="sample-title">🔄 SSE (Server-Sent Events) 기반 비동기 스트리밍</p>
                         <p>폴링(Polling) 방식의 부하를 없애고 실시간 웹훅 파이프라인을 구축하기 위해 <code>EventSource</code>(SSE) 규격을 채택했습니다.</p>
