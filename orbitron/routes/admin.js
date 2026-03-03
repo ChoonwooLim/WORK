@@ -269,6 +269,63 @@ router.get('/projects', async (req, res) => {
     }
 });
 
+// DELETE /api/admin/projects/:id — SuperAdmin only: force-delete any project
+router.delete('/projects/:id', async (req, res) => {
+    if (req.user.role !== 'superadmin') {
+        return res.status(403).json({ error: 'SuperAdmin 권한이 필요합니다.' });
+    }
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [req.params.id]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        // Clean up Docker container / files
+        const deployer = require('../services/deployer');
+        try { await deployer.deleteProject(project); } catch (e) { console.error('Deployer cleanup error:', e.message); }
+
+        // Clean DB records
+        await db.query('DELETE FROM deployments WHERE project_id = $1', [req.params.id]);
+        await db.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+
+        res.json({ success: true, message: `프로젝트 "${project.name}"이(가) 삭제되었습니다.` });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ============ USER DELETE (SuperAdmin Only) ============
+
+// DELETE /api/admin/users/:id — SuperAdmin only: delete a user and their projects
+router.delete('/users/:id', async (req, res) => {
+    if (req.user.role !== 'superadmin') {
+        return res.status(403).json({ error: 'SuperAdmin 권한이 필요합니다.' });
+    }
+    const { id } = req.params;
+
+    // Prevent self-deletion
+    if (parseInt(id) === req.user.userId) {
+        return res.status(400).json({ error: '자기 자신은 삭제할 수 없습니다.' });
+    }
+
+    try {
+        const user = await db.queryOne('SELECT * FROM users WHERE id = $1', [id]);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Clean up Docker containers for all user's projects
+        const deployer = require('../services/deployer');
+        const userProjects = await db.queryAll('SELECT * FROM projects WHERE user_id = $1', [id]);
+        for (const project of userProjects) {
+            try { await deployer.deleteProject(project); } catch (e) { console.error(`Cleanup error for project ${project.name}:`, e.message); }
+        }
+
+        // Delete user (CASCADE will remove projects, deployments, etc.)
+        await db.query('DELETE FROM users WHERE id = $1', [id]);
+
+        res.json({ success: true, message: `사용자 "${user.username}"이(가) 삭제되었습니다. (프로젝트 ${userProjects.length}개 함께 삭제)` });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ============ SERVER LOGS ============
 
 // GET /api/admin/logs?lines=100

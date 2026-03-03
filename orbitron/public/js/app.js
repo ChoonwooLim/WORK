@@ -75,6 +75,19 @@ function isAdminUser() {
         return payload.role === 'admin' || payload.role === 'superadmin';
     } catch (e) { return false; }
 }
+function isSuperAdmin() {
+    try {
+        const token = getToken();
+        if (!token) return false;
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        const payload = JSON.parse(jsonPayload);
+        return payload.role === 'superadmin';
+    } catch (e) { return false; }
+}
 function isViewerUser() {
     try {
         const token = getToken();
@@ -3378,7 +3391,7 @@ async function renderAdminUsers(page) {
                 <td style="padding:8px 10px; text-align:center;"><strong>${u.project_count}</strong></td>
                 <td style="padding:8px 10px; color:var(--text-muted); font-size:12px; white-space:nowrap;">${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
                 <td style="padding:8px 10px;">
-                  <div style="display:flex; gap:4px;">
+                  <div style="display:flex; gap:4px; align-items:center;">
                     <select onchange="changeUserRole(${u.id}, this.value)" style="padding:3px 4px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-size:11px;">
                       <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>Viewer</option>
                       <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
@@ -3391,6 +3404,11 @@ async function renderAdminUsers(page) {
                       <option value="team" ${plan === 'team' ? 'selected' : ''}>🏢 Team</option>
                       <option value="enterprise" ${plan === 'enterprise' ? 'selected' : ''}>👑 Enterprise</option>
                     </select>
+                    ${isSuperAdmin() && u.role !== 'superadmin' ? `<button onclick="adminDeleteUser(${u.id}, '${escapeHtml(u.username).replace(/'/g, "\\'")}')"
+                      style="padding:3px 6px; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:6px; font-size:11px; cursor:pointer; white-space:nowrap;"
+                      onmouseenter="this.style.background='var(--danger)';this.style.color='#fff'"
+                      onmouseleave="this.style.background='transparent';this.style.color='var(--danger)'"
+                      title="유저 삭제">🗑</button>` : ''}
                   </div>
                 </td>
               </tr>`;
@@ -3469,6 +3487,17 @@ async function changeUserPlan(userId, plan) {
         toast(`요금제가 ${planLabels[plan]}로 변경되었습니다.`, 'success');
         renderAdminUsers();
     } catch (e) { toast(e.message, 'error'); renderAdminUsers(); }
+}
+
+async function adminDeleteUser(userId, username) {
+    if (!confirm(`정말로 사용자 "${username}"을(를) 삭제하시겠습니까?\n\n⚠️ 해당 사용자의 모든 프로젝트와 데이터가 함께 삭제됩니다!`)) return;
+    try {
+        const res = await fetch(`${API}/admin/users/${userId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast(data.message, 'success');
+        renderAdminUsers();
+    } catch (e) { toast(e.message, 'error'); }
 }
 
 // ============ ADMIN ALL PROJECTS ============
@@ -3551,15 +3580,16 @@ function renderAdminProjectsTable(projects) {
             <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">포트</th>
             <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">URL</th>
             <th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">업데이트</th>
+            ${isSuperAdmin() ? '<th style="padding:12px 14px; font-weight:600; color:var(--text-secondary);">관리</th>' : ''}
           </tr>
         </thead>
         <tbody>
-        ${projects.length === 0 ? `<tr><td colspan="7" style="padding:30px; text-align:center; color:var(--text-muted);">검색 결과가 없습니다.</td></tr>` :
+        ${projects.length === 0 ? `<tr><td colspan="${isSuperAdmin() ? 8 : 7}" style="padding:30px; text-align:center; color:var(--text-muted);">검색 결과가 없습니다.</td></tr>` :
             projects.map(p => `
           <tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="openProject(${p.id})">
             <td style="padding:10px 14px;">
               <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${_sc[p.status] || '#484f58'}; ${p.status === 'running' ? 'box-shadow:0 0 6px ' + _sc.running + ';' : ''}"></span>
-              <span style="margin-left:6px; font-size:12px; color:${_sc[p.status] || 'var(--text-muted)'};">${_sl[p.status] || p.status}</span>
+              <span style="margin-left:6px; font-size:12px; color:${_sc[p.status] || 'var(--text-muted)'};"> ${_sl[p.status] || p.status}</span>
             </td>
             <td style="padding:10px 14px; font-weight:600;">${escapeHtml(p.name)}</td>
             <td style="padding:10px 14px; color:var(--text-secondary);">${escapeHtml(p.owner_name)}</td>
@@ -3567,6 +3597,13 @@ function renderAdminProjectsTable(projects) {
             <td style="padding:10px 14px; font-family:var(--font-mono); color:var(--text-muted);">${p.port || '-'}</td>
             <td style="padding:10px 14px;">${p.tunnel_url ? `<a href="${p.tunnel_url}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent); font-size:12px;">${p.tunnel_url.replace('https://', '')}</a>` : '<span style="color:var(--text-muted);">-</span>'}</td>
             <td style="padding:10px 14px; color:var(--text-muted); font-size:12px;">${timeAgo(p.updated_at || p.created_at)}</td>
+            ${isSuperAdmin() ? `<td style="padding:10px 14px;" onclick="event.stopPropagation()">
+              <button onclick="adminDeleteProject(${p.id}, '${escapeHtml(p.name).replace(/'/g, "\\'")}')"
+                style="padding:3px 8px; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:6px; font-size:11px; cursor:pointer;"
+                onmouseenter="this.style.background='var(--danger)';this.style.color='#fff'"
+                onmouseleave="this.style.background='transparent';this.style.color='var(--danger)'"
+                title="프로젝트 삭제">🗑</button>
+            </td>` : ''}
           </tr>`).join('')}
         </tbody>
       </table>
@@ -3599,6 +3636,17 @@ function applyAdminProjectFilter() {
         filtered = filtered.filter(p => p.owner_name === owner);
     }
     renderAdminProjectsTable(filtered);
+}
+
+async function adminDeleteProject(projectId, projectName) {
+    if (!confirm(`정말로 프로젝트 "${projectName}"을(를) 삭제하시겠습니까?\n\n⚠️ Docker 컨테이너, 배포 기록 등 모든 데이터가 삭제됩니다!`)) return;
+    try {
+        const res = await fetch(`${API}/admin/projects/${projectId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast(data.message, 'success');
+        renderAdminProjects();
+    } catch (e) { toast(e.message, 'error'); }
 }
 
 // ============ ISSUES BOARD ============
