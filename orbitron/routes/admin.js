@@ -222,8 +222,12 @@ router.get('/users', async (req, res) => {
 router.patch('/users/:id/role', async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
-    if (!['admin', 'user', 'viewer'].includes(role)) {
-        return res.status(400).json({ error: 'Invalid role. Must be "admin", "user", or "viewer".' });
+    if (!['admin', 'superadmin', 'user', 'viewer'].includes(role)) {
+        return res.status(400).json({ error: 'Invalid role. Must be "admin", "superadmin", "user", or "viewer".' });
+    }
+    // Only superadmin can promote to superadmin
+    if (role === 'superadmin' && req.user.role !== 'superadmin') {
+        return res.status(403).json({ error: 'SuperAdmin 권한만 SuperAdmin 역할을 지정할 수 있습니다.' });
     }
     // Prevent self-demotion
     if (parseInt(id) === req.user.userId && role !== 'admin' && role !== 'superadmin') {
