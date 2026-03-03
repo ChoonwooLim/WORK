@@ -379,6 +379,53 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.6.0 — 2026-03-03                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.6.0</span>
+                <span class="version-date">2026년 3월 3일</span>
+            </div>
+            <p class="version-title">📱 텔레그램 모바일 시뮬레이터 & 통합 크로스 인증</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>SSE 탑재 텔레그램 모바일 웹 시뮬레이터</strong>
+                        <p>실제 봇 토큰 없이도 브라우저 내에서 완벽한 프론트엔드 제어를 시연할 수 있도록 <b>RemoteAGT</b> 대시보드 내에 모바일 텔레그램 UI 구조를 완벽하게
+                            모사한 웹 시뮬레이터를 런칭했습니다. 폴링 없는 실시간 SSE(Server-Sent Events) 비동기 파이프라인과 Webhook 모킹 기술을 통해 매끄러운 응답
+                            경험을 선사합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>카카오톡 채널 자동 알림봇 연동</strong>
+                        <p>이제 배포 진행 상황, 서버 장애 모니터링 경고 등을 텔레그램뿐만 아니라 국내 환경에 맞춘 '카카오톡 오픈빌더 스킬 연동'을 통하여 모바일 톡방에서 실시간으로 수신할
+                            수 있습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>Orbitron & RemoteAGT 크로스오버 통합 인증(SSO)</strong>
+                        <p>이제 완전히 독립된 두 서비스가 물리적인 단일 PostgreSQL 데이터베이스 통신망 위에서 통합되었습니다. 어느 쪽에서 가입하든
+                            <code>*.twinverse.org</code> 와일드카드 쿠키를 통해 완벽한 크로스 호환 로그인이 가능합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">버그수정</span>
+                    <div class="change-content">
+                        <strong>데이터베이스 Schema Column 누락 해결</strong>
+                        <p>가입 시 활동 로그(<code>ragt_audit_log</code>) 로깅 과정에서 <code>web_user_id</code> 및
+                            <code>user_id</code> 컬럼 부재로 발생하던 치명적 로그인 블록 버그를 완벽히 수정 및 마이그레이션 조치했습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.5.0 — 2026-03-02                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">
