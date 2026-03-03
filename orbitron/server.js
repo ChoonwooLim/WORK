@@ -117,8 +117,9 @@ async function start() {
                 );
                 console.log(`🛡 Admin account created: ${process.env.ADMIN_EMAIL}`);
             } else {
-                // Ensure existing user has admin role and enterprise plan
-                await db.query("UPDATE users SET role = 'admin', plan = 'enterprise' WHERE email = $1", [process.env.ADMIN_EMAIL]);
+                // Ensure existing user has at least admin role and enterprise plan
+                // But preserve superadmin if already set
+                await db.query("UPDATE users SET role = CASE WHEN role = 'superadmin' THEN 'superadmin' ELSE 'admin' END, plan = 'enterprise' WHERE email = $1", [process.env.ADMIN_EMAIL]);
             }
         }
 

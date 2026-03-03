@@ -180,7 +180,7 @@ router.get('/users', async (req, res) => {
             params.push(`%${search}%`);
             paramIdx++;
         }
-        if (role && ['admin', 'user', 'viewer'].includes(role)) {
+        if (role && ['admin', 'superadmin', 'user', 'viewer'].includes(role)) {
             whereClauses.push(`u.role = $${paramIdx}`);
             params.push(role);
             paramIdx++;
