@@ -641,18 +641,20 @@
 
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="toggleAccordion(this)">
-                        <h4>📱 텔레그램 모바일 웹 시뮬레이터 & SSE 아키텍처</h4>
+                        <h4>📱 텔레그램 & 카카오톡 모바일 웹 시뮬레이터 및 SSE 아키텍처</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <p><strong>💡 소개:</strong> 실제 스마트폰이나 봇 토큰 없이도 브라우저 내에서 AI 명령을 완벽하게 테스트할 수 있도록, <b>RemoteAGT</b>
-                            대시보드 내에 완전히 동일한 UI로 렌더링되는 텔레그램 봇 시뮬레이터를 구축했습니다.</p>
+                        <p><strong>💡 소개:</strong> 실제 스마트폰 기기나 봇 토큰 없이도 브라우저 내에서 AI 명령을 완벽하게 테스트할 수 있도록,
+                            <b>RemoteAGT</b>
+                            대시보드 내에 스마트폰 화면과 똑같이 렌더링되는 텔레그램 및 카카오 알림톡 봇 시뮬레이터를 구축했습니다.</p>
 
                         <p class="sample-title">🔄 SSE (Server-Sent Events) 기반 비동기 스트리밍</p>
                         <p>폴링(Polling) 방식의 부하를 없애고 실시간 웹훅 파이프라인을 구축하기 위해 <code>EventSource</code>(SSE) 규격을 채택했습니다.</p>
                         <p>명령어 입력 시 화면에 즉각적으로 로딩(Processing) 풍선이 생성되며, 서버 백엔드에서
                             <code>POST /api/telegram/reply-simulator</code>로 마크다운 응답이 도착하는 즉시 클라이언트 화면 스크롤이 자동으로 가장 아래로
-                            내려갑니다.</p>
+                            내려갑니다.
+                        </p>
 
                         <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
 
@@ -661,7 +663,8 @@
                             소켓(<code>VSCODE_IPC_HOOK_CLI</code>)을 랜덤하게 요구하기 때문에 쉘 스크립트 기반 다이렉트 호출에 제약이 존재합니다.</p>
                         <p>이를 회피하고 <b>UI 브리지 테스트 목적</b>을 달성하기 위해, 백엔드 라우터(<code>server.js</code>) 계층에서 자연스러운
                             <code>setTimeout</code> 모의 지연과 실제 Webhook 페이로드를 조합하여 <strong>완벽한 E2E(종단 간) UI 테스트
-                                환경</strong>을 모의(Mocking) 처리하는 아키텍처를 도입하였습니다.</p>
+                                환경</strong>을 모의(Mocking) 처리하는 아키텍처를 도입하였습니다.
+                        </p>
                     </div>
                 </div>
 
