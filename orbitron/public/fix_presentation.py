@@ -12,7 +12,7 @@ old_dropdown_inner = """<div class="nav-dropdown-inner">
 new_dropdown_inner = """<div class="nav-dropdown-inner">
                         <a href="/ir.html">비전 및 재무 추정</a>
                         <a href="/comparison.html">경쟁사 비교 분석</a>
-                        <a href="/presentation.html">프레젠테이션</a>
+                        <a href="/presentation.html">프레젠테이션 뷰</a>
                     </div>"""
 
 for file in html_files:
