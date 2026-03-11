@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron - IR 피치덱 (프레젠테이션)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/black.min.css" id="theme">
+    
+    <!-- PDF Print stylesheet -->
+    <script>
+        var link = document.createElement( 'link' );
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = window.location.search.match( /print-pdf/gi ) ? 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/css/print/pdf.min.css' : 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/css/print/paper.min.css';
+        document.getElementsByTagName( 'head' )[0].appendChild( link );
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #0d1117;
+        }
+        .reveal .slides {
+            font-family: 'Pretendard', sans-serif;
+        }
+        
+        /* Orbitron Brand Colors */
+        :root {
+            --brand-blue: #58a6ff;
+            --brand-purple: #bd93f9;
+            --brand-green: #50fa7b;
+            --brand-orange: #ffb86c;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 {
+            font-family: 'Pretendard', sans-serif;
+            text-transform: none;
+            word-break: keep-all;
+            line-height: 1.3;
+        }
+
+        .reveal h2 {
+            color: #ffffff;
+            font-weight: 700;
+            margin-bottom: 40px;
+        }
+
+        .reveal p, .reveal li {
+            color: #c9d1d9;
+            line-height: 1.6;
+        }
+        
+        .highlight-blue { color: var(--brand-blue); font-weight: bold; }
+        .highlight-green { color: var(--brand-green); font-weight: bold; }
+        .highlight-purple { color: var(--brand-purple); font-weight: bold; }
+        .highlight-orange { color: var(--brand-orange); font-weight: bold; }
+
+        /* Custom UI for Presentation Mode */
+        .glass-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+
+        table.fin-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 20px;
+        }
+        table.fin-table th, table.fin-table td {
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px 15px;
+            text-align: center;
+        }
+        table.fin-table th {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+        table.fin-table .row-highlight {
+            background: rgba(80, 250, 123, 0.1);
+            color: var(--brand-green);
+            font-weight: bold;
+        }
+
+        /* Floating Action Buttons */
+        .fab-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .fab-btn {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            backdrop-filter: blur(5px);
+            transition: all 0.2s;
+        }
+        
+        .fab-btn:hover {
+            background: var(--brand-blue);
+            border-color: var(--brand-blue);
+            color: #000;
+        }
+        
+        @media print {
+            .fab-container { display: none !important; }
+            body { background: #fff !important; }
+            .reveal .slides { background: #fff !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="fab-container">
+        <a href="/" class="fab-btn">← 메인으로</a>
+        <button onclick="window.location.href='?print-pdf'" class="fab-btn" title="Ctrl+P를 눌러 PDF로 저장하세요">📄 PDF 다운로드 / 인쇄</button>
+    </div>
+
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- Title Slide -->
+            <section data-transition="fade">
+                <h1 style="font-size: 4em; margin-bottom: 20px;">🪐 <span class="highlight-blue">Orbitron</span></h1>
+                <h3>The Next-Generation AI PaaS</h3>
+                <p style="font-size: 1.2em; margin-top: 40px; color: #8b949e;">차세대 K-클라우드 유니콘을 향한 도약</p>
+                <div style="margin-top: 50px; font-size: 0.8em; color: rgba(255,255,255,0.5);">
+                    Investor Relations Pitch Deck<br>
+                    ($1.5M Seed Round)
+                </div>
+            </section>
+
+            <!-- Problem -->
+            <section>
+                <h2><span class="highlight-orange">The Problem</span></h2>
+                <div class="glass-box">
+                    <h4 style="color: #fff;">1. 레거시 클라우드의 극단적 진입장벽</h4>
+                    <p style="font-size: 0.8em;">AWS, GCP 등 기존 IaaS는 수백 개의 서비스 파편화로 인해 스타트업과 개발자가 즉시 프로덕트를 출시하기 불가능한 구조입니다. DevOps 엔지니어 채용에 막대한 인건비와 시간이 소멸됩니다.</p>
+                </div>
+                <div class="glass-box">
+                    <h4 style="color: #fff;">2. K-PaaS 시장의 완전한 공백</h4>
+                    <p style="font-size: 0.8em;">글로벌 시장은 Vercel, Heroku 등이 장악하고 있으나, 국내 100만 개발자와 중소규모 IT 기업을 완벽히 흡수할 '한국형 Vercel'은 존재하지 않습니다.</p>
+                </div>
+            </section>
+
+            <!-- Solution -->
+            <section>
+                <h2><span class="highlight-blue">Our Solution</span></h2>
+                <div class="glass-box" style="text-align: center;">
+                    <h3 style="margin-bottom: 30px;">"DevOps Zero, <br>1-Click Auto Deployment"</h3>
+                    <p>개발자는 코드만 짜면 됩니다. 서버 배포, SSL 인증서 발급, 엣지 캐싱, CI/CD, 무중단 배포를 Orbitron이 <strong>완벽히 자동화</strong>합니다.</p>
+                </div>
+                <div class="grid-2" style="margin-top: 30px;">
+                    <div style="background: rgba(88,166,255,0.1); padding: 20px; border-radius: 8px;">
+                        <h4 style="font-size: 1em; color: var(--brand-blue);">개발 생산성 100배 증가</h4>
+                    </div>
+                    <div style="background: rgba(88,166,255,0.1); padding: 20px; border-radius: 8px;">
+                        <h4 style="font-size: 1em; color: var(--brand-blue);">인프라 비용 70% 절감</h4>
+                    </div>
+                </div>
+            </section>
+
+            <!-- The AI-Native Advantage -->
+            <section>
+                <h2>The <span class="highlight-purple">AI-Native</span> Moat</h2>
+                <p style="font-size: 0.9em; margin-bottom: 30px;">압도적 자본 효율성과 누구도 흉내낼 수 없는 비용 구조</p>
+                <div class="grid-3">
+                    <div class="glass-box" style="padding: 20px;">
+                        <h4 style="font-size: 1.1em; color: #fff;">매몰비용 Zero</h4>
+                        <p style="font-size: 0.7em;">1-Man, AI Pair Programming 체제 결합. 런칭 직전까지 R&D 인건비 0원 수준 통제 완료.</p>
+                    </div>
+                    <div class="glass-box" style="padding: 20px;">
+                        <h4 style="font-size: 1.1em; color: #fff;">AI 무인화 CS</h4>
+                        <p style="font-size: 0.7em;">수십 명의 CS/SRE 인력이 필요한 서버 모니터링 및 복구를 백엔드 AI가 자동 수행 (2년 차 흑자핵심비결).</p>
+                    </div>
+                    <div class="glass-box" style="padding: 20px;">
+                        <h4 style="font-size: 1.1em; color: #fff;">비선형 스케일업</h4>
+                        <p style="font-size: 0.7em;">인건비 확장을 강제 억압하고, 잉여 자금을 AWS 선매입 및 B2B 글로벌 영업에 몰빵하여 폭등 성장.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Competitor Comparison (Global) -->
+            <section>
+                <h2>Global Top 5 <span class="highlight-blue">경쟁사 비교</span></h2>
+                <table class="fin-table" style="font-size: 16px;">
+                    <thead>
+                        <tr>
+                            <th>플랫폼</th>
+                            <th>특징 (프론트/백엔드)</th>
+                            <th>도메인/SSL 자동화</th>
+                            <th>무료 범위</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="row-highlight">
+                            <td>Orbitron</td>
+                            <td>Full-Stack (Next.js, Node, Python 등)</td>
+                            <td>지원 (자동 갱신)</td>
+                            <td>대역폭 100GB, 월 10시간 빌드</td>
+                        </tr>
+                        <tr>
+                            <td>Vercel</td>
+                            <td>프론트엔드 특화 (Next.js 중심)</td>
+                            <td>지원</td>
+                            <td>대역폭 100GB 제한</td>
+                        </tr>
+                        <tr>
+                            <td>Heroku</td>
+                            <td>백엔드 강자, 컨테이너 기반</td>
+                            <td>유료 티어만 지원</td>
+                            <td>무료 티어 폐지 (Cost 장벽)</td>
+                        </tr>
+                        <tr>
+                            <td>Netlify</td>
+                            <td>Jamstack/Static Site 강점</td>
+                            <td>지원</td>
+                            <td>대역폭 100GB</td>
+                        </tr>
+                        <tr>
+                            <td>Render</td>
+                            <td>Heroku 대체재, Docker 배포 편의성</td>
+                            <td>지원</td>
+                            <td>백엔드 무료 지원 (Sleep 모드)</td>
+                        </tr>
+                        <tr>
+                            <td>Fly.io</td>
+                            <td>글로벌 엣지 런타임 클러스터</td>
+                            <td>지원</td>
+                            <td>VM 3개, 메모리 256MB 제한</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Competitor Comparison (Domestic) -->
+            <section>
+                <h2>Domestic Top 5 <span class="highlight-green">경쟁사 비교</span></h2>
+                <table class="fin-table" style="font-size: 16px;">
+                    <thead>
+                        <tr>
+                            <th>플랫폼</th>
+                            <th>주력 분야</th>
+                            <th>자동 배포 (CI/CD)</th>
+                            <th>가격 구조</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="row-highlight">
+                            <td>Orbitron</td>
+                            <td>현대적인 프론트/백엔드 원클릭 PaaS</td>
+                            <td>완벽 지원 (GitHub 연동)</td>
+                            <td>스타트업~엔터프라이즈 하이브리드</td>
+                        </tr>
+                        <tr>
+                            <td>Cafe24</td>
+                            <td>웹호스팅, 쇼핑몰, 레거시 PHP</td>
+                            <td>미지원 (수동 FTP 업로드)</td>
+                            <td>매우 저렴 (하지만 레거시 기술)</td>
+                        </tr>
+                        <tr>
+                            <td>Gabia</td>
+                            <td>도메인, 레거시 웹호스팅, 그룹웨어</td>
+                            <td>제한적 지원</td>
+                            <td>월 정액 (수동 관리 필요)</td>
+                        </tr>
+                        <tr>
+                            <td>DigitalOcean</td>
+                            <td>VPS, 글로벌 클라우드 (한국 리전 없음)</td>
+                            <td>App Platform으로 지원</td>
+                            <td>종량제 + 고정비 하이브리드</td>
+                        </tr>
+                        <tr>
+                            <td>GCP (Firebase)</td>
+                            <td>비전통적 클라우드 호스팅 / BaaS</td>
+                            <td>CLI 기반 툴로 지원</td>
+                            <td>종량제 (스파이크 발생 시 요금 폭탄)</td>
+                        </tr>
+                        <tr>
+                            <td>Naver Cloud</td>
+                            <td>엔터프라이즈 공공 IaaS 중심</td>
+                            <td>복잡한 파이프라인 수동 구축 필요</td>
+                            <td>종량제 (전문 DevOps 인력 요망)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Financial Projections Overview -->
+            <section>
+                <h2>10-Year <span class="highlight-green">Projections</span></h2>
+                <p style="font-size: 0.8em; margin-bottom: 20px;">단 2년 차에 즉각 흑자 전환(Turnaround) 달성, 10년 차 매출 $4.5B</p>
+                <table class="fin-table" style="font-size: 14px;">
+                    <thead>
+                        <tr>
+                            <th>지표 (USD $K)</th>
+                            <th>Year 1</th>
+                            <th>Year 2</th>
+                            <th>Year 3</th>
+                            <th>Year 5</th>
+                            <th>Year 10 (2035)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>고객/프로젝트 수</td>
+                            <td>1,500</td>
+                            <td>12,000</td>
+                            <td>45,000</td>
+                            <td>180,000</td>
+                            <td class="highlight-blue">2,000,000+</td>
+                        </tr>
+                        <tr>
+                            <td>ARR (매출)</td>
+                            <td>250</td>
+                            <td>1,800</td>
+                            <td>8,500</td>
+                            <td>35,000</td>
+                            <td class="highlight-blue">450,000 ($4.5B)</td>
+                        </tr>
+                        <tr>
+                            <td>COGS (클라우드 원가)</td>
+                            <td>150</td>
+                            <td>800</td>
+                            <td>2,900</td>
+                            <td>9,100</td>
+                            <td>67,500</td>
+                        </tr>
+                        <tr>
+                            <td>Total OPEX (영업비)</td>
+                            <td>250</td>
+                            <td>800</td>
+                            <td>3,800</td>
+                            <td>18,500</td>
+                            <td>110,000</td>
+                        </tr>
+                        <tr class="row-highlight">
+                            <td>EBITDA (영업이익)</td>
+                            <td>(150)</td>
+                            <td>200</td>
+                            <td>1,800</td>
+                            <td>7,400</td>
+                            <td>272,500</td>
+                        </tr>
+                        <tr>
+                            <td>EBITDA Margin (%)</td>
+                            <td style="color:#ffb86c;">-60%</td>
+                            <td style="color:var(--brand-green);">11%</td>
+                            <td style="color:var(--brand-green);">21%</td>
+                            <td style="color:var(--brand-green);">21%</td>
+                            <td style="color:var(--brand-green); font-weight:bold;">60%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Funding & Allocation -->
+            <section>
+                <h2>Use of Funds <span class="highlight-orange">($1.5M Seed)</span></h2>
+                <div class="glass-box" style="padding: 40px; text-align: center;">
+                    <h3 style="color: #fff; margin-bottom: 40px;">자본 효율 극대화 전략</h3>
+                    <div style="display: flex; height: 40px; border-radius: 20px; overflow: hidden; margin-bottom: 20px;">
+                        <div style="width: 40%; background: var(--brand-purple); display: flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:14px;">AWS 선도입 40%</div>
+                        <div style="width: 30%; background: var(--brand-green); display: flex; align-items:center; justify-content:center; color:#000; font-weight:bold; font-size:14px;">글로벌 GTM 영업 30%</div>
+                        <div style="width: 20%; background: var(--brand-orange); display: flex; align-items:center; justify-content:center; color:#000; font-weight:bold; font-size:14px;">결제망 통합 20%</div>
+                        <div style="width: 10%; background: var(--brand-blue); display: flex; align-items:center; justify-content:center; color:#000; font-weight:bold; font-size:14px;">AI API 10%</div>
+                    </div>
+                </div>
+                <p style="font-size: 0.8em;">R&D 인건비를 0%로 수렴시키고, 조달 자금의 대부분을 원가 압축(AWS 예약 인스턴스)과 수익 확보(B2B 영업)에만 투입합니다.</p>
+            </section>
+            
+            <!-- End Slide -->
+            <section>
+                <h1 style="font-size: 3em; margin-bottom: 30px;">Thank You</h1>
+                <h3 style="color: var(--brand-blue);">Join the Cloud Revolution</h3>
+                <p style="margin-top: 40px;"><a href="mailto:invest@orbitron.kr" style="color: #fff;">invest@orbitron.kr</a></p>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            controls: true,
+            progress: true,
+            center: true,
+            transition: 'slide',
+            pdfSeparateFragments: false
+        });
+        
+        // Handle PDF print notification
+        if (window.location.search.match(/print-pdf/gi)) {
+            setTimeout(function() {
+                window.print();
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

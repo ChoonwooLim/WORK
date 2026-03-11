@@ -780,8 +780,57 @@ function renderSettings() {
     <div class="form-group"><label>시작 명령어</label><input type="text" id="set-start" value="${escapeHtml(p.start_command || '')}"></div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인</label>
-      <input type="text" id="set-custom-domain" value="${escapeHtml(p.custom_domain || '')}" placeholder="예: myapp.example.com">
-      <div class="form-hint">도메인의 DNS A 레코드를 이 서버 IP로 설정한 후 입력하세요</div>
+      <div id="domain-status-area" style="margin-bottom:12px;"></div>
+      ${p.custom_domain ? `
+      <div style="background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-weight:600;color:var(--success);margin-bottom:4px;">🟢 연결됨</div>
+            <a href="https://${escapeHtml(p.custom_domain)}" target="_blank" style="color:var(--accent);font-size:16px;font-weight:600;text-decoration:none;">${escapeHtml(p.custom_domain)}</a>
+          </div>
+          <button class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);" onclick="disconnectDomain(${p.id})">🔌 연결 해제</button>
+        </div>
+      </div>
+      ` : `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">도메인 등록기관(가비아, Namecheap 등)에서 CNAME 레코드를 <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;">${p.subdomain}.twinverse.org</code>로 설정한 후 연결하세요.</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <input type="text" id="set-custom-domain" value="" placeholder="예: www.myapp.com" style="flex:1;">
+          <button class="btn btn-sm btn-ghost" onclick="verifyDomain(${p.id})" id="btn-verify-domain">🔍 DNS 검증</button>
+          <button class="btn btn-sm btn-primary" onclick="connectDomain(${p.id})" id="btn-connect-domain" disabled>🔗 연결</button>
+        </div>
+        <div id="domain-verify-result" style="display:none;font-size:13px;padding:10px 12px;border-radius:6px;margin-bottom:12px;"></div>
+        <details style="cursor:pointer;">
+          <summary style="font-size:13px;color:var(--accent);font-weight:600;">📖 도메인 DNS 설정 가이드</summary>
+          <div style="margin-top:12px;font-size:13px;color:var(--text-muted);">
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">가비아(Gabia)</div>
+              <ol style="padding-left:20px;line-height:1.8;">
+                <li>관리 콘솔 → 도메인 관리 → DNS 설정</li>
+                <li>레코드 추가: 타입 <code>CNAME</code>, 호스트 <code>www</code>, 값 <code>${p.subdomain}.twinverse.org</code></li>
+                <li>저장 후 여기서 "DNS 검증" 클릭</li>
+              </ol>
+            </div>
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">Namecheap</div>
+              <ol style="padding-left:20px;line-height:1.8;">
+                <li>Dashboard → Domain List → Manage → Advanced DNS</li>
+                <li>Add Record: Type <code>CNAME</code>, Host <code>www</code>, Value <code>${p.subdomain}.twinverse.org</code></li>
+                <li>저장 후 여기서 "DNS 검증" 클릭</li>
+              </ol>
+            </div>
+            <div>
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">Cloudflare</div>
+              <ol style="padding-left:20px;line-height:1.8;">
+                <li>Dashboard → DNS → Records → Add Record</li>
+                <li>Type <code>CNAME</code>, Name <code>www</code>, Target <code>${p.subdomain}.twinverse.org</code>, Proxy Off</li>
+                <li>저장 후 여기서 "DNS 검증" 클릭</li>
+              </ol>
+            </div>
+          </div>
+        </details>
+      </div>
+      `}
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">📣 알림 Webhook URL</label>
@@ -1241,7 +1290,6 @@ async function saveEnvVars() {
 async function saveSettings() {
     try {
         const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
-        const custom_domain = document.getElementById('set-custom-domain')?.value?.trim() || null;
         const ai_model = document.getElementById('set-ai-model')?.value || 'claude-4-6-sonnet-20260217';
 
         const anthropicKey = document.getElementById('set-anthropic-key')?.value?.trim();
@@ -1261,7 +1309,6 @@ async function saveSettings() {
             build_command: document.getElementById('set-build').value,
             start_command: document.getElementById('set-start').value,
             auto_deploy,
-            custom_domain,
             ai_model,
             webhook_url
         };
@@ -1274,12 +1321,109 @@ async function saveSettings() {
             body: JSON.stringify(payload)
         });
         currentProject.auto_deploy = auto_deploy;
-        currentProject.custom_domain = custom_domain;
         currentProject.ai_model = ai_model;
         currentProject.name = document.getElementById('set-name').value;
         toast('설정이 저장되었습니다!', 'success');
         loadProjects();
     } catch (error) { toast('저장 실패', 'error'); }
+}
+
+// ============ DOMAIN MANAGEMENT ============
+
+async function verifyDomain(projectId) {
+    const domainInput = document.getElementById('set-custom-domain');
+    const domain = domainInput?.value?.trim();
+    if (!domain) { toast('도메인을 입력해주세요.', 'error'); return; }
+
+    const btn = document.getElementById('btn-verify-domain');
+    const resultDiv = document.getElementById('domain-verify-result');
+    btn.disabled = true;
+    btn.textContent = '검증 중...';
+    resultDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain })
+        });
+        const data = await res.json();
+
+        resultDiv.style.display = 'block';
+        if (data.verified) {
+            resultDiv.style.background = 'rgba(63,185,80,0.1)';
+            resultDiv.style.border = '1px solid rgba(63,185,80,0.3)';
+            resultDiv.style.color = 'var(--success)';
+            resultDiv.innerHTML = `${data.message}<br><span style="font-size:12px;color:var(--text-muted);margin-top:4px;display:inline-block;">이제 "연결" 버튼을 클릭하여 도메인을 연결하세요.</span>`;
+            document.getElementById('btn-connect-domain').disabled = false;
+        } else {
+            resultDiv.style.background = 'rgba(210,153,34,0.1)';
+            resultDiv.style.border = '1px solid rgba(210,153,34,0.3)';
+            resultDiv.style.color = 'var(--warning)';
+            resultDiv.textContent = data.message || data.error;
+            document.getElementById('btn-connect-domain').disabled = true;
+        }
+    } catch (e) {
+        toast('DNS 검증 실패: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 DNS 검증';
+    }
+}
+
+async function connectDomain(projectId) {
+    const domainInput = document.getElementById('set-custom-domain');
+    const domain = domainInput?.value?.trim();
+    if (!domain) return;
+
+    const btn = document.getElementById('btn-connect-domain');
+    btn.disabled = true;
+    btn.textContent = '연결 중...';
+
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain/connect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            toast(`✅ ${domain} 도메인이 연결되었습니다!`, 'success');
+            currentProject.custom_domain = domain;
+            renderSettings();
+            loadProjects();
+        } else {
+            toast(data.error || '도메인 연결 실패', 'error');
+        }
+    } catch (e) {
+        toast('도메인 연결 실패: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔗 연결';
+    }
+}
+
+async function disconnectDomain(projectId) {
+    if (!confirm('도메인 연결을 해제하시겠습니까? 기존 서브도메인(.twinverse.org)으로 되돌아갑니다.')) return;
+
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            toast('도메인 연결이 해제되었습니다.', 'success');
+            currentProject.custom_domain = null;
+            renderSettings();
+            loadProjects();
+        } else {
+            toast(data.error || '도메인 해제 실패', 'error');
+        }
+    } catch (e) {
+        toast('도메인 해제 실패: ' + e.message, 'error');
+    }
 }
 
 async function toggleAutoDeploy(id, enable) {

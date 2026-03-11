@@ -332,6 +332,55 @@ WantedBy=multi-user.target
         if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
     }
 
+    // Add a Cloudflare DNS route for a custom domain pointing to an existing tunnel
+    async addCustomDomainRoute(hostname, project) {
+        await this.ensureCloudflared();
+        if (!this.hasCert()) {
+            console.log(`⚠️ No Cloudflare cert — skipping custom domain DNS route for ${hostname}`);
+            return;
+        }
+
+        const key = this._getKey(project);
+        const tunnelName = `devdeploy-${key}`;
+
+        try {
+            // Find the tunnel ID
+            const tunnelId = await this._ensureTunnel(tunnelName);
+            if (!tunnelId) {
+                throw new Error(`Tunnel ${tunnelName} not found`);
+            }
+
+            // Add DNS route for the custom domain
+            await this._ensureDnsRoute(tunnelName, tunnelId, hostname);
+
+            // Rewrite config to include the custom domain in ingress rules
+            const primaryHostname = `${key}.${TUNNEL_DOMAIN}`;
+            const credFile = path.join(CF_CONFIG_DIR, `${tunnelId}.json`);
+            const configPath = path.join(CF_CONFIG_DIR, `config-${tunnelName}.yml`);
+
+            const config = `tunnel: ${tunnelId}\ncredentials-file: ${credFile}\ningress:\n  - hostname: ${primaryHostname}\n    service: http://127.0.0.1:80\n  - hostname: ${hostname}\n    service: http://127.0.0.1:80\n  - service: http_status:404\n`;
+            fs.writeFileSync(configPath, config);
+
+            // Restart the systemd tunnel service to pick up new config
+            const sudoPwd = process.env.SUDO_PASSWORD;
+            if (sudoPwd) {
+                const serviceName = `cloudflared-${tunnelName}`;
+                try {
+                    require('child_process').execSync(
+                        `echo "${sudoPwd}" | sudo -S systemctl restart ${serviceName}`,
+                        { stdio: 'ignore' }
+                    );
+                    console.log(`✅ Tunnel restarted with custom domain: ${hostname}`);
+                } catch (e) {
+                    console.error(`⚠️ Failed to restart tunnel service: ${e.message}`);
+                }
+            }
+        } catch (e) {
+            console.error(`❌ Failed to add custom domain route for ${hostname}:`, e.message);
+            throw e;
+        }
+    }
+
     // Get tunnel URL for a project
     getTunnelUrl(key) {
         return TUNNEL_PROCS[key]?.url || null;

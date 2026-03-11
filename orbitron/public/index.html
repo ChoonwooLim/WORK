@@ -365,6 +365,69 @@
             font-family: monospace;
             color: var(--pink);
         }
+    
+        /* Nav Dropdown for IR */
+        .nav-dropdown {
+            position: relative;
+            display: inline-block;
+            margin-left: 24px;
+        }
+        .nav-dropdown-btn {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-family: inherit;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+        }
+        .nav-dropdown:hover .nav-dropdown-btn {
+            color: var(--text-main);
+        }
+        .nav-dropdown-content {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding-top: 20px; /* Instead of margin, to bridge the hover gap */
+            z-index: 200;
+        }
+        .nav-dropdown-inner {
+            background-color: rgba(15, 23, 42, 0.95);
+            min-width: 170px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 0;
+            backdrop-filter: blur(10px);
+        }
+        .nav-dropdown-inner a {
+            color: var(--text-muted) !important;
+            padding: 10px 20px !important;
+            text-decoration: none;
+            display: block;
+            margin-left: 0 !important;
+            font-size: 14px;
+            transition: all 0.2s;
+            text-align: center;
+            font-weight: 400 !important;
+        }
+        .nav-dropdown-inner a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-main) !important;
+        }
+        .nav-dropdown:hover .nav-dropdown-content {
+            display: block;
+        }
+
+
     </style>
 </head>
 
@@ -381,6 +444,16 @@
             <a href="/features.html">기능 소개</a>
             <a href="/pricing.html">요금제</a>
             <a href="/docs.html">문서</a>
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (투자 정보) <span style="font-size: 10px;">▼</span></button>
+                <div class="nav-dropdown-content">
+                    <div class="nav-dropdown-inner">
+                        <a href="/ir.html">비전 및 재무 추정</a>
+                        <a href="/comparison.html">경쟁사 비교 분석</a>
+                        <a href="/presentation.html">프레젠테이션 뷰 (발표용)</a>
+                    </div>
+                </div>
+            </div>
             <a href="/changelog.html">업데이트</a>
             <a href="https://RemoteAGT.twinverse.org" id="remoteagt-nav-link">RemoteAGT</a>
             <script>

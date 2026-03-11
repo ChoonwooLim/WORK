@@ -35,6 +35,7 @@ app.use('/api/projects', authMiddleware, viewerGuard, require('./routes/source')
 app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 app.use('/api/admin', authMiddleware, require('./middleware/adminAuth'), require('./routes/admin'));
 app.use('/api/issues', authMiddleware, viewerGuard, require('./routes/issues'));
+app.use('/api/projects', authMiddleware, viewerGuard, require('./routes/domains'));
 
 // Health check
 app.get('/api/health', (req, res) => {

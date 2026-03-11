@@ -351,6 +351,69 @@
                 gap: 8px;
             }
         }
+    
+        /* Nav Dropdown for IR */
+        .nav-dropdown {
+            position: relative;
+            display: inline-block;
+            margin-left: 24px;
+        }
+        .nav-dropdown-btn {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-family: inherit;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+        }
+        .nav-dropdown:hover .nav-dropdown-btn {
+            color: var(--text-main);
+        }
+        .nav-dropdown-content {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding-top: 20px; /* Instead of margin, to bridge the hover gap */
+            z-index: 200;
+        }
+        .nav-dropdown-inner {
+            background-color: rgba(15, 23, 42, 0.95);
+            min-width: 170px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 0;
+            backdrop-filter: blur(10px);
+        }
+        .nav-dropdown-inner a {
+            color: var(--text-muted) !important;
+            padding: 10px 20px !important;
+            text-decoration: none;
+            display: block;
+            margin-left: 0 !important;
+            font-size: 14px;
+            transition: all 0.2s;
+            text-align: center;
+            font-weight: 400 !important;
+        }
+        .nav-dropdown-inner a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-main) !important;
+        }
+        .nav-dropdown:hover .nav-dropdown-content {
+            display: block;
+        }
+
+
     </style>
 </head>
 
@@ -365,6 +428,16 @@
             <a href="/features.html">기능 소개</a>
             <a href="/pricing.html">요금제</a>
             <a href="/docs.html">문서</a>
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (투자 정보) <span style="font-size: 10px;">▼</span></button>
+                <div class="nav-dropdown-content">
+                    <div class="nav-dropdown-inner">
+                        <a href="/ir.html">비전 및 재무 추정</a>
+                        <a href="/comparison.html">경쟁사 비교 분석</a>
+                        <a href="/presentation.html">프레젠테이션 뷰 (발표용)</a>
+                    </div>
+                </div>
+            </div>
             <a href="/changelog.html" class="active">업데이트</a>
             <a href="https://RemoteAGT.twinverse.org">RemoteAGT</a>
             <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
@@ -377,6 +450,43 @@
     </section>
 
     <div class="timeline-container">
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.7.0 — 2026-03-06                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.7.0</span>
+                <span class="version-date">2026년 3월 6일</span>
+            </div>
+            <p class="version-title">🌐 커스텀 도메인 자동 연결 & 도메인 관리 로드맵</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>커스텀 도메인 자동 연결 시스템</strong>
+                        <p>가비아, Namecheap 등에서 구매한 도메인을 3단계(DNS 검증 → Cloudflare 터널 연결 → 활성화)로 자동 연결합니다. CNAME 레코드만 설정하면
+                            SSL 인증서, 리버스 프록시, CDN이 모두 자동 적용됩니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>DNS 자동 검증 API</strong>
+                        <p>커스텀 도메인 연결 전 DNS 레코드가 올바르게 설정되었는지 실시간으로 자동 검증합니다. 잘못된 설정 시 구체적인 수정 가이드를 제공합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-docs">문서</span>
+                    <div class="change-content">
+                        <strong>도메인 관리 가이드 & 구매 기능 로드맵</strong>
+                        <p>가비아, Namecheap, Cloudflare 등 주요 도메인 등록기관별 CNAME 설정 가이드를 추가했습니다. 향후 도메인 검색/구매/자동 연동 기능(가비아 리셀러
+                            API, Namecheap API)의 구현 로드맵을 공개했습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
 
         <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.6.0 — 2026-03-03                                -->

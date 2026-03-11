@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbitron 문서 (Docs)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <!-- Include marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #05080f;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.4);
+            --purple: #bd93f9;
+            --purple-glow: rgba(189, 147, 249, 0.4);
+            --pink: #ff79c6;
+            --sidebar-width: 280px;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Navbar (from index.html) */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            /* Match index.html */
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-left: 24px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-main);
+        }
+
+        .btn-login {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 20px;
+            /* Match index.html */
+            border-radius: 8px;
+            /* Match index.html */
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Documentation Layout */
+        .docs-container {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: var(--sidebar-width);
+            flex-shrink: 0;
+            border-right: 1px solid var(--border-color);
+            padding: 32px 16px;
+            position: sticky;
+            top: 70px;
+            height: calc(100vh - 70px);
+            overflow-y: auto;
+        }
+
+        .sidebar-group {
+            margin-bottom: 8px;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #e6edf3;
+            margin-bottom: 4px;
+            padding: 10px 14px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: all 0.2s;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border-left: 3px solid var(--accent);
+        }
+
+        .sidebar-title:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .sidebar-title::after {
+            content: '▼';
+            font-size: 8px;
+            transition: transform 0.2s ease;
+            opacity: 0.4;
+        }
+
+        .sidebar-group.collapsed .sidebar-title::after {
+            transform: rotate(-90deg);
+        }
+
+        .sidebar-group.collapsed .sidebar-link {
+            display: none;
+        }
+
+        .sidebar-link {
+            display: block;
+            padding: 7px 12px 7px 24px;
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 13px;
+            border-radius: 6px;
+            margin-bottom: 1px;
+            margin-left: 8px;
+            border-left: 1px solid rgba(255, 255, 255, 0.06);
+            transition: all 0.2s;
+        }
+
+        .sidebar-link:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #e6edf3;
+            border-left-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .sidebar-link.active {
+            background-color: rgba(88, 166, 255, 0.1);
+            color: var(--accent);
+            font-weight: 600;
+            border-left-color: var(--accent);
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex-grow: 1;
+            padding: 48px 64px;
+            max-width: 900px;
+        }
+
+        /* Markdown rendered HTML styling */
+        .main-content h1 {
+            font-size: 40px;
+            font-weight: 800;
+            margin-bottom: 24px;
+            letter-spacing: -0.02em;
+        }
+
+        .main-content h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-top: 48px;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .main-content h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 16px;
+            color: var(--accent);
+        }
+
+        .main-content p {
+            margin-bottom: 16px;
+            font-size: 16px;
+            color: #b1bac4;
+        }
+
+        .main-content ul,
+        .main-content ol {
+            margin-bottom: 24px;
+            padding-left: 24px;
+            color: #b1bac4;
+        }
+
+        .main-content li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .main-content strong {
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Code Blocks */
+        .main-content code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+            color: var(--pink);
+        }
+
+        .main-content pre {
+            background: #161b22;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 24px 0;
+            border: 1px solid var(--border-color);
+        }
+
+        .main-content pre code {
+            background: transparent;
+            padding: 0;
+            color: #e6e6e6;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Blockquotes masquerading as callouts (Render style) */
+        .main-content blockquote {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+            background: rgba(139, 148, 158, 0.1);
+            border-left: 4px solid var(--text-muted);
+        }
+
+        .main-content blockquote p {
+            margin-bottom: 0;
+        }
+
+        .main-content a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .main-content a:hover {
+            text-decoration: underline;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #484f58;
+        }
+
+        @media (max-width: 1024px) {
+            .docs-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding: 16px 24px;
+            }
+
+            .main-content {
+                padding: 32px 24px;
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 18px;
+        }
+
+        .docs-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: block;
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            min-height: calc(100vh - 80px);
+        }
+
+        .main-content {
+            padding: 48px;
+        }
+    
+        /* Nav Dropdown for IR */
+        .nav-dropdown {
+            position: relative;
+            display: inline-block;
+            margin-left: 24px;
+        }
+        .nav-dropdown-btn {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-family: inherit;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+        }
+        .nav-dropdown:hover .nav-dropdown-btn {
+            color: var(--text-main);
+        }
+        .nav-dropdown-content {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding-top: 20px; /* Instead of margin, to bridge the hover gap */
+            z-index: 200;
+        }
+        .nav-dropdown-inner {
+            background-color: rgba(15, 23, 42, 0.95);
+            min-width: 170px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 0;
+            backdrop-filter: blur(10px);
+        }
+        .nav-dropdown-inner a {
+            color: var(--text-muted) !important;
+            padding: 10px 20px !important;
+            text-decoration: none;
+            display: block;
+            margin-left: 0 !important;
+            font-size: 14px;
+            transition: all 0.2s;
+            text-align: center;
+            font-weight: 400 !important;
+        }
+        .nav-dropdown-inner a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-main) !important;
+        }
+        .nav-dropdown:hover .nav-dropdown-content {
+            display: block;
+        }
+
+
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span style="font-size: 28px;">🪐</span> Orbitron
+        </a>
+        <div class="nav-links">
+            <a href="/features.html">기능 소개</a>
+            <a href="/pricing.html">요금제</a>
+            <a href="/docs.html">문서</a>
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (투자 정보) <span style="font-size: 10px;">▼</span></button>
+                <div class="nav-dropdown-content">
+                    <div class="nav-dropdown-inner">
+                        <a href="/ir.html">비전 및 재무 추정</a>
+                        <a href="/comparison.html">경쟁사 비교 분석</a>
+                        <a href="/presentation.html">프레젠테이션 뷰 (발표용)</a>
+                    </div>
+                </div>
+            </div>
+            <a href="/changelog.html">업데이트</a>
+            <a href="https://RemoteAGT.twinverse.org">RemoteAGT</a>
+            <a href="/index-en.html">EN</a>
+            <a href="/dashboard" class="btn-login" id="nav-auth-btn">로그인 · 회원가입</a>
+        </div>
+    </nav>
+
+    <div class="docs-container">
+        <!-- Sidebar Navigation -->
+
+
+        <!-- Markdown Content Container -->
+        <main class="main-content" id="markdown-container">
+            <div class="loading">Loading content...</div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('markdown-container');
+            const links = document.querySelectorAll('.sidebar-link');
+
+            // Accordion for sidebar groups
+            const sidebarTitles = document.querySelectorAll('.sidebar-title');
+            sidebarTitles.forEach(title => {
+                title.addEventListener('click', () => {
+                    const group = title.closest('.sidebar-group');
+                    group.classList.toggle('collapsed');
+                });
+            });
+
+            // Function to load and render markdown
+            async function loadMarkdown(docId) {
+                try {
+                    container.innerHTML = '<div class="loading">Loading content...</div>';
+
+                    const response = await fetch(`/docs-content/${docId}.md`);
+                    if (!response.ok) {
+                        throw new Error(`Docs file not found: ${docId}`);
+                    }
+
+                    const markdown = await response.text();
+                    container.innerHTML = marked.parse(markdown);
+                    window.scrollTo(0, 0); // Scroll to top on new page load
+                } catch (error) {
+                    container.innerHTML = `
+                        <h1>문서를 찾을 수 없습니다 (404)</h1>
+                        <p>요청하신 ${docId}.md 파일이 아직 작성되지 않았거나 삭제되었습니다.</p>
+                        <p>좌측 메뉴에서 다른 문서를 선택해 주세요.</p>
+                    `;
+                    console.error('Error loading markdown:', error);
+                }
+            }
+
+            // Load ir-financials content directly
+            loadMarkdown('ir-financials');
+        });
+    </script>
+</body>
+
+</html>
