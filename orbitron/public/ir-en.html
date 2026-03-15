@@ -1,14 +1,15 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orbitron 문서 (Docs)</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Orbitron Docs</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
-        rel="stylesheet">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Outfit:wght@500;700&amp;display=swap"
+        rel="stylesheet" />
     <!-- Include marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -346,13 +347,14 @@
         .main-content {
             padding: 48px;
         }
-    
+
         /* Nav Dropdown for IR */
         .nav-dropdown {
             position: relative;
             display: inline-block;
             margin-left: 24px;
         }
+
         .nav-dropdown-btn {
             color: var(--text-muted);
             text-decoration: none;
@@ -368,27 +370,32 @@
             gap: 4px;
             transition: color 0.2s;
         }
+
         .nav-dropdown:hover .nav-dropdown-btn {
             color: var(--text-main);
         }
+
         .nav-dropdown-content {
             display: none;
             position: absolute;
             top: 100%;
             left: 50%;
             transform: translateX(-50%);
-            padding-top: 20px; /* Instead of margin, to bridge the hover gap */
+            padding-top: 20px;
+            /* Instead of margin, to bridge the hover gap */
             z-index: 200;
         }
+
         .nav-dropdown-inner {
             background-color: rgba(15, 23, 42, 0.95);
             min-width: 170px;
-            box-shadow: 0px 8px 24px rgba(0,0,0,0.6);
+            box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             padding: 8px 0;
             backdrop-filter: blur(10px);
         }
+
         .nav-dropdown-inner a {
             color: var(--text-muted) !important;
             padding: 10px 20px !important;
@@ -400,21 +407,21 @@
             text-align: center;
             font-weight: 400 !important;
         }
+
         .nav-dropdown-inner a:hover {
             background-color: rgba(255, 255, 255, 0.05);
             color: var(--text-main) !important;
         }
+
         .nav-dropdown:hover .nav-dropdown-content {
             display: block;
         }
-
-
     </style>
 </head>
 
 <body>
     <nav class="navbar">
-        <a href="/" class="logo">
+        <a class="logo" href="/">
             <span style="font-size: 28px;">🪐</span> Orbitron
         </a>
         <div class="nav-links">
@@ -422,10 +429,11 @@
             <a href="/pricing-en.html">Pricing</a>
             <a href="/docs-en.html">Docs</a>
             <div class="nav-dropdown">
-                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (투자 정보) <span style="font-size: 10px;">▼</span></button>
+                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (Investors) <span
+                        style="font-size: 10px;">▼</span></button>
                 <div class="nav-dropdown-content">
                     <div class="nav-dropdown-inner">
-                        <a href="/ir-en.html">Vision & Financials</a>
+                        <a href="/ir-en.html">Vision &amp; Financials</a>
                         <a href="/comparison-en.html">Comparison</a>
                         <a href="/presentation-en.html">Presentation</a>
                     </div>
@@ -434,20 +442,16 @@
             <a href="/changelog-en.html">Updates</a>
             <a href="https://RemoteAGT.twinverse.org">RemoteAGT</a>
             <a href="/ir.html">KO</a>
-            <a href="/dashboard" class="btn-login" id="nav-auth-btn">Launch Dashboard</a>
+            <a class="btn-login" href="/dashboard" id="nav-auth-btn">Launch Dashboard</a>
         </div>
     </nav>
-
     <div class="docs-container">
         <!-- Sidebar Navigation -->
-
-
         <!-- Markdown Content Container -->
         <main class="main-content" id="markdown-container">
             <div class="loading">Loading content...</div>
         </main>
     </div>
-
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('markdown-container');
@@ -467,7 +471,7 @@
                 try {
                     container.innerHTML = '<div class="loading">Loading content...</div>';
 
-                    const response = await fetch(`/docs-content/${docId}.md`);
+                    const response = await fetch(`/docs-content-en/${docId}.md`);
                     if (!response.ok) {
                         throw new Error(`Docs file not found: ${docId}`);
                     }
@@ -477,9 +481,9 @@
                     window.scrollTo(0, 0); // Scroll to top on new page load
                 } catch (error) {
                     container.innerHTML = `
-                        <h1>문서를 찾을 수 없습니다 (404)</h1>
-                        <p>요청하신 ${docId}.md 파일이 아직 작성되지 않았거나 삭제되었습니다.</p>
-                        <p>좌측 메뉴에서 다른 문서를 선택해 주세요.</p>
+                        <h1>Document Not Found (404)</h1>
+                        <p>The requested ${docId}.md file has not been created or was deleted.</p>
+                        <p>Please select another document from the left menu.</p>
                     `;
                     console.error('Error loading markdown:', error);
                 }

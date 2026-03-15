@@ -1,11 +1,12 @@
 # Advanced APM Monitoring Integration (Datadog, etc.)
 
-> 💡 **Upcoming Feature (Coming Soon)**
+> 💡 **Coming Soon (Upcoming Feature)**
 > 
-> This feature is a core roadmap item currently under active development by the Orbitron engineering team.
+> This is a core roadmap feature currently in intense development by the Orbitron engineering team.
 > 
 
-Are you already using a top-tier enterprise Application Performance Monitoring (APM) tool, costing millions, at your company? Orbitron doesn't overlook such professional teams. Without needing to add any setup logic to your source code, Orbitron automatically injects leading APM agents at the infrastructure layer. 
+Are you already using top-tier enterprise Application Performance Monitoring (APM) tools costing thousands of dollars at the corporate level?
+Orbitron does not ignore such professional teams. Without needing to add any setup logic to the source code you wrote, we automatically inject heavyweight APM agents at the infrastructure level.
 
-*   **Planned Integrations:** Datadog, New Relic, Sentry, Prometheus/Grafana Edge
-*   **Zero-Agent Configuration (Agentless-like):** Simply navigate to the `Integrations` tab in your dashboard and paste your Datadog API Key and Site address. When your code is built, the Orbitron daemon will automatically integrate `dd-trace` and similar tools, sending a flood of logs to the respective site detailing how many milliseconds (ms) each of your functions is delayed.
+*   **Planned Supported Integrations:** Datadog, New Relic, Sentry, Prometheus/Grafana Edge
+*   **Agentless-like Setup:** Simply navigate to the `Integrations` tab on the dashboard and paste the API Key and Site address for Datadog. When the code is built, the Orbitron daemon automatically links things like `dd-trace`, firing log bombs over to their site indicating exactly how many milliseconds (ms) each of your individual functions is delayed.

@@ -1,15 +1,18 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orbitron - 글로벌 Top PaaS 경쟁사 비교</title>
-    <meta name="description" content="Orbitron과 글로벌 Top 5 유사 플랫폼들의 아키텍처, 성능, 기능을 비교 분석합니다.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Orbitron - Global Top PaaS Competitor Comparison</title>
+    <meta
+        content="Comparative analysis of architecture, performance, and features between Orbitron and the Top 5 global PaaS platforms."
+        name="description" />
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
-        rel="stylesheet">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Outfit:wght@500;700&amp;display=swap"
+        rel="stylesheet" />
     <style>
         :root {
             --bg-dark: #05080f;
@@ -542,13 +545,14 @@
                 grid-template-columns: 1fr;
             }
         }
-    
+
         /* Nav Dropdown for IR */
         .nav-dropdown {
             position: relative;
             display: inline-block;
             margin-left: 24px;
         }
+
         .nav-dropdown-btn {
             color: var(--text-muted);
             text-decoration: none;
@@ -564,27 +568,32 @@
             gap: 4px;
             transition: color 0.2s;
         }
+
         .nav-dropdown:hover .nav-dropdown-btn {
             color: var(--text-main);
         }
+
         .nav-dropdown-content {
             display: none;
             position: absolute;
             top: 100%;
             left: 50%;
             transform: translateX(-50%);
-            padding-top: 20px; /* Instead of margin, to bridge the hover gap */
+            padding-top: 20px;
+            /* Instead of margin, to bridge the hover gap */
             z-index: 200;
         }
+
         .nav-dropdown-inner {
             background-color: rgba(15, 23, 42, 0.95);
             min-width: 170px;
-            box-shadow: 0px 8px 24px rgba(0,0,0,0.6);
+            box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             padding: 8px 0;
             backdrop-filter: blur(10px);
         }
+
         .nav-dropdown-inner a {
             color: var(--text-muted) !important;
             padding: 10px 20px !important;
@@ -596,36 +605,36 @@
             text-align: center;
             font-weight: 400 !important;
         }
+
         .nav-dropdown-inner a:hover {
             background-color: rgba(255, 255, 255, 0.05);
             color: var(--text-main) !important;
         }
+
         .nav-dropdown:hover .nav-dropdown-content {
             display: block;
         }
-
-
     </style>
 </head>
 
 <body>
     <div class="bg-gradient"></div>
     <canvas id="orbital-vfx"></canvas>
-
     <nav class="navbar">
-        <a href="/" class="logo">
+        <a class="logo" href="/">
             <span style="font-size: 28px;">🪐</span> Orbitron
         </a>
         <div class="nav-links">
             <a href="/features-en.html">Features</a>
             <a href="/pricing-en.html">Pricing</a>
-            <a href="/comparison-en.html" class="active">경쟁사 비교</a>
+            <a class="active" href="/comparison-en.html">Competitor Comparison</a>
             <a href="/docs-en.html">Docs</a>
             <div class="nav-dropdown">
-                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (투자 정보) <span style="font-size: 10px;">▼</span></button>
+                <button class="nav-dropdown-btn" onclick="window.location.href='/ir.html'">IR (Investor Relations)<span
+                        style="font-size: 10px;">▼</span></button>
                 <div class="nav-dropdown-content">
                     <div class="nav-dropdown-inner">
-                        <a href="/ir-en.html">Vision & Financials</a>
+                        <a href="/ir-en.html">Vision &amp; Financials</a>
                         <a href="/comparison-en.html">Comparison</a>
                         <a href="/presentation-en.html">Presentation</a>
                     </div>
@@ -634,81 +643,85 @@
             <a href="/changelog-en.html">Updates</a>
             <a href="https://RemoteAGT.twinverse.org">RemoteAGT</a>
             <a href="/comparison.html">KO</a>
-            <a href="/dashboard" class="btn-login" id="nav-auth-btn">Launch Dashboard</a>
+            <a class="btn-login" href="/dashboard" id="nav-auth-btn">Launch Dashboard</a>
         </div>
     </nav>
-
     <section class="cmp-hero">
-        <h1>글로벌 및 국내 Top PaaS<br>플랫폼 비교 분석</h1>
-        <p>전 세계 5대 클라우드 플랫폼(Vercel 등)부터 국내 주요 5대 CSP(Naver Cloud 등)까지, Orbitron과의 엔터프라이즈 렌더링/AI 엣지 비교를 한 눈에 확인하세요.</p>
+        <h1>Global and Domestic Top PaaS<br />Platform Comparison Analysis</h1>
+        <p>From the world's top 5 cloud platforms (e.g., Vercel) to Korea's major 5 CSPs (e.g., Naver Cloud), get an
+            at-a-glance comparison of enterprise rendering/AI edge with Orbitron.</p>
     </section>
-
     <section class="market-section">
-        <h2 class="section-title">글로벌 Top 5 유사 서비스 업체</h2>
-        <p class="section-subtitle">(추정 연매출 기준, 2023~2024년)</p>
-
+        <h2 class="section-title">Global Top 5 Similar Service Providers</h2>
+        <p class="section-subtitle">(Based on estimated annual revenue, 2023-2024)</p>
         <div class="competitor-grid">
             <div class="comp-card vercel">
                 <div class="rank-badge">Top 1</div>
-                <h3><a href="https://vercel.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Vercel
+                <h3><a href="https://vercel.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Vercel
                         ↗</a></h3>
-                <div class="comp-category">Frontend & Serverless Cloud</div>
-                <p class="comp-desc">Next.js의 모회사로 프론트엔드 생태계의 절대 강자. 글로벌 Edge 캐싱과 Serverless Function에 특화되어 있습니다.</p>
+                <div class="comp-category">Frontend &amp; Serverless Cloud</div>
+                <p class="comp-desc">The parent company of Next.js and an absolute powerhouse in the frontend ecosystem.
+                    Specializes in global Edge caching and Serverless Functions.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$100M ~ $144M+</div>
                 </div>
             </div>
-
             <div class="comp-card heroku">
                 <div class="rank-badge">Top 2</div>
-                <h3><a href="https://www.heroku.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Heroku
+                <h3><a href="https://www.heroku.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Heroku
                         ↗</a> <span
                         style="font-size:14px; color:var(--text-muted); font-weight:400;">(Salesforce)</span>
                 </h3>
                 <div class="comp-category">Traditional Backend PaaS</div>
-                <p class="comp-desc">전통적인 풀스택/백엔드 PaaS의 선구자. 다양한 언어를 지원하며 강력한 애드온 마켓을 제공합니다.</p>
+                <p class="comp-desc">A pioneer in traditional full-stack/backend PaaS. Supports various languages and
+                    offers a powerful add-on marketplace.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$50M ~ $100M+</div>
                 </div>
             </div>
-
             <div class="comp-card netlify">
                 <div class="rank-badge">Top 3</div>
-                <h3><a href="https://www.netlify.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Netlify
+                <h3><a href="https://www.netlify.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Netlify
                         ↗</a></h3>
-                <div class="comp-category">Jamstack & Edge Computing</div>
-                <p class="comp-desc">Jamstack 기반 정적 웹사이트 배포의 리더. 빠르고 유연한 Edge 라우팅 기술을 자랑합니다.</p>
+                <div class="comp-category">Jamstack &amp; Edge Computing</div>
+                <p class="comp-desc">A leader in Jamstack-based static website deployment. Boasts fast and flexible Edge
+                    routing technology.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$33M ~ $46M</div>
                 </div>
             </div>
-
             <div class="comp-card render">
                 <div class="rank-badge">Top 4</div>
-                <h3><a href="https://render.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Render
+                <h3><a href="https://render.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Render
                         ↗</a></h3>
                 <div class="comp-category">Modern Fullstack PaaS</div>
-                <p class="comp-desc">Heroku의 대안으로 급부상한 모던 PaaS. 데이터베이스 자동 프로비저닝과 백그라운드 워커 구동이 쉽습니다.</p>
+                <p class="comp-desc">A modern PaaS rapidly emerging as an alternative to Heroku. Offers easy automatic
+                    database provisioning and background worker execution.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$23M ~ $25M</div>
                 </div>
             </div>
-
             <div class="comp-card fly">
                 <div class="rank-badge">Top 5</div>
-                <h3><a href="https://fly.io" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Fly.io
+                <h3><a href="https://fly.io"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Fly.io
                         ↗</a></h3>
                 <div class="comp-category">Global Micro-VM Edge</div>
-                <p class="comp-desc">글로벌 엣지 리전 전역에 초경량 Firecracker 기반 가상 머신(Micro-VM)을 띄우는 퍼블릭 엣지 배포망입니다.</p>
+                <p class="comp-desc">A public edge deployment network that launches ultra-lightweight Firecracker-based
+                    virtual machines (Micro-VMs) across global edge regions.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$11.2M</div>
@@ -716,146 +729,153 @@
             </div>
         </div>
     </section>
-
     <section class="market-section">
-        <h2 class="section-title">주요 웹 호스팅 & 클라우드</h2>
-        <p class="section-subtitle">(추정 연매출 기준, 2023~2024년)</p>
-
+        <h2 class="section-title">Major Web Hosting &amp; Cloud</h2>
+        <p class="section-subtitle">(Based on estimated annual revenue, 2023-2024)</p>
         <div class="competitor-grid">
             <div class="comp-card" style="border-top: 4px solid #1f2937;">
                 <div class="rank-badge">Hosting 1</div>
-                <h3><a href="https://www.cafe24.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Cafe24
+                <h3><a href="https://www.cafe24.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Cafe24
                         ↗</a></h3>
-                <div class="comp-category">Web & E-Commerce Hosting</div>
-                <p class="comp-desc">국내 최대 쇼핑몰 및 웹 호스팅 사업자로 비즈니스 인프라에 막강한 점유율을 가집니다.</p>
+                <div class="comp-category">Web &amp; E-Commerce Hosting</div>
+                <p class="comp-desc">Korea's largest shopping mall and web hosting provider, holding a dominant share in
+                    business infrastructure.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
-                    <div class="metric-value">₩2,781억+</div>
+                    <div class="metric-value">₩278.1 billion+</div>
                 </div>
             </div>
-
             <div class="comp-card" style="border-top: 4px solid #4A90E2;">
                 <div class="rank-badge">Hosting 2</div>
-                <h3><a href="https://www.gabia.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Gabia
+                <h3><a href="https://www.gabia.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Gabia
                         ↗</a></h3>
-                <div class="comp-category">IT Infra & Cloud Hosting</div>
-                <p class="comp-desc">도메인, 호스팅부터 클라우드 인프라(gCloud)까지 웹 기반 서비스 전반을 제공하는 중견 사업자입니다.</p>
+                <div class="comp-category">IT Infra &amp; Cloud Hosting</div>
+                <p class="comp-desc">A mid-sized provider offering a full range of web-based services, from domains and
+                    hosting to cloud infrastructure (gCloud).</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
-                    <div class="metric-value">₩2,824억+</div>
+                    <div class="metric-value">₩282.4 billion+</div>
                 </div>
             </div>
-
             <div class="comp-card" style="border-top: 4px solid #0080FF;">
                 <div class="rank-badge">Global 1</div>
-                <h3><a href="https://www.digitalocean.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">DigitalOcean
+                <h3><a href="https://www.digitalocean.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">DigitalOcean
                         ↗</a></h3>
                 <div class="comp-category">Cloud Computing Platform</div>
-                <p class="comp-desc">개발자 친화적인 인터페이스와 합리적인 가격의 VPS(Droplet) 및 App Platform을 제공합니다.</p>
+                <p class="comp-desc">Provides a developer-friendly interface and affordably priced VPS (Droplet) and App
+                    Platform.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$692M+</div>
                 </div>
             </div>
-
             <div class="comp-card" style="border-top: 4px solid #4285F4;">
                 <div class="rank-badge">Global 2</div>
-                <h3><a href="https://firebase.google.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">GCP
+                <h3><a href="https://firebase.google.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">GCP
                         (Firebase) ↗</a></h3>
-                <div class="comp-category">Cloud & App Platform</div>
-                <p class="comp-desc">강력한 머신러닝/데이터 분석 생태계 및 앱 개발에 최적화된 Firebase 모바일/웹 지원력을 자랑합니다.</p>
+                <div class="comp-category">Cloud &amp; App Platform</div>
+                <p class="comp-desc">Boasts a powerful machine learning/data analysis ecosystem and Firebase mobile/web
+                    support optimized for app development.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
                     <div class="metric-value">$33B+</div>
                 </div>
             </div>
-
             <div class="comp-card" style="border-top: 4px solid #00C73C;">
                 <div class="rank-badge">CSP 1</div>
-                <h3><a href="https://www.ncloud.com" target="_blank"
-                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);">Naver
+                <h3><a href="https://www.ncloud.com"
+                        style="color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.3);"
+                        target="_blank">Naver
                         Cloud ↗</a></h3>
                 <div class="comp-category">Enterprise Cloud Platform</div>
-                <p class="comp-desc">네이버의 인프라와 AI 기술력이 결합된 국내 최대 클라우드 서비스 사업자입니다.</p>
+                <p class="comp-desc">Korea's largest cloud service provider, combining Naver's infrastructure and AI
+                    technology.</p>
                 <div class="metric-box">
                     <div class="metric-label">Est. Annual Revenue</div>
-                    <div class="metric-value">₩1.4조+</div>
+                    <div class="metric-value">₩1.4 trillion+</div>
                 </div>
             </div>
         </div>
     </section>
-
     <section class="diff-section">
         <div class="diff-container">
-            <h2 class="section-title">Orbitron의 4대 핵심 차별점</h2>
-            <p class="section-subtitle">Orbitron은 일반 단방향 배포를 넘어 특수 워크로드와 AI 자가 진단을 결합한 차세대 시스템입니다.</p>
-
+            <h2 class="section-title">Orbitron's 4 Key Differentiators</h2>
+            <p class="section-subtitle">Orbitron is a next-generation system that goes beyond typical one-way
+                deployment, combining specialized workloads with AI self-diagnosis.</p>
             <div class="diff-grid">
                 <div class="diff-card">
                     <div class="diff-icon">🤖</div>
                     <div class="diff-content">
-                        <h3>AI 에러 분석 & 지식 DB 연동</h3>
-                        <p>단순히 터미널에 에러 로그를 붉게 띄우고 끝나는 것에 그치지 않습니다. Orbitron은 RAG 기반의 AI(Claude 3.7 / Gemini 2.5)가 실패 원인을
-                            즉시 진단하고 해결 스니펫을 한글로 제시합니다.</p>
+                        <h3>AI Error Analysis &amp; Knowledge DB Integration</h3>
+                        <p>It doesn't just stop at displaying error logs in red on the terminal. Orbitron's RAG-based AI
+                            (Claude 3.7 / Gemini 2.5) immediately diagnoses the cause of failure and provides solution
+                            snippets in Korean.</p>
                         <div class="vs-box">
-                            <div class="vs-global">✘ 타사: 개발자가 직접 스택 트레이스를 구글링</div>
-                            <div class="vs-orbitron">✔ Orbitron: AI가 자가 치유(Self-Healing) 브리핑</div>
+                            <div class="vs-global">✘ Competitors: Developers manually Google stack traces</div>
+                            <div class="vs-orbitron">✔ Orbitron: AI provides Self-Healing briefings</div>
                         </div>
                     </div>
                 </div>
-
                 <div class="diff-card">
                     <div class="diff-icon">💬</div>
                     <div class="diff-content">
-                        <h3>메신저 기반 원격 관제 (RemoteAGT)</h3>
-                        <p>복잡한 대시보드 로그인 없이, 여러분의 스마트폰에서 카카오톡 또는 텔레그램 봇에게 명령을 내려 실시간으로 서버의 재부팅과 로그를 확인할 수 있습니다.</p>
+                        <h3>Messenger-based Remote Monitoring (RemoteAGT)</h3>
+                        <p>Without complex dashboard logins, you can command your KakaoTalk or Telegram bot from your
+                            smartphone to check server reboots and logs in real-time.</p>
                         <div class="vs-box">
-                            <div class="vs-global">✘ 타사: Slack 연결 시 단순 상태 알림(Webhook) 전송</div>
-                            <div class="vs-orbitron">✔ Orbitron: RemoteAGT 양방향 AI 프롬프트 원격 제어</div>
+                            <div class="vs-global">✘ Competitor: Simple status notifications (Webhook) sent when
+                                connecting Slack</div>
+                            <div class="vs-orbitron">✔ Orbitron: RemoteAGT two-way AI prompt remote control</div>
                         </div>
                     </div>
                 </div>
-
                 <div class="diff-card">
                     <div class="diff-icon">🎮</div>
                     <div class="diff-content">
-                        <h3>Unreal/Unity GPU 워크로드 호스팅</h3>
-                        <p>보편적인 웹 서비스(CPU 중심)를 넘어, 클라우드 픽셀 스트리밍(WebRTC) 및 Unity WebGL 등의 고차원 3D 게임엔진 랜더링 배포 특화 파이프라인을
-                            보유하고 있습니다.</p>
+                        <h3>Unreal/Unity GPU Workload Hosting</h3>
+                        <p>Beyond universal web services (CPU-centric), we possess a specialized pipeline for deploying
+                            high-dimensional 3D game engine rendering, such as cloud pixel streaming (WebRTC) and Unity
+                            WebGL.</p>
                         <div class="vs-box">
-                            <div class="vs-global">✘ 타사: Docker 빌드 용량과 GPU 컴퓨팅 제약 포기</div>
-                            <div class="vs-orbitron">✔ Orbitron: 수십 GB의 엔터프라이즈 3D 그래픽 즉시 배포</div>
+                            <div class="vs-global">✘ Competitor: Forfeits Docker build capacity and GPU computing
+                                constraints</div>
+                            <div class="vs-orbitron">✔ Orbitron: Instant deployment of tens of GBs of enterprise 3D
+                                graphics</div>
                         </div>
                     </div>
                 </div>
-
                 <div class="diff-card">
                     <div class="diff-icon">🔒</div>
                     <div class="diff-content">
-                        <h3>Zero-Port 프라이빗 잉그레스 보안</h3>
-                        <p>퍼블릭 클라우드의 치명적 단점인 IP 노출을 Cloudflare Tunnel을 활용한 100% 폐쇄망 잉그레스 기술로 전환하여, 오픈 포트를 원천적으로 막은 국방망
-                            수준의 방화벽을 제공합니다.</p>
+                        <h3>Zero-Port Private Ingress Security</h3>
+                        <p>We transform the critical flaw of IP exposure in public clouds into a 100% closed-network
+                            ingress technology using Cloudflare Tunnel, providing a defense-grade firewall that
+                            fundamentally blocks open ports.</p>
                         <div class="vs-box">
-                            <div class="vs-global">✘ 타사: 도메인 뒤에 연결된 L4/L7 로드밸런서 IP 노출</div>
-                            <div class="vs-orbitron">✔ Orbitron: 인바운드 포트를 완전 차단한 안전 엣지망 연동</div>
+                            <div class="vs-global">✘ Competitor: L4/L7 load balancer IP exposed behind the domain</div>
+                            <div class="vs-orbitron">✔ Orbitron: Secure edge network integration with completely blocked
+                                inbound ports</div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </section>
-
     <section class="table-section" style="padding-bottom: 40px;">
-        <h2 class="section-title">글로벌 Top 5 경쟁사 비교표</h2>
+        <h2 class="section-title">Global Top 5 Competitor Comparison Table</h2>
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>기능 구분</th>
+                        <th>Feature Category</th>
                         <th class="td-orbitron">🪐 Orbitron</th>
                         <th>Vercel</th>
                         <th>Heroku</th>
@@ -866,7 +886,7 @@
                 </thead>
                 <tbody>
                     <tr class="cat-header">
-                        <td>핵심 배포 인프라</td>
+                        <td>Core Deployment Infrastructure</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -875,7 +895,7 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>Git 푸시 자동 배포 (CI/CD)</td>
+                        <td>Git Push Auto Deployment (CI/CD)</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
@@ -884,17 +904,17 @@
                         <td><span class="check">✔</span></td>
                     </tr>
                     <tr>
-                        <td>풀스택 (모노리포) 배포 자동화</td>
-                        <td class="td-orbitron"><span class="check">✔ (자동 매핑)</span></td>
-                        <td><span class="partial">△ (제한적 백엔드)</span></td>
+                        <td>Full-stack (Monorepo) Deployment Automation</td>
+                        <td class="td-orbitron"><span class="check">✔ (Auto Mapping)</span></td>
+                        <td><span class="partial">△ (Limited Backend)</span></td>
                         <td><span class="check">✔</span></td>
-                        <td><span class="partial">△ (프론트/서버리스 위주)</span></td>
+                        <td><span class="partial">△ (Frontend/Serverless focused)</span></td>
                         <td><span class="check">✔</span></td>
-                        <td><span class="partial">△ (멀티 머신)</span></td>
+                        <td><span class="partial">△ (Multi-machine)</span></td>
                     </tr>
                     <tr>
-                        <td>매니지드 데이터베이스 (PostgreSQL 등)</td>
-                        <td class="td-orbitron"><span class="check">✔ (자동 백업)</span></td>
+                        <td>Managed Database (PostgreSQL, etc.)</td>
+                        <td class="td-orbitron"><span class="check">✔ (Automatic Backup)</span></td>
                         <td><span class="check">✔ (Vercel DB)</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="cross">✘</span></td>
@@ -902,17 +922,16 @@
                         <td><span class="check">✔</span></td>
                     </tr>
                     <tr>
-                        <td>멀티 컨테이너 (Docker Compose 지원)</td>
+                        <td>Multi-container (Docker Compose Support)</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="partial">△ (Heroku yml)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="partial">△ (Render yaml)</span></td>
-                        <td><span class="partial">△ (Fly Machine 연동)</span></td>
+                        <td><span class="partial">△ (Fly Machine Integration)</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>네트워크 & 트래픽</td>
+                        <td>Network &amp; Traffic</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -921,7 +940,7 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>글로벌 Edge CDN 지원</td>
+                        <td>Global Edge CDN Support</td>
                         <td class="td-orbitron"><span class="check">✔ (Cloudflare)</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="cross">✘</span></td>
@@ -930,7 +949,7 @@
                         <td><span class="check">✔</span></td>
                     </tr>
                     <tr>
-                        <td>무료 엣지 SSL 및 커스텀 도메인</td>
+                        <td>Free Edge SSL and Custom Domain</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
@@ -939,17 +958,16 @@
                         <td><span class="check">✔</span></td>
                     </tr>
                     <tr>
-                        <td>기본 DDoS 방어 및 WAF 적용</td>
-                        <td class="td-orbitron"><span class="check">✔ (엔터프라이즈 급)</span></td>
+                        <td>Basic DDoS Protection and WAF Application</td>
+                        <td class="td-orbitron"><span class="check">✔ (Enterprise-grade)</span></td>
                         <td><span class="check">✔</span></td>
-                        <td><span class="partial">△ (애드온 필요)</span></td>
+                        <td><span class="partial">△ (Add-on required)</span></td>
                         <td><span class="check">✔</span></td>
-                        <td><span class="partial">△ (제한적)</span></td>
-                        <td><span class="partial">△ (제한적)</span></td>
+                        <td><span class="partial">△ (Limited)</span></td>
+                        <td><span class="partial">△ (Limited)</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>고급 기능 & AI</td>
+                        <td>Advanced Features &amp; AI</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -958,35 +976,34 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>배포 에러 AI 원인 진단 (RAG)</td>
+                        <td>AI Root Cause Diagnosis for Deploy Errors (RAG)</td>
                         <td class="td-orbitron"><span class="check">✔ (Gemini/Claude)</span></td>
-                        <td><span class="partial">△ (v0 제한적)</span></td>
+                        <td><span class="partial">△ (v0 Limited)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                     </tr>
                     <tr>
-                        <td>과거 커밋 즉각 롤백</td>
+                        <td>Instant Rollback to Previous Commits</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
-                        <td><span class="partial">△ (이미지 재배포)</span></td>
-                        <td><span class="partial">△ (로컬 환경 필요)</span></td>
+                        <td><span class="partial">△ (Redeploy Image)</span></td>
+                        <td><span class="partial">△ (Requires Local Env)</span></td>
                     </tr>
                     <tr>
-                        <td>모바일 메신저 양방향 AI 서버 제어</td>
-                        <td class="td-orbitron"><span class="check">✔ (RemoteAGT 연동)</span></td>
+                        <td>Two-Way AI Server Control via Mobile Messenger</td>
+                        <td class="td-orbitron"><span class="check">✔ (RemoteAGT Intg.)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>확장 서비스 & 플랫폼 생태계</td>
+                        <td>Extended Services &amp; Platform Ecosystem</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -996,7 +1013,7 @@
                     </tr>
                     <tr>
                         <td>Serverless Functions (FaaS)</td>
-                        <td class="td-orbitron"><span class="cross">✘ (상시 컨테이너 기반)</span></td>
+                        <td class="td-orbitron"><span class="cross">✘ (Always-on Container Based)</span></td>
                         <td><span class="check">✔ (Edge/Serverless)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="check">✔ (Edge Functions)</span></td>
@@ -1005,25 +1022,24 @@
                     </tr>
                     <tr>
                         <td>Managed Redis / In-Memory Cache</td>
-                        <td class="td-orbitron"><span class="cross">✘ (직접 컨테이너 구동 요망)</span></td>
+                        <td class="td-orbitron"><span class="cross">✘ (Requires Manual Container Run)</span></td>
                         <td><span class="check">✔ (KV/Redis)</span></td>
                         <td><span class="check">✔ (Heroku Data)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="check">✔ (Managed Redis)</span></td>
-                        <td><span class="check">✔ (Upstash 연동)</span></td>
+                        <td><span class="check">✔ (Upstash Intg.)</span></td>
                     </tr>
                     <tr>
-                        <td>내장 Object Storage (S3 호환)</td>
-                        <td class="td-orbitron"><span class="cross">✘ (외부 스토리지 연동 요망)</span></td>
+                        <td>Built-in Object Storage (S3 Compatible)</td>
+                        <td class="td-orbitron"><span class="cross">✘ (Requires External Storage Intg.)</span></td>
                         <td><span class="check">✔ (Vercel Blob)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="check">✔ (Netlify Blobs)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>엔터프라이즈 & 특수 환경</td>
+                        <td>Enterprise &amp; Special Environments</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -1032,7 +1048,7 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>프라이빗 네트워크 (Zero-Port)</td>
+                        <td>Private Network (Zero-Port)</td>
                         <td class="td-orbitron"><span class="check">✔ (Cloudflare 100%)</span></td>
                         <td><span class="check">✔ (Enterprise)</span></td>
                         <td><span class="check">✔ (Private Spaces)</span></td>
@@ -1041,7 +1057,7 @@
                         <td><span class="check">✔ (IPv6 WireGuard)</span></td>
                     </tr>
                     <tr>
-                        <td>Unreal Engine / 3D GPU 렌더링 호스팅</td>
+                        <td>Unreal Engine / 3D GPU Rendering Hosting</td>
                         <td class="td-orbitron"><span class="check">✔ (Pixel Streaming)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1050,26 +1066,25 @@
                         <td><span class="partial">△ (Fly GPU, Beta)</span></td>
                     </tr>
                     <tr>
-                        <td>Unity WebGL 전용 Gzip 링커 압축 엔진</td>
+                        <td>Dedicated Gzip Linker Compression Engine for Unity WebGL</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
-                        <td><span class="partial">△ (정적 호스팅)</span></td>
-                        <td><span class="partial">△ (임베딩 튜닝 요망)</span></td>
-                        <td><span class="partial">△ (정적 호스팅)</span></td>
-                        <td><span class="partial">△ (정적 호스팅)</span></td>
-                        <td><span class="partial">△ (Nginx 수동)</span></td>
+                        <td><span class="partial">△ (Static Hosting)</span></td>
+                        <td><span class="partial">△ (Requires Embedding Tuning)</span></td>
+                        <td><span class="partial">△ (Static Hosting)</span></td>
+                        <td><span class="partial">△ (Static Hosting)</span></td>
+                        <td><span class="partial">△ (Manual Nginx)</span></td>
                     </tr>
                 </tbody>
             </table>
         </div>
     </section>
-
     <section class="table-section" style="padding-top: 0;">
-        <h2 class="section-title">주요 국내외 웹 호스팅 & 클라우드 비교표</h2>
+        <h2 class="section-title">Major Domestic &amp; Global Web Hosting / Cloud Comparison</h2>
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>기능 구분</th>
+                        <th>Feature Category</th>
                         <th class="td-orbitron">🪐 Orbitron</th>
                         <th>Cafe24</th>
                         <th>Gabia</th>
@@ -1080,7 +1095,7 @@
                 </thead>
                 <tbody>
                     <tr class="cat-header">
-                        <td>핵심 배포 인프라</td>
+                        <td>Core Deployment Infrastructure</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -1089,17 +1104,17 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>Git 푸시 자동 배포 (CI/CD)</td>
+                        <td>Git Push Auto-Deploy (CI/CD)</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
-                        <td><span class="cross">✘ (FTP 수동)</span></td>
-                        <td><span class="cross">✘ (FTP 수동)</span></td>
+                        <td><span class="cross">✘ (Manual FTP)</span></td>
+                        <td><span class="cross">✘ (Manual FTP)</span></td>
                         <td><span class="check">✔ (Amplify)</span></td>
                         <td><span class="check">✔ (Firebase)</span></td>
-                        <td><span class="partial">△ (DevOps 별도)</span></td>
+                        <td><span class="partial">△ (Separate DevOps)</span></td>
                     </tr>
                     <tr>
-                        <td>풀스택 (모노리포) 배포 자동화</td>
-                        <td class="td-orbitron"><span class="check">✔ (자동 매핑)</span></td>
+                        <td>Full-stack (Monorepo) Deploy Automation</td>
+                        <td class="td-orbitron"><span class="check">✔ (Auto-Mapping)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1107,8 +1122,8 @@
                         <td><span class="cross">✘</span></td>
                     </tr>
                     <tr>
-                        <td>매니지드 데이터베이스 (PostgreSQL 등)</td>
-                        <td class="td-orbitron"><span class="check">✔ (자동 백업)</span></td>
+                        <td>Managed DB (PostgreSQL, etc.)</td>
+                        <td class="td-orbitron"><span class="check">✔ (Auto-Backup)</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
                         <td><span class="check">✔</span></td>
@@ -1116,7 +1131,7 @@
                         <td><span class="check">✔</span></td>
                     </tr>
                     <tr>
-                        <td>멀티 컨테이너 (Docker Compose 지원)</td>
+                        <td>Multi-container (Docker Compose)</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
                         <td><span class="check">✔ (K8s/Container)</span></td>
                         <td><span class="check">✔ (K8s/Container)</span></td>
@@ -1124,9 +1139,8 @@
                         <td><span class="check">✔ (K8s)</span></td>
                         <td><span class="check">✔ (K8s)</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>네트워크 & 트래픽</td>
+                        <td>Network &amp; Traffic</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -1135,35 +1149,34 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>글로벌 Edge CDN 지원</td>
+                        <td>Global Edge CDN Support</td>
                         <td class="td-orbitron"><span class="check">✔ (Cloudflare 100%)</span></td>
                         <td><span class="check">✔ (Global Edge)</span></td>
                         <td><span class="check">✔ (CDN)</span></td>
-                        <td><span class="partial">△ (국내 위주)</span></td>
+                        <td><span class="partial">△ (Domestic Focus)</span></td>
                         <td><span class="check">✔ (CDN)</span></td>
                         <td><span class="check">✔ (CDN)</span></td>
                     </tr>
                     <tr>
-                        <td>무료 엣지 SSL 및 커스텀 도메인</td>
-                        <td class="td-orbitron"><span class="check">✔ (Full 리소스 커버)</span></td>
-                        <td><span class="partial">△ (유료 연동/인증서 구매)</span></td>
-                        <td><span class="partial">△ (유료 연동)</span></td>
-                        <td><span class="cross">✘ (별도 구매)</span></td>
-                        <td><span class="partial">△ (유료 연동)</span></td>
-                        <td><span class="partial">△ (유료 연동)</span></td>
+                        <td>Free Edge SSL &amp; Custom Domain</td>
+                        <td class="td-orbitron"><span class="check">✔ (Full Resource Coverage)</span></td>
+                        <td><span class="partial">△ (Paid Intg. / Cert Purchase)</span></td>
+                        <td><span class="partial">△ (Paid Intg.)</span></td>
+                        <td><span class="cross">✘ (Separate Purchase)</span></td>
+                        <td><span class="partial">△ (Paid Intg.)</span></td>
+                        <td><span class="partial">△ (Paid Intg.)</span></td>
                     </tr>
                     <tr>
-                        <td>기본 DDoS 방어 및 WAF 적용</td>
-                        <td class="td-orbitron"><span class="check">✔ (엔터프라이즈 급)</span></td>
-                        <td><span class="partial">△ (유료 Security 부가)</span></td>
-                        <td><span class="partial">△ (유료 옵션)</span></td>
-                        <td><span class="partial">△ (부가서비스)</span></td>
-                        <td><span class="partial">△ (유료 옵션)</span></td>
-                        <td><span class="partial">△ (유료 옵션)</span></td>
+                        <td>Basic DDoS Protection &amp; WAF</td>
+                        <td class="td-orbitron"><span class="check">✔ (Enterprise Grade)</span></td>
+                        <td><span class="partial">△ (Paid Security Add-on)</span></td>
+                        <td><span class="partial">△ (Paid Option)</span></td>
+                        <td><span class="partial">△ (Add-on Service)</span></td>
+                        <td><span class="partial">△ (Paid Option)</span></td>
+                        <td><span class="partial">△ (Paid Option)</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>고급 기능 & AI</td>
+                        <td>Advanced Features &amp; AI</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -1172,7 +1185,7 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>배포 에러 AI 원인 진단 (RAG)</td>
+                        <td>AI Root Cause Diagnosis for Deploy Errors (RAG)</td>
                         <td class="td-orbitron"><span class="check">✔ (Gemini/Claude)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1181,26 +1194,25 @@
                         <td><span class="cross">✘</span></td>
                     </tr>
                     <tr>
-                        <td>과거 커밋 즉각 롤백</td>
+                        <td>Instant Rollback to Previous Commits</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
-                        <td><span class="cross">✘ (서버 스냅샷으로 복원)</span></td>
-                        <td><span class="cross">✘ (서버 스냅샷)</span></td>
-                        <td><span class="cross">✘ (백업본 수동 복원)</span></td>
+                        <td><span class="cross">✘ (Restore via Server Snapshot)</span></td>
+                        <td><span class="cross">✘ (Server Snapshot)</span></td>
+                        <td><span class="cross">✘ (Manual Backup Restore)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                     </tr>
                     <tr>
-                        <td>모바일 메신저 양방향 AI 서버 제어</td>
-                        <td class="td-orbitron"><span class="check">✔ (RemoteAGT 연동)</span></td>
+                        <td>Two-Way AI Server Control via Mobile Messenger</td>
+                        <td class="td-orbitron"><span class="check">✔ (RemoteAGT Intg.)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>확장 서비스 & 플랫폼 생태계</td>
+                        <td>Extended Services &amp; Platform Ecosystem</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -1210,7 +1222,7 @@
                     </tr>
                     <tr>
                         <td>Serverless Functions (FaaS)</td>
-                        <td class="td-orbitron"><span class="cross">✘ (상시 컨테이너 기반)</span></td>
+                        <td class="td-orbitron"><span class="cross">✘ (Always-on Container Based)</span></td>
                         <td><span class="check">✔ (Cloud Functions)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1219,7 +1231,7 @@
                     </tr>
                     <tr>
                         <td>Managed Redis / In-Memory Cache</td>
-                        <td class="td-orbitron"><span class="cross">✘ (직접 컨테이너 구동 요망)</span></td>
+                        <td class="td-orbitron"><span class="cross">✘ (Requires Manual Container Run)</span></td>
                         <td><span class="check">✔ (Cloud DB for Redis)</span></td>
                         <td><span class="check">✔ (Enterprise Redis)</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1227,17 +1239,16 @@
                         <td><span class="check">✔ (Redis)</span></td>
                     </tr>
                     <tr>
-                        <td>내장 Object Storage (S3 호환)</td>
-                        <td class="td-orbitron"><span class="cross">✘ (외부 스토리지 연동 요망)</span></td>
+                        <td>Built-in Object Storage (S3 Compatible)</td>
+                        <td class="td-orbitron"><span class="cross">✘ (Requires External Storage Intg.)</span></td>
                         <td><span class="check">✔ (Object Storage)</span></td>
                         <td><span class="check">✔ (Cloud Storage)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="check">✔ (Object Storage)</span></td>
                         <td><span class="check">✔ (Object Storage)</span></td>
                     </tr>
-
                     <tr class="cat-header">
-                        <td>엔터프라이즈 & 특수 환경</td>
+                        <td>Enterprise &amp; Special Environments</td>
                         <td class="td-orbitron"></td>
                         <td></td>
                         <td></td>
@@ -1246,28 +1257,28 @@
                         <td></td>
                     </tr>
                     <tr>
-                        <td>프라이빗 네트워크 (Zero-Port)</td>
+                        <td>Private Network (Zero-Port)</td>
                         <td class="td-orbitron"><span class="check">✔ (Cloudflare 100%)</span></td>
-                        <td><span class="check">✔ (VPC 망)</span></td>
-                        <td><span class="check">✔ (VPC 망)</span></td>
-                        <td><span class="check">✔ (VPC 망)</span></td>
-                        <td><span class="check">✔ (VPC 망)</span></td>
-                        <td><span class="check">✔ (VPC 망)</span></td>
+                        <td><span class="check">✔ (VPC Network)</span></td>
+                        <td><span class="check">✔ (VPC Network)</span></td>
+                        <td><span class="check">✔ (VPC Network)</span></td>
+                        <td><span class="check">✔ (VPC Network)</span></td>
+                        <td><span class="check">✔ (VPC Network)</span></td>
                     </tr>
                     <tr>
-                        <td>Unreal Engine / 3D GPU 렌더링 호스팅</td>
+                        <td>Unreal Engine / 3D GPU Rendering Hosting</td>
                         <td class="td-orbitron"><span class="check">✔ (Pixel Streaming)</span></td>
-                        <td><span class="partial">△ (GPU Server 인프라 대여)</span></td>
-                        <td><span class="partial">△ (GPU Server 대여)</span></td>
+                        <td><span class="partial">△ (GPU Server Infra Rental)</span></td>
+                        <td><span class="partial">△ (GPU Server Rental)</span></td>
                         <td><span class="cross">✘</span></td>
-                        <td><span class="partial">△ (GPU Server 대여)</span></td>
-                        <td><span class="partial">△ (GPU Server 대여)</span></td>
+                        <td><span class="partial">△ (GPU Server Rental)</span></td>
+                        <td><span class="partial">△ (GPU Server Rental)</span></td>
                     </tr>
                     <tr>
-                        <td>Unity WebGL 전용 Gzip 링커 압축 엔진</td>
+                        <td>Dedicated Gzip Linker Compression Engine for Unity WebGL</td>
                         <td class="td-orbitron"><span class="check">✔</span></td>
-                        <td><span class="cross">✘ (직접 웹서버 설정)</span></td>
-                        <td><span class="cross">✘ (직접 서버 설정)</span></td>
+                        <td><span class="cross">✘ (Manual Web Server Setup)</span></td>
+                        <td><span class="cross">✘ (Manual Server Setup)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1277,15 +1288,14 @@
         </div>
     </section>
     <div class="cta-banner">
-        <h2>지금 바로 Orbitron과 함께 차세대 인프라를 경험하세요</h2>
-        <p style="color:var(--text-muted); font-size:16px;">어떤 스택이든 손쉽고 안전하게 배포하고 AI의 감시를 받으세요.</p>
-        <a href="/dashboard" class="btn-primary">시작하기</a>
+        <h2>Experience Next-Gen Infrastructure with Orbitron Today</h2>
+        <p style="color:var(--text-muted); font-size:16px;">Deploy any stack easily and securely, under AI supervision.
+        </p>
+        <a class="btn-primary" href="/dashboard">Get Started</a>
     </div>
-
     <footer>
         <p>© 2026 Orbitron - Next-Gen Deployment Platform by Twinverse.org</p>
     </footer>
-
     <script>
         // Starfield background effect script (Optional based on performance)
     </script>

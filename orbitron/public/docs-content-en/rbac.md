@@ -1,16 +1,16 @@
-# 멤버 초대 및 역할 기반 접근 제어 (RBAC)
+# Member Invites & Role-Based Access Control (RBAC)
 
-> 💡 **출시 예정 기능 (Coming Soon)**
+> 💡 **Coming Soon (Upcoming Feature)**
 > 
-> 이 기능은 현재 Orbitron 엔지니어링 팁에서 열심히 개발 중인 핵심 로드맵 기능입니다.
+> This is a core roadmap feature currently in intense development by the Orbitron engineering team.
 > 
 
-혼자서만 개발하는 취미 프로젝트의 틀을 넘어 조직 단위로 인프라를 보호하기 위한 완전한 **권한 계층 구조(Role-Based Access Control)** 시스템입니다.
+Going beyond the framework of solo hobby projects, this is a complete **Role-Based Access Control** system designed to protect infrastructure at the organizational level.
 
-지금 당장 내 이메일 주소를 공유하거나 비밀번호를 팀원에게 알려줘야만 Orbitron 대시보드에 다 같이 들어올 수 있는 위험한 행동은 멈추세요!
+Stop the dangerous practice of sharing your email address or telling your password to team members just so everyone can log into the same Orbitron dashboard!
 
-*   **팀 가입 초대장:** 개발자나 기획자의 이메일 주소를 입력해 "조직(Organization)" 안으로 공식 초대합니다.
-*   **그레뉼러 권한 제어:** 역할표에 맞춰 함부로 배포를 못하게 막아 리스크를 제로로 만듭니다.
-    *   **Admin(관리자):** 프로젝트 삭제, 결제 청구서 조회 등 모든 최고 권한 
-    *   **Developer(개발자):** 환경 변수는 볼 수 있지만 서버 삭제 불가
-    *   **Viewer(눈팅족/기획자):** 사이트 켜진 것 확인 가능, 로그 볼 수 있음, 클릭/수정 절대 불가. 환경변수(비밀번호)도 열람 거절됨.
+*   **Team Join Invitations:** Officially invite developers or PMs into your "Organization" by entering their email addresses.
+*   **Granular Permission Control:** Reduce risk to zero by strictly preventing unauthorized deployments based on assigned roles.
+    *   **Admin:** Supreme authority for everything, including project deletion and viewing billing invoices.
+    *   **Developer:** Can view environment variables but cannot delete servers.
+    *   **Viewer:** Can verify if the site is running and view logs, but absolutely cannot click/modify anything. Viewing environment variables (passwords) is also denied.

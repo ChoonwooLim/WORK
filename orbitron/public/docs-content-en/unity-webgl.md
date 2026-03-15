@@ -1,29 +1,29 @@
-# Unity WebGL 최적화 배포
+# Unity WebGL Optimized Deployment
 
-가벼운 2D 게임이나 3D 웹 뷰어, 미니 캐주얼 배포에 최적인 유니티 엔진(Unity Engine)의 WebGL 파이프라인. 하지만 빌드해 낸 결과물을 그냥 평범하게 싸구려 서버(아파치/로컬)에 올리면 파싱(해석) 속도가 기어 다닐 정도로 너무 느려서 유저들이 로딩바를 보며 다 떠나갑니다. 
+The WebGL pipeline of the Unity Engine is optimal for deploying lightweight 2D games, 3D web viewers, and mini-casual titles. However, if you simply upload the build results to a cheap ordinary server (Apache/local), the parsing speed crawls so slowly that users will stare at the loading bar and abandon the site.
 
-Orbitron의 유니티 전용 파이프라인은 이 **WebGL 에 단단히 걸려 있는 압축 파일들을 풀 스피드로 강제 해제**하도록 특수 Nginx 튜닝을 가하여 광속 로딩을 구현해 줍니다. 
+Orbitron's Unity-dedicated pipeline implements speed-of-light loading by applying specialized Nginx tuning to **forcefully decompress the tightly packed compression files hanging on this WebGL at full speed**.
 
 ---
 
-## 🕹 가이드: 초광속 로딩을 위한 단 한 번의 설정
+## 🕹 Guide: A Single Setup for Speed-of-Light Loading
 
-이 기능을 쓰려면 **코드나 서버 세팅은 안 건드려도 되지만**, 본인의 유니티 에디터(Unity Editor)에서 버튼 하나만 확실히 체크하고 넘어와야 합니다. 
+To use this feature, **you don't need to touch any code or server settings**, but you must definitively check one single button in your own Unity Editor before coming over.
 
-### 1단계: 에디터 빌드 셋업
-1. 유니티 창 상단의 `File` > `Build Settings` 로 들어갑니다.
-2. 대상 플랫폼(Platform)을 **[WebGL]** 로 타겟 스위칭(Switch Platform) 해둡니다. (없다면 Unity Hub에서 인스톨 모듈 추가 필수)
-3. 제일 중요한 세팅입니다! 그 창 우측 하단의 `Player Settings` (플레이어 설정) 버튼을 누릅니다.
-4. 왼쪽 탭에서 `Player` -> 가운데의 `Publishing Settings` 아코디언 메뉴를 쫙 펼쳐보세요.
-5. **Compression Format (압축 포맷)** 항목을 찾아, 절대 `Disabled(사용안함)`로 두지 말고 **`Brotli`** 또는 **`Gzip`** 으로 설정하세요!!! (Brotli가 가장 압축률이 높아 최고의 속도를 보장합니다)
-6. `Build` 버튼을 눌러 결과물 폴더를 뽑아냅니다. 
+### Step 1: Editor Build Setup
+1. Go to `File` > `Build Settings` at the top of the Unity window.
+2. Ensure the target Platform is switched to **[WebGL]**. (If missing, adding the install module from Unity Hub is required)
+3. This is the most crucial setting! Click the `Player Settings` button at the bottom right of that window.
+4. From the left tab, go to `Player` -> and fully expand the `Publishing Settings` accordion menu in the center.
+5. Find the **Compression Format** item. Absolutely do not leave it as `Disabled`—set it to **`Brotli`** or **`Gzip`**!!! (Brotli boasts the highest compression ratio and guarantees the best speeds)
+6. Click the `Build` button to extract your output folder.
 
-### 2단계: 압축률 확인 (왜 튜닝이 필요한가?)
-정상적으로 위 세팅을 하고 뽑아내면, 여러분의 폴더 속 `Build` 폴더 내부에는 `.data.br`, `.wasm.br` 처럼 파일 끝에 낯선 확장자가 다닥다닥 엄청나게 붙어 나옵니다. 
-(이 고도로 압축된 파일들을 일반 서버에 던지면, 크롬(Chrome) 브라우저가 "이게 무슨 듣도 보도 못한 외계어 포맷이야?" 하고 거절해서 게임이 영원히 켜지지 않는 참사가 생깁니다. Orbitron은 브라우저에게 "이건 Brotli 압축 포맷이니 당장 초고속 렌더링으로 돌려라!" 라고 뒤에서 헤더를 강제 조작해 주는 마법입니다.)
+### Step 2: Verifying Compression Ratio (Why is tuning necessary?)
+If you properly configure the settings above and extract the build, you'll see a massive cluster of files with unfamiliar extensions like `.data.br` and `.wasm.br` inside your `Build` folder.
+(If you toss these highly compressed files onto a normal server, the Chrome browser will reject them saying "What kind of unheard-of alien format is this?", resulting in a disaster where the game never boots up. Orbitron works its magic by manipulating the headers behind the scenes, ordering the browser: "This is the Brotli compression format, so run it immediately with ultra-fast rendering!")
 
-### 3단계: 업로드하기
-1. 유니티가 배출한 최종 결과물, 즉 `index.html`과 방금 그 생소한 파일들이 든 `Build` 폴더, 기타 에셋 폴더들이 있는 루트 위치의 내용물 전체를 **알집이나 반디집으로 깔끔하게 `.zip` 압축**합니다.  
-2. Orbitron 대시보드 좌측의 **`Unity WebGL 배포`** 탭(일반 사이트 배포 탭이 아닙니다!)을 열고 업로드 창에 압축 파일을 끌어 올립니다. 
+### Step 3: Uploading
+1. **Cleanly compress everything into a `.zip` archive** using ALZip or Bandizip—this includes the final outputs Unity generated: `index.html`, the `Build` folder containing those unfamiliar files, and all contents at the root location where other asset folders reside.
+2. Open the **`Unity WebGL Deployment`** tab (not the regular site deployment tab!) on the left side of the Orbitron dashboard, and drag your zip file into the upload window.
 
-알아서 Nginx 설정이 여러분이 선택했던 Brotli 혹은 Gzip 압축 환경에 맞게 완벽 자동 튜닝되어, 기존 대비 많게는 5배 이상 빠른 속도의 게임 호스팅이 즉시 공개됩니다.
+The Nginx settings will automatically perfectly tune themselves to match the Brotli or Gzip compression environment you selected, instantly publishing your game hosting at speeds potentially 5x faster than before.

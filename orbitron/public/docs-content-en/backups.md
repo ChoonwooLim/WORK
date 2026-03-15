@@ -1,32 +1,32 @@
-# Hybrid Media and System Backups (Backups)
+# Hybrid Media and System Backups
 
-This powerful data preservation snapshot feature prevents catastrophic data loss, such as accidentally deleting valuable user-uploaded profile pictures (e.g., images in the `uploads/` folder) or critical coding files during project operation.
+This is a powerful data preservation snapshot feature designed to prevent catastrophic events where precious profile pictures uploaded by users (images in the `uploads/` folder, etc.) or core coding files are accidentally deleted during project operation.
 
-In addition to relational database backups like PostgreSQL, this is used when you need to securely store physical 'files' themselves. Orbitron provides two complete hybrid file archiving solutions, accessible with a single button within the dashboard.
+Beyond backing up relational databases like PostgreSQL, this is used when you need to securely store physical 'files' themselves. Orbitron provides two complete hybrid file archiving solutions within the dashboard with just a single button click.
 
 ---
 
 ## 1. Media System Backup (Media Volume Backup)
 
-A Docker container environment is fundamentally like a sandcastle, where data is volatile (stateless) and disappears every time the code is stopped and restarted. If you don't want to lose user-uploaded photos (in the `media/` folder) from a bulletin board every time the server is shut down, you would have configured persistent storage volumes (`Volumes`) during Orbitron creation.
+The inside of a Docker container is essentially a sandcastle environment where data is volatile (Stateless) every time you restart the code. If you don't want to lose the photos users uploaded to a message board (the `media/` folder) every time the server shuts down, you would have configured a permanent storage volume (`Volumes`) when creating Orbitron.
 
-This feature compresses and stores this valuable mounted folder itself, physically deep within the system, in a secure bunker.
+This feature physically compresses and stores this precious mounted folder entirely into a secure local bunker deep within the system.
 
-### Backup / Recovery Method
-1. Navigate to the project details page in the dashboard and check the **Data Management** panel on the right.
-2. **`Media System Backup`** orange button: Clicking this instantly takes a snapshot by compressing the current project's internal media volume folder into a `.tar` archive, stored in a secure local bunker path within the system.
-3. This snapshot remains on disk even if the project is completely deleted, allowing for recovery at any time.
+### How to Backup / Restore
+1. Enter the project details page on the dashboard and check the **Data Management** panel on the right.
+2. **`Media System Backup`** orange button: The moment you click it, the entire media volume folder inside your current project is `.tar` archived, compressed, and snapshotted directly to the secure local bunker path on the system.
+3. Even if the project is completely deleted, this snapshot remains on the disk and can be restored at any time.
 
 ---
 
-## 2. Git Project Clone Replication Backup 
+## 2. Git Project Clone Replication Backup
 
-What if a GitHub open-source repository you've worked on for days is hacked and completely wiped out or turned private? This is a terrible situation where the server is alive, but the original source code is gone.
+What if the open-source GitHub repository you spent days writing is hacked by someone and completely vanishes, or is turned private? It's a nightmare scenario where the server is alive but the original source code is gone.
 
-Orbitron features a background engine that secretly and deeply backs up the currently linked remote source code repository (GitHub Repo URL) itself within a large mainframe, keeping it updated via separate `git clone` and periodic `git pull` operations. 
+Orbitron comes equipped with a background engine that secretly and deeply backs up the actually linked remote source code repository (GitHub Repo URL) into the massive mainframe via separate `git clone` and periodic `git pull` updates.
 
 ### How it Works
-1. Click the **`Git Project Clone Replication Backup`** button on the right side of the project screen.
-2. Orbitron's internal daemon process fetches the original code you initially linked and creates a perfect copy (Clone) in a hidden directory within the system (e.g., `/home/stevenlim/GitClones/`).
-3. If a folder has already been backed up in the past, it intelligently `pull`s only the latest changed logs and merges them, avoiding the redundant act of downloading the entire repository again.
-4. This cloned repository, completely physically isolated and separated from the deployment system, serves as your robust defense even if the original is destroyed.
+1. Click the **`Git Project Clone Replication Backup`** button on the right screen of your project.
+2. Orbitron's internal daemon process fetches the original code you first linked and creates a perfect `Clone` in a hidden directory on the system (like `/home/stevenlim/GitClones/`).
+3. If there is already a folder backed up in the past, it brilliantly avoids doing the foolish act of downloading everything again, instead smartly `pull`ing and `Merge`ing only the latest modified logs.
+4. This copied repository, completely physically blocked and isolated from the deployment system, serves as your robust shield even if the original is destroyed.

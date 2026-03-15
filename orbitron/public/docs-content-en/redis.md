@@ -1,55 +1,55 @@
-# 인메모리 캐시 시스템 (Redis)
+# In-Memory Cache System (Redis)
 
-데이터베이스(PostgreSQL)가 영원히 지워지지 않는 거대한 서류 보관소(하드디스크)라면, **Redis**는 전원을 끄면 날아가지만 처리 속도가 압도적으로 빠른 초고속 램(In-Memory RAM) 캐시 저장소입니다.
+If a Database (PostgreSQL) is a massive filing cabinet (hard disk) that permanently stores data without ever erasing it, **Redis** is an ultra-high-speed In-Memory RAM cache storage that loses everything when turned off, but boasts overwhelmingly fast processing speeds.
 
-단순 데이터 저장뿐만 아니라 실시간 채팅(Pub/Sub), 세션 관리, 무거운 연산 결과물 저장 등에 매우 널리 쓰입니다.
-
----
-
-## ⚡ 왜 Redis가 필요한가요?
-
-사용자가 사이트 메인 페이지를 접속할 때마다 DB에서 "최신 게시글 50개"를 꺼내오는 복잡한 쿼리를 매번 실행하면 서버가 쉽게 죽습니다. 
-Orbitron에서 Redis를 버튼 하나로 생성해두고, 첫 번째 유저가 들어올 때 쿼리 결과를 Redis에 살짝 저장(캐시)해 둡니다. 두 번째 유저부터는 DB에 가지 않고 **메모리(Redis)에서 0.001초 만에 결과를 던져주면** 트래픽이 100배 증가해도 서버가 버팁니다!
+It is widely used not only for simple data storage but also for real-time chatting (Pub/Sub), session management, and storing heavy computational results.
 
 ---
 
-## 생성 및 연결 방법 (URL)
+## ⚡ Why do we need Redis?
 
-1. 대시보드에서 데이터베이스(Database) 생성 탭으로 이동하여 **Redis**를 선택합니다.
-2. 생성 즉시 아래와 같은 고유한 **Redis URL (Connection String)** 주소가 떨어집니다.
+If the server executes a complex query bringing out the "50 latest posts" from the DB every single time a user accesses the site's main page, the server will easily die.
+By creating an instance of Redis with a single button in Orbitron, you can lightly store (cache) the query results in Redis when the first user enters. From the second user onward, the server doesn't hit the DB but instead **fetches the results from memory (Redis) in just 0.001 seconds**, meaning the server easily withstands a 100x traffic increase!
+
+---
+
+## How to Create & Connect (URL)
+
+1. Navigate to the Database creation tab in the dashboard and select **Redis**.
+2. Immediately upon creation, a unique **Redis URL (Connection String)** address like the one below drops.
 
 ```
 redis://:mypassword123@redis-srv:6379/0
 ```
 
-*   `redis://` 프로토콜을 사용하며, 비밀번호와 호스트명, 6379 포트를 모두 담고 있습니다.
+*   It uses the `redis://` protocol and contains everything: the password, hostname, and port 6379.
 
-### Node.js (Express 등) 연결 예제
+### Node.js (Express, etc.) Connection Example
 
-당장 배포 중인 앱의 환경 변수에 `REDIS_URL` 로 위 주소를 등록한 후 코드를 작성하세요.
+Register the address above directly into your deploying app's environment variables as `REDIS_URL`, and then write your code.
 
 ```javascript
 const redis = require('redis');
 
-// 환경변수에 등록한 저 요상한 접속 주소 한줄을 그대로 넣으면 됨!
+// Just insert the strange connection address string registered in your environment variables as is!
 const client = redis.createClient({
     url: process.env.REDIS_URL
 });
 
-client.on('error', (err) => console.log('Redis 에러:', err));
+client.on('error', (err) => console.log('Redis Error:', err));
 
 await client.connect();
 
-// 아주 빠른 캐시 저장과 읽기
+// Ultra-fast cache storage and reading
 await client.set('best_user', 'steven');
 const name = await client.get('best_user');
 ```
 
 ---
 
-## 영속성 주의 (Eviction & Persistence)
+## Warning Regarding Persistence (Eviction)
 
-Redis의 기본 설계 철학은 "언젠가는 지워져도 앱 동작에 치명적인 장애를 주지 않아야 하는(Stateless) 부가적 휘발성 데이터"를 다루는 데 있습니다.
+The fundamental design philosophy of Redis is to manage "secondary volatile (Stateless) data that, even if erased someday, will not cause fatal disruptions to the app's operation".
 
-*   서버 메모리가 한계(Max Memory)에 도달하면, Redis 엔진은 제일 오랫동안 쓰지 않은 캐시 데이터(LRU)부터 쫓아내며(Evict) 용량을 스스로 확보합니다.
-*   따라서 절대 지워져선 안되는 금융 기록 같은 1급 데이터는 무조건 PostgreSQL에 넣으시고, 로그인 세션이나 임시 검색 결과 같은 것만 Redis에 담으시길 권장합니다.
+*   When the server memory reaches its limit (Max Memory), the Redis engine autonomously secures capacity by evicting the Least Recently Used (LRU) cached data.
+*   Therefore, we strongly advise putting top-tier data that must never be erased—like financial records—strictly into PostgreSQL, and using Redis only to hold things like login sessions or temporary search results.
