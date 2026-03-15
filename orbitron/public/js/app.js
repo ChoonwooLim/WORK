@@ -275,6 +275,11 @@ function navigateTo(page) {
 
     actions.innerHTML = `
         ${userInfoHtml}
+        <div style="display:flex; align-items:center; gap:8px; margin-right:8px; padding-right:12px; border-right:1px solid rgba(255,255,255,0.1); font-size:13px;">
+            <a href="#" style="color:var(--text-primary); font-weight:700; text-decoration:none;">KO</a>
+            <span style="color:var(--text-muted);">|</span>
+            <a href="/index-en.html" style="color:var(--text-muted); text-decoration:none;">EN</a>
+        </div>
         <a class="btn btn-sm btn-ghost" href="/" style="text-decoration:none; display:flex; align-items:center; gap:6px;">🏠 홈</a>
         <a class="btn btn-sm btn-ghost" href="${REMOTEAGT_ORIGIN}" style="text-decoration:none; display:flex; align-items:center; gap:6px; color: #58a6ff;">🌐 RemoteAGT</a>
         <button class="btn btn-sm btn-ghost" onclick="logout()" style="display:flex; align-items:center; gap:6px;">⏏ 로그아웃</button>
