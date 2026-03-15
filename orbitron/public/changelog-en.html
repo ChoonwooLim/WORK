@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Orbitron - Updates</title>
-    <meta name="description" content="Check out the latest feature additions, bug fixes, and improvements for Orbitron.">
+    <meta name="description"
+        content="Check out the latest feature additions, bug fixes, and improvements for Orbitron.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
@@ -351,13 +352,14 @@
                 gap: 8px;
             }
         }
-    
+
         /* Nav Dropdown for IR */
         .nav-dropdown {
             position: relative;
             display: inline-block;
             margin-left: 24px;
         }
+
         .nav-dropdown-btn {
             color: var(--text-muted);
             text-decoration: none;
@@ -373,27 +375,32 @@
             gap: 4px;
             transition: color 0.2s;
         }
+
         .nav-dropdown:hover .nav-dropdown-btn {
             color: var(--text-main);
         }
+
         .nav-dropdown-content {
             display: none;
             position: absolute;
             top: 100%;
             left: 50%;
             transform: translateX(-50%);
-            padding-top: 20px; /* Instead of margin, to bridge the hover gap */
+            padding-top: 20px;
+            /* Instead of margin, to bridge the hover gap */
             z-index: 200;
         }
+
         .nav-dropdown-inner {
             background-color: rgba(15, 23, 42, 0.95);
             min-width: 170px;
-            box-shadow: 0px 8px 24px rgba(0,0,0,0.6);
+            box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             padding: 8px 0;
             backdrop-filter: blur(10px);
         }
+
         .nav-dropdown-inner a {
             color: var(--text-muted) !important;
             padding: 10px 20px !important;
@@ -405,15 +412,15 @@
             text-align: center;
             font-weight: 400 !important;
         }
+
         .nav-dropdown-inner a:hover {
             background-color: rgba(255, 255, 255, 0.05);
             color: var(--text-main) !important;
         }
+
         .nav-dropdown:hover .nav-dropdown-content {
             display: block;
         }
-
-
     </style>
 </head>
 
@@ -429,7 +436,8 @@
             <a href="/pricing-en.html">Pricing</a>
             <a href="/docs-en.html">Docs</a>
             <div class="nav-dropdown">
-                <button class="nav-dropdown-btn" onclick="window.location.href='/ir-en.html'">IR (Investors) <span style="font-size: 10px;">▼</span></button>
+                <button class="nav-dropdown-btn" onclick="window.location.href='/ir-en.html'">IR (Investors) <span
+                        style="font-size: 10px;">▼</span></button>
                 <div class="nav-dropdown-content">
                     <div class="nav-dropdown-inner">
                         <a href="/ir-en.html">Vision & Financials</a>
@@ -440,6 +448,7 @@
             </div>
             <a href="/changelog-en.html" class="active">Updates</a>
             <a href="https://RemoteAGT.twinverse.org">RemoteAGT</a>
+            <a href="/changelog.html">KO</a>
             <a href="/dashboard" class="btn-login" id="nav-auth-btn">Launch Dashboard</a>
         </div>
     </nav>
@@ -466,21 +475,26 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Custom Domain Auto-Connection System</strong>
-                        <p>Automatically connects domains purchased from Gabia, Namecheap, etc. in 3 steps (DNS Verification → Cloudflare Tunnel Connection → Activation). By just setting the CNAME record, SSL certificates, reverse proxy, and CDN are all automatically applied.</p>
+                        <p>Automatically connects domains purchased from Gabia, Namecheap, etc. in 3 steps (DNS
+                            Verification → Cloudflare Tunnel Connection → Activation). By just setting the CNAME record,
+                            SSL certificates, reverse proxy, and CDN are all automatically applied.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Automated DNS Verification API</strong>
-                        <p>Automatically verifies in real-time whether DNS records are set correctly before connecting a custom domain. Provides specific modification guides for incorrect settings.</p>
+                        <p>Automatically verifies in real-time whether DNS records are set correctly before connecting a
+                            custom domain. Provides specific modification guides for incorrect settings.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-docs">Docs</span>
                     <div class="change-content">
                         <strong>Domain Management Guide & Purchase Feature Roadmap</strong>
-                        <p>Added CNAME setup guides for major domain registrars like Gabia, Namecheap, and Cloudflare. Revealed the implementation roadmap for future domain search/purchase/auto-connection features (Gabia Reseller API, Namecheap API).</p>
+                        <p>Added CNAME setup guides for major domain registrars like Gabia, Namecheap, and Cloudflare.
+                            Revealed the implementation roadmap for future domain search/purchase/auto-connection
+                            features (Gabia Reseller API, Namecheap API).</p>
                     </div>
                 </li>
             </ul>
@@ -501,21 +515,29 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>SSE-Equipped Telegram and KakaoTalk Mobile Web Simulator</strong>
-                        <p>Launched a web simulator that perfectly mimics the mobile Telegram and KakaoTalk UI structures within the <b>RemoteAGT</b> dashboard so you can demonstrate perfect frontend control in the browser without an actual bot token. Delivers a seamless response experience through a real-time SSE (Server-Sent Events) asynchronous pipeline without polling and Webhook mocking technology.</p>
+                        <p>Launched a web simulator that perfectly mimics the mobile Telegram and KakaoTalk UI
+                            structures within the <b>RemoteAGT</b> dashboard so you can demonstrate perfect frontend
+                            control in the browser without an actual bot token. Delivers a seamless response experience
+                            through a real-time SSE (Server-Sent Events) asynchronous pipeline without polling and
+                            Webhook mocking technology.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>KakaoTalk Channel Auto Notification Bot Integration</strong>
-                        <p>Now, deployment progress and server failure monitoring warnings can be received in real-time in mobile chat rooms through 'KakaoTalk Open Builder Skill Integration' tailored for the domestic environment, in addition to Telegram.</p>
+                        <p>Now, deployment progress and server failure monitoring warnings can be received in real-time
+                            in mobile chat rooms through 'KakaoTalk Open Builder Skill Integration' tailored for the
+                            domestic environment, in addition to Telegram.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-improve">Improvement</span>
                     <div class="change-content">
                         <strong>Orbitron & RemoteAGT Crossover Unified Authentication (SSO)</strong>
-                        <p>Now, two completely independent services have been integrated over a single physical PostgreSQL database network. Whichever side you sign up from, fully cross-compatible login is possible through the <code>*.twinverse.org</code> wildcard cookie.
+                        <p>Now, two completely independent services have been integrated over a single physical
+                            PostgreSQL database network. Whichever side you sign up from, fully cross-compatible login
+                            is possible through the <code>*.twinverse.org</code> wildcard cookie.
                         </p>
                     </div>
                 </li>
@@ -523,7 +545,9 @@
                     <span class="change-badge badge-fix">Bug Fix</span>
                     <div class="change-content">
                         <strong>Database Schema Column Missing Resolved</strong>
-                        <p>Completely fixed and migrated the critical login block bug that occurred due to the absence of <code>web_user_id</code> and <code>user_id</code> columns during the activity log (<code>ragt_audit_log</code>) logging process upon sign-up.
+                        <p>Completely fixed and migrated the critical login block bug that occurred due to the absence
+                            of <code>web_user_id</code> and <code>user_id</code> columns during the activity log
+                            (<code>ragt_audit_log</code>) logging process upon sign-up.
                         </p>
                     </div>
                 </li>
@@ -545,49 +569,64 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Smart Project Analyzer — Automated Project Structure Analyzer</strong>
-                        <p>100% auto-detects runtimes (Node.js, Python, Go, etc.), frameworks (over 20 types including FastAPI, Vite, Next.js), service types, ports, build commands, and dependencies upon deployment. Perfect deployment is possible even without orbitron.yaml.</p>
+                        <p>100% auto-detects runtimes (Node.js, Python, Go, etc.), frameworks (over 20 types including
+                            FastAPI, Vite, Next.js), service types, ports, build commands, and dependencies upon
+                            deployment. Perfect deployment is possible even without orbitron.yaml.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Multi-Service orbitron.yaml Support</strong>
-                        <p>By defining multiple services such as backend, frontend, and staff apps as a services array in a single repository, it automatically deploys each service to the correct target (Docker/CF Pages). Automatically connects URLs between services using the <code>from:</code> reference syntax.</p>
+                        <p>By defining multiple services such as backend, frontend, and staff apps as a services array
+                            in a single repository, it automatically deploys each service to the correct target
+                            (Docker/CF Pages). Automatically connects URLs between services using the <code>from:</code>
+                            reference syntax.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Cloudflare Pages Static Site Auto-Deployment</strong>
-                        <p>When a <code>type: static</code> service is detected, it automatically builds/deploys to the Cloudflare Pages CDN. Served at ultra-high speed from the global edge network, and also supports simultaneous multi-frontend deployments.</p>
+                        <p>When a <code>type: static</code> service is detected, it automatically builds/deploys to the
+                            Cloudflare Pages CDN. Served at ultra-high speed from the global edge network, and also
+                            supports simultaneous multi-frontend deployments.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>PostDeploy Hooks — Execute Custom Commands Post-Deployment</strong>
-                        <p>Defines the <code>postDeploy:</code> array in orbitron.yaml to automatically execute additional commands after the main deployment is complete. Supports environment variable injection, a 3-minute timeout, and success/failure logging.</p>
+                        <p>Defines the <code>postDeploy:</code> array in orbitron.yaml to automatically execute
+                            additional commands after the main deployment is complete. Supports environment variable
+                            injection, a 3-minute timeout, and success/failure logging.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-fix">Bug Fix</span>
                     <div class="change-content">
                         <strong>Fixed Missing Environment Variables During Static Service Build</strong>
-                        <p>Fixed a critical bug where environment variables such as <code>VITE_API_URL</code> were not injected during Vite/React static service builds, causing the production environment to request APIs to localhost.</p>
+                        <p>Fixed a critical bug where environment variables such as <code>VITE_API_URL</code> were not
+                            injected during Vite/React static service builds, causing the production environment to
+                            request APIs to localhost.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-docs">Docs</span>
                     <div class="change-content">
                         <strong>Massive Update of 5 Deployment Documentation Pages</strong>
-                        <p>Added contents on multi-service deployment, Smart Analyzer, CF Pages auto deployment, and Error Knowledge DB to the IaC guide, static sites, AI analyzer, core concepts, and web services docs.</p>
+                        <p>Added contents on multi-service deployment, Smart Analyzer, CF Pages auto deployment, and
+                            Error Knowledge DB to the IaC guide, static sites, AI analyzer, core concepts, and web
+                            services docs.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Viewer Tier — Read-Only Member Tier Added</strong>
-                        <p>New users are automatically assigned the 'Viewer' tier, allowing them to browse the dashboard menu but restricting project creation, deployment, and modification. Administrators can promote their tier (Viewer → User → Admin).</p>
+                        <p>New users are automatically assigned the 'Viewer' tier, allowing them to browse the dashboard
+                            menu but restricting project creation, deployment, and modification. Administrators can
+                            promote their tier (Viewer → User → Admin).</p>
                     </div>
                 </li>
             </ul>
@@ -608,14 +647,17 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Error Knowledge DB — AI Error Learning System</strong>
-                        <p>Automatically saves error patterns and solutions analyzed by AI, instantly suggesting past solutions when the same error recurs. A learning deployment platform that resolves issues faster over time.</p>
+                        <p>Automatically saves error patterns and solutions analyzed by AI, instantly suggesting past
+                            solutions when the same error recurs. A learning deployment platform that resolves issues
+                            faster over time.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-improve">Improvement</span>
                     <div class="change-content">
                         <strong>Docker Image HDD Migration</strong>
-                        <p>Optimized SSD disk space by migrating Docker images and build caches from SSD to HDD. Secures tens of GBs of space without affecting site performance.
+                        <p>Optimized SSD disk space by migrating Docker images and build caches from SSD to HDD. Secures
+                            tens of GBs of space without affecting site performance.
                         </p>
                     </div>
                 </li>
@@ -637,7 +679,8 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Real-time Project Card Resource Statistics</strong>
-                        <p>Check CPU, memory, uptime, and network I/O in real-time from the dashboard project list. Monitor all projects at a glance without entering individual pages.
+                        <p>Check CPU, memory, uptime, and network I/O in real-time from the dashboard project list.
+                            Monitor all projects at a glance without entering individual pages.
                         </p>
                     </div>
                 </li>
@@ -645,21 +688,24 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>External DB Backup Support (Based on DATABASE_URL)</strong>
-                        <p>The PostgreSQL backup feature has been expanded to allow one-click backups of external databases connected via the DATABASE_URL environment variable.</p>
+                        <p>The PostgreSQL backup feature has been expanded to allow one-click backups of external
+                            databases connected via the DATABASE_URL environment variable.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Media File Backup Service</strong>
-                        <p>Automatically backs up media files (images, documents, etc.) within the DATA drive. Provides manual backup/restore functions and deployment system integration.</p>
+                        <p>Automatically backs up media files (images, documents, etc.) within the DATA drive. Provides
+                            manual backup/restore functions and deployment system integration.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Git Repo Local Clone Backup</strong>
-                        <p>Clones the repo to the local backup directory using the 'Clone' button next to the GitHub URL. If it already exists, it updates via git pull.</p>
+                        <p>Clones the repo to the local backup directory using the 'Clone' button next to the GitHub
+                            URL. If it already exists, it updates via git pull.</p>
                     </div>
                 </li>
             </ul>
@@ -680,21 +726,24 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Deployment by Specific Commit Selection</strong>
-                        <p>Select a specific Git commit for deployment. Allows rolling back to code from a specific point in time or testing deployments instead of using the latest commit.</p>
+                        <p>Select a specific Git commit for deployment. Allows rolling back to code from a specific
+                            point in time or testing deployments instead of using the latest commit.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-fix">Bug Fix</span>
                     <div class="change-content">
                         <strong>Fixed AI Chat API Key Loading Error</strong>
-                        <p>Resolved the "API key missing" error and unresponsive reset button issue in the AI chat feature. The default model is set to Claude 4.6 Sonnet.</p>
+                        <p>Resolved the "API key missing" error and unresponsive reset button issue in the AI chat
+                            feature. The default model is set to Claude 4.6 Sonnet.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-improve">Improvement</span>
                     <div class="change-content">
                         <strong>New Pricing Page</strong>
-                        <p>Added a pricing page containing prices by plan, compute costs, feature comparison tables, and an interactive FAQ accordion.</p>
+                        <p>Added a pricing page containing prices by plan, compute costs, feature comparison tables, and
+                            an interactive FAQ accordion.</p>
                     </div>
                 </li>
             </ul>
@@ -715,28 +764,32 @@
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>GitHub Webhook Auto Deployment (CI/CD)</strong>
-                        <p>Automatically detects pushes to the GitHub repository and executes zero-downtime deployments. Guarantees zero downtime with Blue-Green switching.</p>
+                        <p>Automatically detects pushes to the GitHub repository and executes zero-downtime deployments.
+                            Guarantees zero downtime with Blue-Green switching.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>AI Error Analysis Assistant</strong>
-                        <p>In case of deployment failure, the Claude/Gemini AI analyzes error logs and provides causes and solutions in English.</p>
+                        <p>In case of deployment failure, the Claude/Gemini AI analyzes error logs and provides causes
+                            and solutions in English.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Feature</span>
                     <div class="change-content">
                         <strong>Unreal Engine Pixel Streaming</strong>
-                        <p>One-click deployment of an Unreal Engine pixel streaming server applied with dual GPU load balancing.</p>
+                        <p>One-click deployment of an Unreal Engine pixel streaming server applied with dual GPU load
+                            balancing.</p>
                     </div>
                 </li>
                 <li class="change-item">
                     <span class="change-badge badge-security">Security</span>
                     <div class="change-content">
                         <strong>Cloudflare Tunnel Auto Security Ingress</strong>
-                        <p>Automatically applies HTTPS secure access and DDoS protection via Cloudflare Tunnel to all deployed projects.</p>
+                        <p>Automatically applies HTTPS secure access and DDoS protection via Cloudflare Tunnel to all
+                            deployed projects.</p>
                     </div>
                 </li>
             </ul>
