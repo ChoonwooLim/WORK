@@ -15,6 +15,11 @@
 > 📝 **Docker 배포 시 주의사항 (EXPOSE)**
 > Orbitron 라우터가 외부 80/443번 포트 트래픽을 여러분의 컨테이너 안으로 무사히 전달하려면, `Dockerfile` 내부에 반드시 `EXPOSE 3000`(또는 여러분이 사용하는 포트) 명령어가 선언되어 있어야 합니다. 그래야 Orbitron이 어떤 포트로 트래픽을 넘겨줄지 알 수 있습니다.
 
+> ⚠️ **npm 빌드 오류 주의 (postinstall & Prisma)**
+> `package.json`의 `postinstall` 스크립트(예: `prisma generate`)는 Docker 빌드 과정 중 소스 코드가 복사되기 전인 `npm install` 단계에서 실행되어 **빌드 실패**를 유발할 수 있습니다.
+> 빌드가 실패하면 Orbitron은 서비스 중단을 막기 위해 **마지막으로 성공했던 과거 이미지로 자동 롤백**합니다! (예전 코드가 배포되는 현상 발생)
+> 이를 방지하기 위해 Orbitron의 자동 빌더는 `--ignore-scripts` 옵션을 사용합니다. 따라서 Prisma 제너레이트 등은 빌드 스크립트(`npm run build`) 내부나 컨테이너 시작 시(`CMD`)에 명시해주세요.
+
 ---
 
 ## 2. 멀티 컨테이너 (Docker Compose) 오케스트레이션

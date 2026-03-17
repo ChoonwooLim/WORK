@@ -15,6 +15,11 @@ If a `Dockerfile` exists at the root of your project folder, Orbitron instantly 
 > 📝 **Notes on Docker Deployment (EXPOSE)**
 > For the Orbitron router to safely forward external port 80/443 traffic inside your container, you must declare an `EXPOSE 3000` (or whatever port you use) command inside the `Dockerfile`. Only then will Orbitron know which port to forward traffic to.
 
+> ⚠️ **NPM Build Error Warning (postinstall & Prisma)**
+> `postinstall` scripts in your `package.json` (such as `prisma generate`) execute during the `npm install` phase before your source code is fully copied into the image, which often causes **Docker build failures**.
+> If a build fails, Orbitron **automatically rolls back to the last successful image** to prevent downtime! (This results in old code being deployed).
+> To prevent this, Orbitron's automated builder uses the `--ignore-scripts` flag. Therefore, ensure you run Prisma generators etc. explicitly inside your build scripts (`npm run build`) or your container startup command (`CMD`).
+
 ---
 
 ## 2. Multi-Container (Docker Compose) Orchestration

@@ -558,7 +558,7 @@ CMD [ "bash", "-c", "./${startScript} -RenderOffscreen -PixelStreamingURL=ws://1
 WORKDIR /app
 RUN apk add --no-cache openssl openssl-dev
 COPY ${copyFrom}package*.json ./
-RUN npm install --legacy-peer-deps
+RUN npm install --legacy-peer-deps --ignore-scripts
 COPY ${copyFrom} ./
 RUN npx prisma generate 2>/dev/null || true
 ENV NEXT_TELEMETRY_DISABLED=1
