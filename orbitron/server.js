@@ -10,6 +10,7 @@ const util = require('util');
 const execAsync = util.promisify(exec);
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 4000;
 
 // Middleware

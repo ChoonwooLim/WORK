@@ -405,7 +405,7 @@ if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
         const detected = this.detectProjectType(projectDir, project);
         const port = project.port || 3000;
         const { type, subdir } = detected;
-        const copyFrom = subdir ? `${subdir}/` : '.';
+        const copyFrom = subdir ? `${subdir}/` : './';
 
         // ── Fullstack: multi-stage build (frontend + backend + extra apps) ──
         if (type === 'fullstack') {
@@ -562,8 +562,7 @@ RUN npm install --legacy-peer-deps --ignore-scripts
 COPY ${copyFrom} ./
 RUN npx prisma generate 2>/dev/null || true
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV TURBOPACK=0
-RUN npx next build
+RUN npm run build
 RUN mkdir -p public prisma
 
 FROM node:20-alpine AS runner
