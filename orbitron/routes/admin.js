@@ -350,4 +350,65 @@ router.get('/logs', async (req, res) => {
     }
 });
 
+// ============ BUG FIXES (KNOWLEDGE BASE) ============
+
+// GET /api/admin/bugs
+router.get('/bugs', async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT b.*, u.username as created_by_name
+            FROM bug_fixes b
+            LEFT JOIN users u ON b.created_by = u.id
+            ORDER BY b.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/admin/bugs
+router.post('/bugs', async (req, res) => {
+    const { title, description, cause, resolution } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+    try {
+        const result = await db.queryOne(`
+            INSERT INTO bug_fixes (title, description, cause, resolution, created_by)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `, [title, description, cause, resolution, req.user.userId]);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// PUT /api/admin/bugs/:id
+router.put('/bugs/:id', async (req, res) => {
+    const { title, description, cause, resolution } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+    try {
+        const result = await db.queryOne(`
+            UPDATE bug_fixes
+            SET title = $1, description = $2, cause = $3, resolution = $4, updated_at = NOW()
+            WHERE id = $5
+            RETURNING *
+        `, [title, description, cause, resolution, req.params.id]);
+        if (!result) return res.status(404).json({ error: 'Bug log not found' });
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE /api/admin/bugs/:id
+router.delete('/bugs/:id', async (req, res) => {
+    try {
+        const result = await db.query('DELETE FROM bug_fixes WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 module.exports = router;

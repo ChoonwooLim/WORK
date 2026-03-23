@@ -237,6 +237,7 @@ function navigateTo(page) {
         'admin-system': '🖥 시스템 모니터',
         'admin-users': '👥 유저 관리',
         'admin-projects': '🌐 전체 프로젝트',
+        'admin-bugs': '🐞 버그 수정 로그',
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
 
@@ -320,6 +321,7 @@ function navigateTo(page) {
     if (page === 'admin-system') renderAdminSystem();
     if (page === 'admin-users') renderAdminUsers();
     if (page === 'admin-projects') renderAdminProjects();
+    if (page === 'admin-bugs') loadAdminBugs();
 }
 
 // ============ PROJECT LIST ============
@@ -3962,4 +3964,119 @@ async function deleteIssue(id) {
         toast('이슈가 삭제되었습니다.', 'success');
         loadIssues();
     } catch (e) { toast('삭제 실패', 'error'); }
+}
+
+// ============ SUPERADMIN BUG FIXES (KNOWLEDGE BASE) ============
+
+async function loadAdminBugs() {
+    try {
+        const res = await fetch(`${API}/admin/bugs`);
+        if (!res.ok) throw new Error('Failed to load bugs');
+        const bugs = await res.json();
+        
+        const listEl = document.getElementById('admin-bugs-list');
+        if (bugs.length === 0) {
+            listEl.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">등록된 버그 수정 기록이 없습니다.</div>';
+            return;
+        }
+
+        listEl.innerHTML = bugs.map(b => `
+            <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <h4 style="margin:0 0 8px 0; font-size:16px; color:var(--text-primary);">${escapeHtml(b.title)}</h4>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-sm btn-ghost" onclick="editBug(${b.id})">✏️ 수정</button>
+                        <button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteBug(${b.id})">🗑 삭제</button>
+                    </div>
+                </div>
+                <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+                    작성자: ${escapeHtml(b.created_by_name || '알 수 없음')} | 작성일: ${new Date(b.created_at).toLocaleString()}
+                </div>
+                ${b.description ? `<div style="margin-bottom:8px;"><strong>에러 내용:</strong> <div style="background:rgba(0,0,0,0.2); padding:8px; border-radius:4px; font-family:monospace; font-size:12px; margin-top:4px; white-space:pre-wrap;">${escapeHtml(b.description)}</div></div>` : ''}
+                ${b.cause ? `<div style="margin-bottom:8px;"><strong>발생 원인:</strong> <div style="color:var(--text-secondary); margin-top:4px; font-size:13px; white-space:pre-wrap;">${escapeHtml(b.cause)}</div></div>` : ''}
+                ${b.resolution ? `<div style="margin-bottom:8px;"><strong>해결 방법:</strong> <div style="color:var(--success); margin-top:4px; font-size:13px; white-space:pre-wrap;">${escapeHtml(b.resolution)}</div></div>` : ''}
+            </div>
+        `).join('');
+    } catch (e) {
+        document.getElementById('admin-bugs-list').innerHTML = `<div style="color:var(--danger);">${e.message}</div>`;
+    }
+}
+
+function openBugModal() {
+    document.getElementById('bug-id').value = '';
+    document.getElementById('bug-title').value = '';
+    document.getElementById('bug-description').value = '';
+    document.getElementById('bug-cause').value = '';
+    document.getElementById('bug-resolution').value = '';
+    document.getElementById('bug-modal-title').textContent = '🐞 새 버그 기록';
+    document.getElementById('bug-form-modal').classList.add('active');
+}
+
+function closeBugModal() {
+    document.getElementById('bug-form-modal').classList.remove('active');
+}
+
+async function editBug(id) {
+    try {
+        const res = await fetch(`${API}/admin/bugs`);
+        const bugs = await res.json();
+        const b = bugs.find(x => x.id === id);
+        if (!b) return;
+
+        document.getElementById('bug-id').value = b.id;
+        document.getElementById('bug-title').value = b.title || '';
+        document.getElementById('bug-description').value = b.description || '';
+        document.getElementById('bug-cause').value = b.cause || '';
+        document.getElementById('bug-resolution').value = b.resolution || '';
+        document.getElementById('bug-modal-title').textContent = '🐞 버그 기록 수정';
+        document.getElementById('bug-form-modal').classList.add('active');
+    } catch (e) {
+        toast('버그 정보를 불러올 수 없습니다.', 'error');
+    }
+}
+
+async function saveBug() {
+    const id = document.getElementById('bug-id').value;
+    const data = {
+        title: document.getElementById('bug-title').value.trim(),
+        description: document.getElementById('bug-description').value.trim(),
+        cause: document.getElementById('bug-cause').value.trim(),
+        resolution: document.getElementById('bug-resolution').value.trim()
+    };
+
+    if (!data.title) {
+        toast('제목을 입력해주세요.', 'error');
+        return;
+    }
+
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API}/admin/bugs/${id}` : `${API}/admin/bugs`;
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (!res.ok) throw new Error('저장 실패');
+        
+        toast('저장되었습니다.', 'success');
+        closeBugModal();
+        loadAdminBugs();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function deleteBug(id) {
+    if (!confirm('정말 이 버그 기록을 삭제하시겠습니까?')) return;
+    try {
+        const res = await fetch(`${API}/admin/bugs/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('삭제 실패');
+        toast('삭제되었습니다.', 'success');
+        loadAdminBugs();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
 }

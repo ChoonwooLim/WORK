@@ -132,3 +132,15 @@ CREATE TABLE IF NOT EXISTS issues (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- SuperAdmin Bug Fixes Knowledge Base (버그 수정 로그)
+CREATE TABLE IF NOT EXISTS bug_fixes (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(300) NOT NULL,
+    description TEXT DEFAULT '',
+    cause TEXT DEFAULT '',
+    resolution TEXT DEFAULT '',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
