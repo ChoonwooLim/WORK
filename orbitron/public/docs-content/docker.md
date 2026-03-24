@@ -20,6 +20,12 @@
 > 빌드가 실패하면 Orbitron은 서비스 중단을 막기 위해 **마지막으로 성공했던 과거 이미지로 자동 롤백**합니다! (예전 코드가 배포되는 현상 발생)
 > 이를 방지하기 위해 Orbitron의 자동 빌더는 `--ignore-scripts` 옵션을 사용합니다. 따라서 Prisma 제너레이트 등은 빌드 스크립트(`npm run build`) 내부나 컨테이너 시작 시(`CMD`)에 명시해주세요.
 
+> 💡 **Next.js 자동 시스템 의존성 주입 (Auto-Dependency Inject)**
+> Orbitron 스마트 빌더는 Next.js 배포 시 `package.json`을 분석하여 `yt-dlp`, `ffmpeg`, `youtube` 혹은 `canvas` 구문이 발견되면, 빌드 환경에 `apk add` 명령어를 통해 필수 시스템 패키지(예: python3, ffmpeg, cairo-dev 등)를 자동으로 설치합니다. 또한, 프로젝트 루트에 `apk.txt` 또는 `apt.txt` 파일이 있으면 내부에 나열된 패키지들을 함께 내장시킵니다.
+
+> 🔌 **매니지드 데이터베이스 로컬 포워딩**
+> PostgreSQL이나 Redis 배포 시, Orbitron 내부망 격리 원칙을 유지하면서도 외부 생성 포트(예: 3776)를 도커 내부 DB 고유 포트로 자동 맵핑(`-p`)합니다. 이로써 여러분은 언제든 `localhost:3776` 주소를 통해 DBeaver, Prisma Studio 등의 로컬 툴에서 데이터베이스에 손쉽게 직접 연결할 수 있습니다.
+
 ---
 
 ## 2. 멀티 컨테이너 (Docker Compose) 오케스트레이션

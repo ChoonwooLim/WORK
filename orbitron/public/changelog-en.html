@@ -461,6 +461,34 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.7.1 — 2026-03-24                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.7.1</span>
+                <span class="version-date">March 24, 2026</span>
+            </div>
+            <p class="version-title">🐳 Docker Dependency Auto-Injection & Local DB Port Forwarding Support</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Feature</span>
+                    <div class="change-content">
+                        <strong>Next.js System OS Dependency Auto-Injection (apk add)</strong>
+                        <p>Analyzes <code>package.json</code> and automatically injects required OS system packages (ffmpeg, python3, cairo, etc.) into the Alpine Linux-based Docker image at build time if media-related packages (<code>yt-dlp</code>, <code>ffmpeg</code>) or image processing libraries (<code>canvas</code>) are present. Additionally supports loading custom packages via <code>apk.txt</code> and <code>apt.txt</code> files located in the project root.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improvement</span>
+                    <div class="change-content">
+                        <strong>Database External Port Auto-Mapping</strong>
+                        <p>When deploying managed databases such as PostgreSQL or Redis, the assigned port is now automatically port-forwarded (-p) and connected to the internal Docker port (5432, 6379). This maintains internal network isolation while allowing developers to connect directly from the outside during local development via DB tools like Prisma Studio or DBeaver.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.7.0 — 2026-03-06                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

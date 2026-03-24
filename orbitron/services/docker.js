@@ -553,10 +553,35 @@ CMD [ "bash", "-c", "./${startScript} -RenderOffscreen -PixelStreamingURL=ws://1
         }
 
         if (type === 'nextjs') {
+            // Auto-detect system dependencies
+            let extraApk = '';
+            try {
+                const pkgPath = path.join(projectDir, subdir ? subdir : '', 'package.json');
+                if (fs.existsSync(pkgPath)) {
+                    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                    const deps = JSON.stringify({ ...pkg.dependencies, ...pkg.devDependencies });
+                    if (deps.includes('yt-dlp') || deps.includes('youtube') || deps.includes('ffmpeg')) {
+                        extraApk += ' ffmpeg python3 yt-dlp';
+                    }
+                    if (deps.includes('canvas')) {
+                        extraApk += ' cairo-dev pango-dev jpeg-dev giflib-dev librsvg-dev';
+                    }
+                }
+                const apkTxt = path.join(projectDir, subdir ? subdir : '', 'apk.txt');
+                const aptTxt = path.join(projectDir, subdir ? subdir : '', 'apt.txt');
+                if (fs.existsSync(apkTxt)) {
+                    extraApk += ' ' + fs.readFileSync(apkTxt, 'utf8').replace(/\\n/g, ' ').trim();
+                } else if (fs.existsSync(aptTxt)) {
+                    extraApk += ' ' + fs.readFileSync(aptTxt, 'utf8').replace(/\\n/g, ' ').trim();
+                }
+            } catch (e) {
+                console.log(`Auto-detect apk deps error: ${e.message}`);
+            }
+
             // Multi-stage Next.js build
             return `FROM node:20-alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache openssl openssl-dev
+RUN apk add --no-cache openssl openssl-dev${extraApk ? extraApk : ''}
 COPY ${copyFrom}package*.json ./
 RUN npm install --legacy-peer-deps --ignore-scripts
 COPY ${copyFrom} ./
@@ -567,7 +592,7 @@ RUN mkdir -p public prisma
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl${extraApk ? extraApk : ''}
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=${port}
@@ -803,10 +828,12 @@ EXPOSE ${port}
 
         let volumeName = `${containerName}_data`;
         let volumePath = '';
+        let internalPort = null;
 
         if (project.type === 'db_postgres') {
             imageName = 'postgres:15-alpine';
             port = port || 5432;
+            internalPort = 5432;
             volumePath = '/var/lib/postgresql/data';
             envVars.POSTGRES_PASSWORD = envVars.POSTGRES_PASSWORD || 'orbitron_db_pass';
             envVars.POSTGRES_USER = envVars.POSTGRES_USER || 'orbitron_user';
@@ -814,6 +841,7 @@ EXPOSE ${port}
         } else if (project.type === 'db_redis') {
             imageName = 'redis:7-alpine';
             port = port || 6379;
+            internalPort = 6379;
             volumePath = '/data';
         } else {
             throw new Error(`Unsupported database type: ${project.type}`);
@@ -832,10 +860,8 @@ EXPOSE ${port}
 
         const volumeFlags = `-v ${volumeName}:${volumePath}`;
 
-        // We do not map the port to the host machine for internal private networking
-        // However, if the user explicitly provided a port or we want mapping, we can uncomment below:
-        // const portFlags = port ? `-p ${port}:${port}` : '';
-        const portFlags = '';
+        // Map the assigned port to the internal DB port so host/local devs can connect via tools like Prisma Studio/DBeaver
+        const portFlags = port ? `-p ${port}:${internalPort}` : '';
 
         return new Promise((resolve, reject) => {
             const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;

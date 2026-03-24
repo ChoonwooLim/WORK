@@ -3211,12 +3211,41 @@ function openConfigServiceModal(groupId) {
             var el = document.getElementById(id);
             if (el) el.value = '';
         });
-    document.getElementById('cfg-svc-type').value = 'web';
-    document.getElementById('cfg-db-fields').style.display = 'none';
-    // Add event listener for type change to show/hide DB fields
-    document.getElementById('cfg-svc-type').onchange = function () {
-        document.getElementById('cfg-db-fields').style.display = this.value === 'db_postgres' ? 'block' : 'none';
+    const typeSelect = document.getElementById('cfg-svc-type');
+    typeSelect.onchange = function () {
+        const isDb = this.value === 'db_postgres';
+        document.getElementById('cfg-db-fields').style.display = isDb ? 'block' : 'none';
+        
+        // 데이터베이스일 경우 불필요한 필드 숨기기 (런타임, Root Directory, 빌드/시작 명령어)
+        ['cfg-svc-runtime', 'cfg-svc-rootdir', 'cfg-svc-build', 'cfg-svc-start'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.parentElement) {
+                el.parentElement.style.display = isDb ? 'none' : 'block';
+            }
+        });
+
+        // PostgreSQL 선택 시 개발자 편의를 위해 자동으로 모든 필드 채우기
+        if (isDb) {
+            const setIfEmpty = (id, val) => {
+                const el = document.getElementById(id);
+                if (el && !el.value) el.value = val;
+            };
+            
+            setIfEmpty('cfg-svc-key', 'db');
+            setIfEmpty('cfg-svc-name', 'PostgreSQL Database');
+            setIfEmpty('cfg-db-host', 'db');
+            setIfEmpty('cfg-db-port', '5432');
+            setIfEmpty('cfg-db-name', 'postgres');
+            setIfEmpty('cfg-db-user', 'postgres');
+            
+            const passEl = document.getElementById('cfg-db-pass');
+            if (passEl && !passEl.value) {
+                passEl.value = 'pass_' + Math.random().toString(36).substr(2, 6) + '!';
+            }
+        }
     };
+    typeSelect.value = 'web';
+    typeSelect.dispatchEvent(new Event('change'));
 }
 
 function closeConfigServiceModal() {

@@ -20,6 +20,12 @@ If a `Dockerfile` exists at the root of your project folder, Orbitron instantly 
 > If a build fails, Orbitron **automatically rolls back to the last successful image** to prevent downtime! (This results in old code being deployed).
 > To prevent this, Orbitron's automated builder uses the `--ignore-scripts` flag. Therefore, ensure you run Prisma generators etc. explicitly inside your build scripts (`npm run build`) or your container startup command (`CMD`).
 
+> 💡 **Next.js Auto System Dependency Injection (apk add)**
+> When deploying Next.js, Orbitron's smart builder analyzes the `package.json`. If media packages like `yt-dlp`, `ffmpeg`, `youtube`, or image libraries like `canvas` are detected, it will automatically install the necessary OS-level system packages (e.g., python3, ffmpeg, cairo-dev) via `apk add` on the base image. Additionally, it will load custom OS packages if an `apk.txt` or `apt.txt` file exists in the project root.
+
+> 🔌 **Managed Database Local Port Forwarding**
+> When deploying PostgreSQL or Redis, Orbitron will retain internal network isolation while automatically port-forwarding (`-p`) the assigned external port (e.g., 3776) to the internal DB port. This allows you to freely connect to your managed database using `localhost:3776` from local development tools like DBeaver or Prisma Studio.
+
 ---
 
 ## 2. Multi-Container (Docker Compose) Orchestration

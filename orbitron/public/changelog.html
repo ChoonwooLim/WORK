@@ -460,6 +460,34 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.7.1 — 2026-03-24                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.7.1</span>
+                <span class="version-date">2026년 3월 24일</span>
+            </div>
+            <p class="version-title">🐳 Docker 의존성 자동 주입 & 로컬 DB 포트포워딩 지원</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Next.js 시스템 OS 의존성 자동 주입 (apk add)</strong>
+                        <p><code>package.json</code>을 분석하여 미디어 패키지(<code>yt-dlp</code>, <code>ffmpeg</code>)나 이미지 처리(<code>canvas</code>) 라이브러리가 감지될 경우, 빌드 시 필요한 OS 단위의 시스템 패키지(ffmpeg, python3, cairo 등)를 Alpine 리눅스 Docker 이미지에 자동 내장(Inject)합니다. 최상단 디렉터리의 <code>apk.txt</code> 및 <code>apt.txt</code> 파일 로드 기능도 추가 지원합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>데이터베이스 외부 포트 자동 매핑</strong>
+                        <p>PostgreSQL, Redis 등 매니지드 데이터베이스 배포 시 지정된 동적 포트(예: 3776)를 도커 내부 포트(5432, 6379)와 자동으로 포트포워딩(-p) 연결합니다. 이를 통해 내부 격리를 유지하면서도 로컬 DBeaver, Prisma Studio 등을 외부에서 곧바로 연동할 수 있게 개선되었습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.7.0 — 2026-03-06                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">
