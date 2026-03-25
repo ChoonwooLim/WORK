@@ -326,6 +326,7 @@ function navigateTo(page) {
 
 // ============ PROJECT LIST ============
 let allProjectsCache = []; // Cached for dropdown search
+let prevProjectStatuses = {}; // Tracks statuses to detect auto-deploys
 
 async function loadProjects() {
     try {
@@ -334,7 +335,24 @@ async function loadProjects() {
             if (res.status === 401) return;
             throw new Error(`HTTP error! status: ${res.status}`);
         }
-        allProjectsCache = await res.json();
+        const newProjects = await res.json();
+
+        // Check for new background deployments and auto-open modal
+        if (Object.keys(prevProjectStatuses).length > 0) {
+            newProjects.forEach(p => {
+                const oldStatus = prevProjectStatuses[p.id];
+                if (oldStatus && oldStatus !== 'building' && p.status === 'building') {
+                    const modal = document.getElementById('deploy-modal');
+                    if (!modal?.classList.contains('active')) {
+                        toast(`🚀 [${p.name}] 자동 배포가 감지되어 실시간 로그를 엽니다.`, 'info');
+                        openDeployModal(p.id);
+                    }
+                }
+            });
+        }
+        newProjects.forEach(p => prevProjectStatuses[p.id] = p.status);
+
+        allProjectsCache = newProjects;
 
         // Populate custom searchable dropdown
         renderProjectDropdown(allProjectsCache);
@@ -1657,6 +1675,15 @@ function openDeployModal(projectId) {
                 if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
                 loadProjects();
                 if (currentProject?.id === projectId) openProject(projectId);
+                
+                // 배포 완료 후 5초 뒤 자동 닫기
+                setTimeout(() => {
+                    const title = document.getElementById('deploy-modal-title');
+                    // 아직 성공 완료 화면이라면 닫기
+                    if (title && title.textContent.includes('선공') === false && title.textContent.includes('완료')) {
+                        closeDeployModal();
+                    }
+                }, 5000);
             } else if (data.status === 'failed') {
                 currentEl.className = 'deploy-step failed';
                 currentEl.querySelector('.deploy-step-icon').textContent = '✕';
@@ -1708,6 +1735,14 @@ function openDeployModal(projectId) {
                     });
                     loadProjects();
                     if (currentProject?.id === projectId) openProject(projectId);
+                    
+                    // 배포 완료 후 5초 뒤 자동 닫기
+                    setTimeout(() => {
+                        const title = document.getElementById('deploy-modal-title');
+                        if (title && title.textContent.includes('완료')) {
+                            closeDeployModal();
+                        }
+                    }, 5000);
                     return true; // stop polling
                 } else if (p.status === 'failed') {
                     document.getElementById('deploy-progress-fill').style.background = 'var(--danger)';
