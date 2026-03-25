@@ -27,7 +27,16 @@ router.post('/github', async (req, res) => {
             return res.json({ message: `Ignored event: ${event}` });
         }
 
-        const payload = req.body;
+        let payload = req.body;
+        // GitHub sends URL-encoded webhooks as a 'payload' field containing a JSON string
+        if (payload && payload.payload) {
+            try {
+                payload = JSON.parse(payload.payload);
+            } catch (e) {
+                return res.status(400).json({ error: 'Invalid JSON in URL-encoded payload' });
+            }
+        }
+
         const repoUrl = payload.repository?.html_url || payload.repository?.clone_url;
         const branch = payload.ref?.replace('refs/heads/', '');
         const commitHash = payload.after;

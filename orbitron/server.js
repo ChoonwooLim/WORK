@@ -21,6 +21,12 @@ app.use(express.json({
         req.rawBody = buf;
     }
 }));
+app.use(express.urlencoded({
+    extended: true,
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const authMiddleware = require('./middleware/auth');
