@@ -64,6 +64,11 @@ app.get('/api/deploy-stream/:projectId', authMiddleware, (req, res) => {
     // Send initial connection event
     res.write(`data: ${JSON.stringify({ type: 'connected', projectId })}\n\n`);
 
+    // Sync latest progress instantly for clients that connected mid-deployment
+    if (deployer.latestProgress && deployer.latestProgress.has(projectId)) {
+        res.write(`data: ${JSON.stringify(deployer.latestProgress.get(projectId))}\n\n`);
+    }
+
     // Listen for deploy progress events
     const onProgress = (data) => {
         if (data.projectId === projectId) {

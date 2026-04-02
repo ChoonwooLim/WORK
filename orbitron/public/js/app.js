@@ -1620,6 +1620,7 @@ async function viewDeployLog(projectId, deploymentId) {
 let activeEventSource = null;
 
 function openDeployModal(projectId) {
+    if (window.deployModalCloseTimeout) { clearTimeout(window.deployModalCloseTimeout); window.deployModalCloseTimeout = null; }
     const modal = document.getElementById('deploy-modal');
     modal.classList.add('active');
     document.getElementById('deploy-modal-title').textContent = '🚀 배포 진행 중...';
@@ -1676,11 +1677,10 @@ function openDeployModal(projectId) {
                 loadProjects();
                 if (currentProject?.id === projectId) openProject(projectId);
                 
-                // 배포 완료 후 5초 뒤 자동 닫기
-                setTimeout(() => {
-                    const title = document.getElementById('deploy-modal-title');
-                    // 아직 성공 완료 화면이라면 닫기
-                    if (title && title.textContent.includes('선공') === false && title.textContent.includes('완료')) {
+                // 배포 완료 후 5초 뒤 자동 닫기 (이전 타이머 취소)
+                if (window.deployModalCloseTimeout) clearTimeout(window.deployModalCloseTimeout);
+                window.deployModalCloseTimeout = setTimeout(() => {
+                    if (document.getElementById('deploy-modal').classList.contains('active')) {
                         closeDeployModal();
                     }
                 }, 5000);
@@ -1737,9 +1737,9 @@ function openDeployModal(projectId) {
                     if (currentProject?.id === projectId) openProject(projectId);
                     
                     // 배포 완료 후 5초 뒤 자동 닫기
-                    setTimeout(() => {
-                        const title = document.getElementById('deploy-modal-title');
-                        if (title && title.textContent.includes('완료')) {
+                    if (window.deployModalCloseTimeout) clearTimeout(window.deployModalCloseTimeout);
+                    window.deployModalCloseTimeout = setTimeout(() => {
+                        if (document.getElementById('deploy-modal').classList.contains('active')) {
                             closeDeployModal();
                         }
                     }, 5000);
@@ -3011,11 +3011,42 @@ function renderGroupDbConnections(services) {
     }
 
     for (const s of dbUrlServices) {
-        html += `
-        <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; margin-bottom:16px;">
-          <div style="font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">🔗 ${escapeHtml(s.name)} — DATABASE_URL</div>
-          ${dbConnBlock('DATABASE_URL', s.database_url, true)}
-        </div>`;
+        let parsed = null;
+        try {
+            if (s.database_url && s.database_url.includes('://')) {
+                const url = new URL(s.database_url);
+                parsed = {
+                    hostname: url.hostname,
+                    port: url.port || (url.protocol.startsWith('postgres') ? '5432' : ''),
+                    database: url.pathname.replace(/^\//, ''),
+                    username: decodeURIComponent(url.username),
+                    password: decodeURIComponent(url.password),
+                };
+            }
+        } catch(e) {}
+
+        if (parsed && parsed.hostname) {
+            html += `
+            <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; margin-bottom:16px;">
+              <div style="font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">🔗 ${escapeHtml(s.name)} (추출된 연결 정보)</div>
+              <div class="db-conn-grid">
+                ${dbConnRow('Hostname', parsed.hostname)}
+                ${dbConnRow('Port', parsed.port)}
+                ${dbConnRow('Database', parsed.database)}
+                ${dbConnRow('Username', parsed.username)}
+                ${dbConnRow('Password', parsed.password, true)}
+              </div>
+              <div style="margin-top:16px; display:flex; flex-direction:column; gap:12px;">
+                ${dbConnBlock('DATABASE_URL (원본)', s.database_url, true)}
+              </div>
+            </div>`;
+        } else {
+            html += `
+            <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; margin-bottom:16px;">
+              <div style="font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">🔗 ${escapeHtml(s.name)} — DATABASE_URL</div>
+              ${dbConnBlock('DATABASE_URL', s.database_url, true)}
+            </div>`;
+        }
     }
 
     html += '</div>';

@@ -72,7 +72,7 @@ class CfPagesDeployer {
     async deploy(projectName, distDir) {
         try {
             const { stdout, stderr } = await execAsync(
-                `npx -y wrangler pages deploy ${distDir} --project-name ${projectName} --commit-dirty=true 2>&1`,
+                `npx -y wrangler pages deploy ${distDir} --project-name ${projectName} --branch main --commit-dirty=true 2>&1`,
                 { timeout: 120000 }
             );
             const output = stdout + stderr;

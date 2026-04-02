@@ -124,12 +124,24 @@ Orbitron은 AI가 분석한 에러와 그 해결책을 **에러 지식 DB(Error 
 
 ### 실전 예시
 
-```
-📚 에러 지식 DB 매칭 결과:
-   패턴: "orbitron.yaml에 정의된 static 타입 서비스가 CF Pages에 배포되지 않음"
-   근본 원인: deployer가 services 배열의 type:static 서비스를 무시하고 있었음
-   해결책: cfPagesDeployer 서비스를 통한 자동 빌드/배포 파이프라인 추가
-   성공 횟수: 1회
+```text
+📚 에러 지식 DB 매칭 결과 (1):
+   패턴: "Wrangler Invalid commit message [code: 8000111]"
+   근본 원인: Cloudflare API가 UTF-8로 인코딩되지 않은 리눅스 Git 커밋 메시지(특히 한글)를 읽을 때 발생하는 파싱 버그
+   해결책: wrangler 배포 명령어에 `--commit-message="Auto Deploy"`를 강제 주입하여 Git Log 조회를 우회
+   성공 횟수: 3회
+
+📚 에러 지식 DB 매칭 결과 (2):
+   패턴: "CF Pages 자동 배포 성공 후에도 실서버 도메인이 구버전에 머물러 있음"
+   근본 원인: wrangler 페이지 배포 시 브랜치를 지정하지 않아 Production이 아닌 Preview 런타임에 해시 배포됨
+   해결책: deploy 명령어에 `--branch main` 파라미터 강제 추가
+   성공 횟수: 4회
+
+📚 에러 지식 DB 매칭 결과 (3):
+   패턴: "배포 모달이 진행 중 멈추고 deployments 테이블 상태가 building에 영구 체류함"
+   근본 원인: 배포 중 Orbitron 코어 서버(PM2) 재시작 등 수동 조작으로 인해 Node.js 자식 프로세스가 강제 종료됨
+   해결책: building 상태인 DB row를 failed로 강제 업데이트 후 재배포 안내
+   성공 횟수: 2회
 ```
 
 이처럼 Orbitron은 시간이 지날수록 더 많은 에러를 기억하고 더 빠르게 해결하는 **학습하는 배포 플랫폼**입니다!

@@ -2,11 +2,10 @@
 소담김밥 AI 이미지 생성 서비스
 - Flux.1-schnell (최고 품질 오픈소스 모델)
 - Real-ESRGAN 4x 업스케일러 (512→2048)
-- GTX 1080 x2 — 듀얼 GPU 분업 (Flux=cuda:0 offload, Upscale=cuda:1)
+- GTX 1080 — sequential CPU offload
 - FastAPI REST API
 - 무료
 """
-import gc
 import io
 import time
 import logging
@@ -33,7 +32,7 @@ upscale_lock = threading.Lock()
 
 
 def load_pipeline():
-    """Flux.1-schnell 파이프라인 로드 (model CPU offload — sequential보다 빠름)"""
+    """Flux.1-schnell 파이프라인 로드"""
     global pipe
     from diffusers import FluxPipeline
 
@@ -43,71 +42,54 @@ def load_pipeline():
         mem = torch.cuda.get_device_properties(i).total_memory / 1e9
         logger.info(f"  GPU {i}: {name} ({mem:.1f}GB)")
 
-    logger.info("Loading Flux.1-schnell with model CPU offload...")
+    logger.info("Loading Flux.1-schnell...")
     start = time.time()
 
     pipe = FluxPipeline.from_pretrained(
         MODEL_ID,
         torch_dtype=torch.float16,
     )
-    # model_cpu_offload: 서브모델 단위로 GPU 이동 (sequential보다 빠름)
-    # sequential은 레이어 하나씩 이동하여 느리고, model은 서브모델 통째로 이동
-    pipe.enable_model_cpu_offload(gpu_id=0)
+    pipe.enable_sequential_cpu_offload(gpu_id=0)
 
     elapsed = time.time() - start
     logger.info(f"Pipeline loaded in {elapsed:.1f}s")
 
-    logger.info("Warming up (256x256, 2 steps)...")
-    pipe(
-        "test",
-        num_inference_steps=2,
-        guidance_scale=0.0,
-        width=256,
-        height=256,
-        max_sequence_length=64,
-    )
-    logger.info("Warmup done!")
-    log_memory_status()
+    logger.info("Warming up...")
+    try:
+        torch.cuda.empty_cache()
+        pipe(
+            "test",
+            num_inference_steps=2,
+            guidance_scale=0.0,
+            width=256,
+            height=256,
+            max_sequence_length=64,
+        )
+        logger.info("Warmup done!")
+    except Exception as e:
+        logger.warning(f"Warmup skipped ({e}). First request will be slower.")
 
 
 def load_upscaler():
     """Real-ESRGAN 4x 업스케일러 로드 (cuda:1)"""
     global upscaler
-    try:
-        from realesrgan import RealESRGANer
-        from basicsr.archs.rrdbnet_arch import RRDBNet
+    from realesrgan import RealESRGANer
+    from basicsr.archs.rrdbnet_arch import RRDBNet
 
-        logger.info(f"Loading Real-ESRGAN on cuda:{UPSCALE_GPU}...")
+    logger.info(f"Loading Real-ESRGAN on cuda:{UPSCALE_GPU}...")
 
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-        upscaler = RealESRGANer(
-            scale=4,
-            model_path="https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
-            model=model,
-            tile=400,
-            tile_pad=10,
-            pre_pad=0,
-            half=True,
-            gpu_id=UPSCALE_GPU,
-        )
-        logger.info("Real-ESRGAN loaded!")
-    except Exception as e:
-        logger.warning(f"Real-ESRGAN 로드 실패 (업스케일 비활성): {e}")
-        upscaler = None
-
-
-def log_memory_status():
-    """GPU/RAM 메모리 상태 로깅"""
-    for i in range(torch.cuda.device_count()):
-        alloc = torch.cuda.memory_allocated(i) / 1e9
-        total = torch.cuda.get_device_properties(i).total_memory / 1e9
-        logger.info(f"  cuda:{i} VRAM: {alloc:.1f}GB / {total:.1f}GB")
-    try:
-        import psutil
-        ram = psutil.virtual_memory()
-        logger.info(f"  RAM: {ram.used / 1e9:.1f}GB / {ram.total / 1e9:.1f}GB ({ram.percent}%)")
-    except ImportError:
-        pass
+    model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+    upscaler = RealESRGANer(
+        scale=4,
+        model_path="https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+        model=model,
+        tile=400,  # 타일 처리로 VRAM 절약
+        tile_pad=10,
+        pre_pad=0,
+        half=True,
+        gpu_id=UPSCALE_GPU,
+    )
+    logger.info("Real-ESRGAN loaded!")
 
 
 @asynccontextmanager
@@ -117,10 +99,8 @@ async def lifespan(app: FastAPI):
     yield
     global pipe, upscaler
     del pipe
-    if upscaler is not None:
-        del upscaler
+    del upscaler
     torch.cuda.empty_cache()
-    gc.collect()
 
 
 app = FastAPI(title="Sodam AI Image Service (Flux + Upscaler)", lifespan=lifespan)
@@ -149,11 +129,13 @@ def _upscale_image(pil_image: Image.Image, scale: int) -> Image.Image:
         return pil_image
 
     img_np = np.array(pil_image)
+    # RGB → BGR (OpenCV 형식)
     img_bgr = img_np[:, :, ::-1]
 
     with upscale_lock:
         output, _ = upscaler.enhance(img_bgr, outscale=scale)
 
+    # BGR → RGB
     output_rgb = output[:, :, ::-1]
     return Image.fromarray(output_rgb)
 
@@ -162,9 +144,6 @@ def _upscale_image(pil_image: Image.Image, scale: int) -> Image.Image:
 def generate_image(req: GenerateRequest):
     if pipe is None:
         raise HTTPException(status_code=503, detail="Model not loaded yet")
-
-    if gen_lock.locked():
-        raise HTTPException(status_code=429, detail="Another generation in progress, try again shortly")
 
     style_suffix = STYLE_SUFFIXES.get(req.style, STYLE_SUFFIXES["natural"])
     full_prompt = f"{req.prompt}. {style_suffix}"
@@ -179,33 +158,27 @@ def generate_image(req: GenerateRequest):
 
     upscale = min(max(req.upscale, 1), 4)
 
-    logger.info(f"[cuda:0] Generating: {req.prompt[:50]}... ({width}x{height}, {req.steps} steps, upscale={upscale}x)")
+    logger.info(f"Generating: {req.prompt[:50]}... ({width}x{height}, {req.steps} steps, upscale={upscale}x)")
     start = time.time()
 
     with gen_lock:
-        try:
-            with torch.no_grad():
-                result = pipe(
-                    full_prompt,
-                    num_inference_steps=req.steps,
-                    guidance_scale=0.0,
-                    width=width,
-                    height=height,
-                    max_sequence_length=256,
-                    generator=generator,
-                )
-        except torch.cuda.OutOfMemoryError:
-            torch.cuda.empty_cache()
-            gc.collect()
-            logger.error("OOM during generation! Clearing cache.")
-            raise HTTPException(status_code=507, detail="GPU out of memory, try smaller resolution")
+        with torch.no_grad():
+            result = pipe(
+                full_prompt,
+                num_inference_steps=req.steps,
+                guidance_scale=0.0,
+                width=width,
+                height=height,
+                max_sequence_length=256,
+                generator=generator,
+            )
 
     gen_time = time.time() - start
     image = result.images[0]
 
-    # 업스케일 (cuda:1에서 병렬 가능)
+    # 업스케일
     if upscale > 1:
-        logger.info(f"[cuda:{UPSCALE_GPU}] Upscaling {upscale}x...")
+        logger.info(f"Upscaling {upscale}x...")
         up_start = time.time()
         image = _upscale_image(image, upscale)
         up_time = time.time() - up_start
@@ -233,6 +206,7 @@ def generate_image(req: GenerateRequest):
     )
 
 
+# ── 단독 업스케일 엔드포인트 (기존 이미지 업스케일) ──
 @app.post("/upscale")
 async def upscale_image(
     file: UploadFile = File(...),
@@ -242,21 +216,13 @@ async def upscale_image(
     if upscaler is None:
         raise HTTPException(status_code=503, detail="Upscaler not loaded")
 
-    if upscale_lock.locked():
-        raise HTTPException(status_code=429, detail="Another upscale in progress, try again shortly")
-
     scale = min(max(scale, 2), 4)
 
     content = await file.read()
     pil_image = Image.open(io.BytesIO(content)).convert("RGB")
     orig_size = pil_image.size
 
-    # 입력 이미지 크기 제한 (너무 큰 이미지 업스케일 시 OOM 방지)
-    max_input_px = 1024 * 1024  # 1MP
-    if orig_size[0] * orig_size[1] > max_input_px:
-        raise HTTPException(status_code=400, detail=f"Input image too large ({orig_size[0]}x{orig_size[1]}). Max 1024x1024.")
-
-    logger.info(f"[cuda:{UPSCALE_GPU}] Upscaling {orig_size[0]}x{orig_size[1]} → {scale}x")
+    logger.info(f"Upscaling {orig_size[0]}x{orig_size[1]} → {scale}x")
     start = time.time()
 
     result = _upscale_image(pil_image, scale)
@@ -289,31 +255,17 @@ def health():
             "gpu_name": torch.cuda.get_device_name(i),
             "vram_total_gb": round(torch.cuda.get_device_properties(i).total_memory / 1e9, 1),
             "vram_used_gb": round(torch.cuda.memory_allocated(i) / 1e9, 1),
-            "role": "flux-generate" if i == 0 else "upscale",
         })
-
-    ram_info = {}
-    try:
-        import psutil
-        ram = psutil.virtual_memory()
-        ram_info = {
-            "ram_total_gb": round(ram.total / 1e9, 1),
-            "ram_used_gb": round(ram.used / 1e9, 1),
-            "ram_percent": ram.percent,
-        }
-    except ImportError:
-        pass
 
     return {
         "status": "ok" if pipe is not None else "loading",
         "model": "Flux.1-schnell",
         "upscaler": "Real-ESRGAN x4" if upscaler is not None else "not loaded",
-        "mode": "model-cpu-offload (cuda:0=flux, cuda:1=upscale)",
+        "mode": "sequential-cpu-offload",
         "gpu_count": torch.cuda.device_count(),
         "gpus": gpus,
         "busy": gen_lock.locked(),
         "upscaling": upscale_lock.locked(),
-        **ram_info,
     }
 
 

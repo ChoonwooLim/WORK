@@ -44,12 +44,13 @@ class Deployer extends EventEmitter {
         super();
         this.setMaxListeners(50);
         this.activeDeployments = new Set();
+        this.latestProgress = new Map(); // Tracks the latest event per project for late-joining UI clients
     }
 
     // Emit a deploy progress event
     emitProgress(projectId, stepId, message, status = 'running') {
         const step = DEPLOY_STEPS.find(s => s.id === stepId);
-        this.emit('deploy-progress', {
+        const eventPayload = {
             projectId,
             stepId,
             stepLabel: step?.label || stepId,
@@ -58,7 +59,10 @@ class Deployer extends EventEmitter {
             status,  // 'running' | 'success' | 'failed'
             timestamp: new Date().toISOString(),
             steps: DEPLOY_STEPS,
-        });
+        };
+        // Cache the latest event so late SSE connections can instantly sync up
+        this.latestProgress.set(projectId, eventPayload);
+        this.emit('deploy-progress', eventPayload);
     }
 
     // Full deploy pipeline
@@ -787,6 +791,12 @@ class Deployer extends EventEmitter {
             return { success: false, logs, error: error.message };
         } finally {
             this.activeDeployments.delete(project.id);
+            // Keep the final 'success' or 'failed' event in cache for 60 seconds so late clients see it
+            setTimeout(() => {
+                if (!this.activeDeployments.has(project.id)) {
+                    this.latestProgress.delete(project.id);
+                }
+            }, 60000);
             // Run Docker image prune in background to prevent disk space exhaustion
             dockerService.pruneImages().catch(() => { });
         }
