@@ -461,6 +461,76 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.8.0 — 2026-04-03                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.8.0</span>
+                <span class="version-date">April 3, 2026</span>
+            </div>
+            <p class="version-title">🛡️ Enterprise-Grade Stability & Security Optimization</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">New</span>
+                    <div class="change-content">
+                        <strong>Docker Layer Caching Enabled by Default</strong>
+                        <p>The <code>--no-cache</code> option that forced full rebuilds on every deployment has been removed. Docker build layer caching is now active by default, <strong>improving build speed by 2-3x</strong> when <code>package.json</code> hasn't changed. Use the <code>DOCKER_NO_CACHE=true</code> environment variable to disable caching when needed.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">New</span>
+                    <div class="change-content">
+                        <strong>60-Minute Deployment Timeout Protection</strong>
+                        <p>All deployments now have an automatic timeout. Even if a process stalls due to network failures or infinite loop builds, it will auto-terminate after 60 minutes to prevent server resource exhaustion.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">New</span>
+                    <div class="change-content">
+                        <strong>Customizable Tunnel Domain via Environment Variable</strong>
+                        <p>The default domain (<code>twinverse.org</code>) can now be changed via the <code>TUNNEL_DOMAIN</code> environment variable. If you own a Cloudflare domain, all project subdomains can be deployed to your custom domain.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>JWT Secret Security Hardening</strong>
+                        <p>The hard-coded JWT fallback secret (<code>'orbitron-secret-key'</code>) has been completely removed. The <code>JWT_SECRET</code> environment variable is now mandatory — the server will not start without it.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>DB Connection Pool Limits & Error Handling</strong>
+                        <p>PostgreSQL connection pool now enforces max 20 connections, 30s idle timeout, and 5s connection timeout. Unexpected pool errors are automatically logged.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>512KB Log Limit & Auto Docker Image Cleanup</strong>
+                        <p>Deployment logs exceeding 512KB are automatically truncated to prevent DB bloat. Docker images unused for 24+ hours are automatically pruned after deployment to reclaim disk space.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>Tunnel Exponential Backoff & Graceful Shutdown</strong>
+                        <p>Cloudflare tunnel reconnection now uses exponential backoff (5s→10s→20s→max 5min). Graceful shutdown safely closes DB connection pools on server termination.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>Async I/O Conversion & Exec Buffer Optimization</strong>
+                        <p>Nginx and tunnel config file writes have been converted to async operations, eliminating event loop blocking. <code>exec()</code> maxBuffer has been optimized from 50MB to 10MB for improved memory efficiency.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.7.1 — 2026-03-24                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

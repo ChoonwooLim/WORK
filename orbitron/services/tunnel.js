@@ -9,7 +9,7 @@ const TUNNEL_PROCS = {}; // key -> { proc, url, tunnelId, retryTimer }
 const CLOUDFLARED_DIR = path.join(__dirname, '..', 'bin');
 const CLOUDFLARED_PATH = path.join(CLOUDFLARED_DIR, 'cloudflared');
 const CF_CONFIG_DIR = path.join(require('os').homedir(), '.cloudflared');
-const TUNNEL_DOMAIN = 'twinverse.org'; // Fixed domain for all tunnels
+const TUNNEL_DOMAIN = process.env.TUNNEL_DOMAIN || 'twinverse.org';
 
 class TunnelService {
     // Ensure cloudflared binary exists
@@ -172,22 +172,20 @@ class TunnelService {
     }
 
     // Write a tunnel config file
-    _writeConfig(tunnelName, tunnelId, hostname, port) {
+    async _writeConfig(tunnelName, tunnelId, hostname, port) {
         const credFile = path.join(CF_CONFIG_DIR, `${tunnelId}.json`);
         const configPath = path.join(CF_CONFIG_DIR, `config-${tunnelName}.yml`);
 
         // Pass to Nginx on port 80. Cloudflare natively passes the `hostname` as Host header.
         // Nginx is configured to match `${subdomain}.localhost` and `${custom_domain}`.
         const config = `tunnel: ${tunnelId}\ncredentials-file: ${credFile}\ningress:\n  - hostname: ${hostname}\n    service: http://127.0.0.1:80\n  - service: http_status:404\n`;
-        fs.writeFileSync(configPath, config);
+        await fs.promises.writeFile(configPath, config);
         return configPath;
     }
 
     // Run the named tunnel process via Systemd (Zero-Downtime Decoupling)
     _runTunnel(project, key, tunnelName, configPath, fixedUrl) {
         try {
-            // Wait for Nginx to finish applying buffers before systemd lock
-            execSync(`sleep 1`);
 
             const serviceName = `cloudflared-${tunnelName}`;
             const serviceContent = `[Unit]
@@ -260,14 +258,14 @@ WantedBy=multi-user.target
     }
 
     // Fallback: quick tunnel (trycloudflare.com) if no cert
-    _startQuickTunnel(project, key) {
+    _startQuickTunnel(project, key, retryCount = 0) {
         this.stopTunnel(key);
         return new Promise((resolve) => {
             const proc = spawn(CLOUDFLARED_PATH, [
                 'tunnel', '--url', `http://localhost:${project.port}`, '--no-autoupdate'
             ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
-            const entry = { proc, url: null, project, key };
+            const entry = { proc, url: null, project, key, retryCount };
             TUNNEL_PROCS[key] = entry;
             let resolved = false;
             let output = '';
@@ -285,15 +283,17 @@ WantedBy=multi-user.target
             proc.stderr.on('data', handleOutput);
             proc.on('error', () => { if (!resolved) { resolved = true; resolve(null); } });
             proc.on('exit', (code) => {
-                console.log(`⚠️ Quick tunnel for ${project.name} exited (${code}). Restarting...`);
+                const nextRetry = Math.min(retryCount + 1, 5);
+                const backoffMs = Math.min(5000 * Math.pow(2, retryCount), 300000); // 5s, 10s, 20s, 40s, 80s, max 5min
+                console.log(`⚠️ Quick tunnel for ${project.name} exited (${code}). Retrying in ${backoffMs / 1000}s (attempt ${nextRetry})...`);
                 const timer = setTimeout(() => {
                     if (TUNNEL_PROCS[key]?.proc === proc) {
                         TUNNEL_PROCS[key].url = null;
-                        this._startQuickTunnel(project, key).then(url => {
+                        this._startQuickTunnel(project, key, nextRetry).then(url => {
                             if (TUNNEL_PROCS[key]) TUNNEL_PROCS[key].url = url;
                         });
                     }
-                }, 5000);
+                }, backoffMs);
                 if (TUNNEL_PROCS[key]) TUNNEL_PROCS[key].retryTimer = timer;
             });
             setTimeout(() => { if (!resolved) { resolved = true; resolve(entry.url); } }, 20000);

@@ -460,6 +460,76 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.8.0 — 2026-04-03                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.8.0</span>
+                <span class="version-date">2026년 4월 3일</span>
+            </div>
+            <p class="version-title">🛡️ 엔터프라이즈급 안정성 & 보안 최적화</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>Docker 레이어 캐싱 기본 활성화</strong>
+                        <p>매 배포마다 전체 리빌드를 수행하던 <code>--no-cache</code> 옵션이 제거되고, Docker 빌드 레이어 캐싱이 기본 활성화되었습니다. <code>package.json</code>이 변경되지 않은 경우 <code>npm install</code> 단계를 건너뛰어 <strong>빌드 속도가 2~3배 향상</strong>됩니다. 필요 시 환경변수 <code>DOCKER_NO_CACHE=true</code>로 캐시를 비활성화할 수 있습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>60분 배포 타임아웃 보호</strong>
+                        <p>모든 배포에 자동 타임아웃이 적용됩니다. 네트워크 장애나 무한 루프 빌드로 프로세스가 멈추더라도 60분 경과 시 자동 중단되어 서버 리소스 고갈을 원천 차단합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">신기능</span>
+                    <div class="change-content">
+                        <strong>터널 도메인 환경변수 커스터마이징</strong>
+                        <p>기본 도메인(<code>twinverse.org</code>)을 <code>TUNNEL_DOMAIN</code> 환경변수로 변경할 수 있게 되었습니다. 자체 Cloudflare 도메인 보유 시 모든 프로젝트의 서브도메인을 커스텀 도메인으로 배포 가능합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>JWT 시크릿 보안 강화</strong>
+                        <p>하드코딩된 JWT 폴백 시크릿(<code>'orbitron-secret-key'</code>)이 완전히 제거되었습니다. <code>JWT_SECRET</code> 환경변수가 필수로 요구되며, 미설정 시 서버가 시작되지 않습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>DB 커넥션 풀 제한 및 에러 핸들링</strong>
+                        <p>PostgreSQL 커넥션 풀에 최대 20개 연결, 30초 유휴 타임아웃, 5초 연결 타임아웃이 적용되었습니다. 예기치 않은 풀 에러도 자동 로깅됩니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>배포 로그 512KB 제한 & Docker 이미지 자동 정리</strong>
+                        <p>배포 로그가 512KB를 초과하면 자동 잘림 처리되어 DB 팽창을 방지합니다. 또한 배포 완료 후 24시간 이상 미사용된 Docker 이미지를 자동 삭제하여 디스크 공간을 확보합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>터널 지수 백오프 & Graceful Shutdown</strong>
+                        <p>Cloudflare 터널 재연결 시 5초→10초→20초→최대 5분 간격의 지수 백오프가 적용됩니다. 서버 종료 시 DB 커넥션 풀을 안전하게 정리하는 Graceful Shutdown이 추가되었습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>비동기 I/O 전환 & exec 버퍼 최적화</strong>
+                        <p>Nginx 설정 및 터널 설정 파일 쓰기가 비동기(async)로 전환되어 이벤트 루프 블로킹이 해소되었습니다. <code>exec()</code> 호출의 maxBuffer도 50MB에서 10MB로 최적화되어 메모리 효율이 개선됩니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.7.1 — 2026-03-24                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

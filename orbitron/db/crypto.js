@@ -5,7 +5,7 @@ require('dotenv').config();
 // We fallback to a hashed version of JWT_SECRET if DB_ENCRYPTION_KEY is not set.
 const ENCRYPTION_KEY = process.env.DB_ENCRYPTION_KEY
     ? Buffer.from(process.env.DB_ENCRYPTION_KEY, 'hex')
-    : crypto.createHash('sha256').update(String(process.env.JWT_SECRET || 'orbitron-secret-key')).digest();
+    : crypto.createHash('sha256').update(String(process.env.JWT_SECRET)).digest();
 
 const ALGORITHM = 'aes-256-gcm';
 

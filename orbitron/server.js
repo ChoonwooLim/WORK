@@ -9,6 +9,15 @@ const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 
+// Validate required environment variables
+const REQUIRED_ENV = ['JWT_SECRET'];
+for (const key of REQUIRED_ENV) {
+    if (!process.env[key]) {
+        console.error(`❌ FATAL: ${key} environment variable is required. Set it in .env`);
+        process.exit(1);
+    }
+}
+
 const app = express();
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 4000;
@@ -196,3 +205,23 @@ async function start() {
 }
 
 start();
+
+// Graceful shutdown
+function gracefulShutdown(signal) {
+    console.log(`\n🛑 ${signal} received. Shutting down gracefully...`);
+    const { pool } = require('./db/db');
+    pool.end().then(() => {
+        console.log('✅ Database pool closed');
+        process.exit(0);
+    }).catch(() => {
+        process.exit(1);
+    });
+    // Force exit after 10s if graceful shutdown hangs
+    setTimeout(() => {
+        console.error('⚠️ Forced shutdown after 10s timeout');
+        process.exit(1);
+    }, 10000).unref();
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

@@ -27,6 +27,16 @@ https://my-cool-app.twinverse.org
 
 This unique address permanently belongs solely to 'that specific project card', regardless of whether it's a backend, web service, or frontend.
 
+> 💡 **Domain Customization (New April 2026)**
+> The default domain (`twinverse.org`) can now be changed via the `TUNNEL_DOMAIN` environment variable. If you've registered your own domain with Cloudflare, set `TUNNEL_DOMAIN=yourdomain.com` in your `.env` file and all projects will be deployed to `https://projectname.yourdomain.com`.
+
+### Tunnel Auto-Recovery & Reliability
+
+> ✨ **April 2026 Update**: Tunnel connection reliability has been significantly improved.
+
+*   **Exponential Backoff Retry**: When a tunnel disconnects due to network issues, reconnection attempts follow progressive intervals of 5s→10s→20s→40s→80s→max 5min. This prevents network overload from excessive reconnection requests.
+*   **Systemd Service Integration**: Named tunnels are registered as Linux Systemd services, operating independently from the Orbitron server. Tunnels auto-recover even if the server restarts.
+
 ---
 
 ## 🔗 Connecting Custom (Personal) Domains

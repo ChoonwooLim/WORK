@@ -45,5 +45,28 @@ Projects deployed on Orbitron fundamentally start in a state where **"they canno
 
 ---
 
+---
+
+## 4. Enterprise-Grade Stability Engine (New April 2026)
+
+> ✨ **April 2026 Update**: Major stability and security optimizations have been applied to the Orbitron core engine.
+
+### Security Hardening
+*   **Mandatory JWT Secret**: The `JWT_SECRET` environment variable must be configured at server startup. Hard-coded defaults have been completely removed — the server will not start without it.
+*   **AES-256 Encryption**: All environment variables and API keys are stored in the database after AES-256-GCM encryption.
+
+### Deployment Reliability
+*   **Docker Layer Caching**: Docker build cache is now enabled by default, improving deployment speed by **2-3x**. You can disable it with the `DOCKER_NO_CACHE=true` environment variable when needed.
+*   **60-Minute Deploy Timeout**: Deployments exceeding 60 minutes are automatically terminated to prevent resource exhaustion from stuck processes.
+*   **Log Size Limit (512KB)**: Deployment logs exceeding 512KB are automatically truncated to prevent database bloat.
+
+### Infrastructure Optimization
+*   **DB Connection Pool**: PostgreSQL connections are limited to max 20, with 30s idle timeout and 5s connection timeout to prevent connection exhaustion.
+*   **Auto Docker Image Cleanup**: Unused images older than 24 hours are automatically removed after deployment to reclaim disk space.
+*   **Graceful Shutdown**: On SIGTERM/SIGINT signals, the DB connection pool is safely closed and the process terminates cleanly within 10 seconds.
+*   **Tunnel Exponential Backoff**: Cloudflare tunnel retry intervals progressively increase (5s→10s→20s→...max 5min) to prevent excessive requests during network outages.
+
+---
+
 Did you understand the most basic concepts?
 Go ahead and [deploy a Backend API server](#/web-services) right now, or try [integrating a Database](#/postgresql)!

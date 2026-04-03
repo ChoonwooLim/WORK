@@ -194,3 +194,30 @@ services:
 8. **✅ 배포 완료** — 3개, 5개, 10개 서비스든 한 번의 재배포로 끝!
 
 아주 간단하죠? Orbitron은 똑똑한 지니 요정처럼 이 종이 한 장을 읽고 인프라를 지어냅니다.
+
+---
+
+## ⚙️ 환경변수 기반 빌드 제어 (2026.04 신규)
+
+> ✨ **2026.04 업데이트**: `orbitron.yaml` 외에도 프로젝트 환경변수로 빌드 동작을 미세 조정할 수 있게 되었습니다.
+
+| 환경변수 | 기본값 | 설명 |
+|----------|--------|------|
+| `DOCKER_NO_CACHE` | `false` | `true`로 설정 시 Docker 빌드 캐시를 비활성화하고 전체 리빌드를 수행합니다. 의존성 캐시가 꼬였을 때 유용합니다. |
+| `TUNNEL_DOMAIN` | `twinverse.org` | 프로젝트에 할당되는 서브도메인의 루트 도메인을 변경합니다. 자체 Cloudflare 도메인이 있는 경우 사용합니다. |
+
+### 사용 예시
+
+```yaml
+# orbitron.yaml
+services:
+  web:
+    build_command: "npm ci && npm run build"
+    start_command: "npm start"
+    port: 3000
+    env:
+      - "NODE_ENV=production"
+      - "DOCKER_NO_CACHE=true"    # 이번 배포는 완전 클린 빌드로!
+```
+
+또는 대시보드의 **Settings > 환경 변수** 탭에서 `DOCKER_NO_CACHE=true`를 추가해도 동일하게 작동합니다.

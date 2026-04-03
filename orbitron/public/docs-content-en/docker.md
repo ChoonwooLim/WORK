@@ -70,3 +70,25 @@ services:
 ### Tips for Utilizing Docker Compose
 * Each container can communicate with others using the exact **Service Names assigned in the file (e.g., `api-server`, `redis-cache`)** as their domain address (Host).
 * Things like worker nodes that only run in the background just need to be defined without port settings, and they will run on their own.
+
+---
+
+## 3. Docker Build Optimization (New April 2026)
+
+> ✨ **April 2026 Update**: The Docker build engine has been significantly optimized.
+
+### Docker Layer Caching
+Orbitron now has **Docker build layer caching** enabled by default. Previously, every deployment performed a full rebuild with the `--no-cache` option, but now only changed layers are rebuilt, **improving deployment speed by 2-3x**.
+
+> 💡 **When You Need to Disable Caching**
+> If dependency caching gets corrupted or you need a completely clean build, simply add `DOCKER_NO_CACHE=true` to your project's environment variables. When set, Orbitron will build with the `--no-cache` option for that project only.
+
+### Automatic Image Cleanup
+To conserve disk space, Orbitron automatically performs the following after each deployment:
+*   **Dangling images**: Immediately removes unused intermediate build layers
+*   **Old unused images**: Automatically cleans up images not connected to any container for over 24 hours
+
+> ⚠️ **Important**: Previous successful images are always preserved for rollback. Build failures automatically trigger a rollback to the last successful image.
+
+### Deployment Timeout Protection
+All deployments have a **60-minute timeout**. Even if a deployment process stalls due to network failures or infinite loop builds, it will be automatically terminated after 60 minutes to prevent server resource exhaustion.

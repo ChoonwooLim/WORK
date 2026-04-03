@@ -5,7 +5,11 @@ const bcrypt = require('bcrypt');
 const db = require('../db/db');
 const rateLimit = require('express-rate-limit');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'orbitron-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('❌ FATAL: JWT_SECRET environment variable is required. Set it in .env');
+    process.exit(1);
+}
 const SALT_ROUNDS = 10;
 
 // Rate limiting for auth routes

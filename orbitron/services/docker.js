@@ -30,7 +30,7 @@ class DockerService {
             detailLogs += `  실행 명령: ${cmd}\n`;
             detailLogs += `${'─'.repeat(60)}\n`;
             return new Promise((resolve, reject) => {
-                exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+                exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                     const elapsed = ((Date.now() - buildStart) / 1000).toFixed(1);
                     if (error) {
                         detailLogs += stdout + stderr;
@@ -75,12 +75,13 @@ class DockerService {
         }
 
         detailLogs += `  이미지 이름: ${imageName}\n`;
-        const buildCmd = `docker build --no-cache -t ${imageName} ${projectDir}`;
+        const noCache = project.env_vars?.DOCKER_NO_CACHE === 'true' ? ' --no-cache' : '';
+        const buildCmd = `docker build${noCache} -t ${imageName} ${projectDir}`;
         detailLogs += `  실행 명령: ${buildCmd}\n`;
         detailLogs += `${'─'.repeat(60)}\n`;
 
         return new Promise((resolve, reject) => {
-            exec(buildCmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+            exec(buildCmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 const elapsed = ((Date.now() - buildStart) / 1000).toFixed(1);
                 if (error) {
                     detailLogs += stdout + stderr;
@@ -763,7 +764,7 @@ EXPOSE ${port}
         startLogs += `${'─'.repeat(60)}\n`;
 
         return new Promise((resolve, reject) => {
-            exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+            exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) {
                     startLogs += `\n❌ 컨테이너 시작 실패\n  오류: ${stderr}\n`;
                     startLogs += `${'═'.repeat(60)}\n`;
@@ -793,7 +794,7 @@ EXPOSE ${port}
         // Map Orbitron network to compose (optional, user defined in compose overrides usually)
         // Here we just let standard compose up happen. We assume the web service exposes ports to host.
         return new Promise((resolve, reject) => {
-            exec(`cd ${projectDir} && docker compose up -d`, { maxBuffer: 1024 * 1024 * 50 }, async (error, stdout, stderr) => {
+            exec(`cd ${projectDir} && docker compose up -d`, { maxBuffer: 1024 * 1024 * 10 }, async (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Compose Start failed: ${stderr}`));
                 } else {
@@ -865,7 +866,7 @@ EXPOSE ${port}
 
         return new Promise((resolve, reject) => {
             const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
-            exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+            exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) reject(new Error(`Start failed: ${stderr}`));
                 else resolve(stdout.trim());
             });
@@ -928,13 +929,16 @@ EXPOSE ${port}
         }
     }
 
-    // Prune dangling images to free up space asynchronously
+    // Prune dangling + old unused images to free up space
     async pruneImages() {
         try {
+            // Remove dangling images
             await execAsync('docker image prune -f');
+            // Remove images older than 24h that are not in use
+            await execAsync('docker image prune -a -f --filter "until=24h"');
             console.log('🧹 Cleaned up unused Docker images');
         } catch (e) {
-            // ignore
+            // ignore — prune is best-effort
         }
     }
 }

@@ -1,16 +1,18 @@
 const fs = require('fs');
+const fsp = fs.promises;
 const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 
 const NGINX_CONF_DIR = path.join(__dirname, '..', '..', 'infrastructure', 'nginx', 'conf.d');
+const TUNNEL_DOMAIN = process.env.TUNNEL_DOMAIN || 'twinverse.org';
 
 class NginxService {
     // Generate nginx config for a project
     generateConfig(project, targetContainer) {
         // Nginx will match these domains explicitly, mapping Cloudflare traffic correctly
-        const serverNames = [`${project.subdomain}.localhost`, `${project.subdomain}.twinverse.org`, `localhost`, `127.0.0.1`];
+        const serverNames = [`${project.subdomain}.localhost`, `${project.subdomain}.${TUNNEL_DOMAIN}`, `localhost`, `127.0.0.1`];
         if (project.custom_domain) serverNames.push(project.custom_domain);
 
         // Use provided targetContainer or fallback to legacy standard name
@@ -50,16 +52,18 @@ server {
     async addProject(project, targetContainer) {
         const configPath = path.join(NGINX_CONF_DIR, `${project.subdomain}.conf`);
         const config = this.generateConfig(project, targetContainer);
-        fs.writeFileSync(configPath, config);
+        await fsp.writeFile(configPath, config);
         await this.reload(project.subdomain);
     }
 
     // Remove nginx config for a project
     async removeProject(subdomain) {
         const configPath = path.join(NGINX_CONF_DIR, `${subdomain}.conf`);
-        if (fs.existsSync(configPath)) {
-            fs.unlinkSync(configPath);
+        try {
+            await fsp.unlink(configPath);
             await this.reload(subdomain);
+        } catch (e) {
+            if (e.code !== 'ENOENT') throw e;
         }
     }
 

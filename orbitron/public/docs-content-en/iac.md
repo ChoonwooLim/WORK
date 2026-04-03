@@ -194,3 +194,30 @@ Deployment process of a project with `orbitron.yaml`:
 8. **✅ Deployment Complete** — Whether it's 3, 5, or 10 services, it's done in a single redeployment!
 
 Very simple, isn't it? Like a smart genie, Orbitron reads this single sheet of paper and builds your infrastructure.
+
+---
+
+## ⚙️ Environment Variable Build Control (New April 2026)
+
+> ✨ **April 2026 Update**: In addition to `orbitron.yaml`, you can now fine-tune build behavior via project environment variables.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOCKER_NO_CACHE` | `false` | When set to `true`, disables Docker build cache and performs a full rebuild. Useful when dependency caching gets corrupted. |
+| `TUNNEL_DOMAIN` | `twinverse.org` | Changes the root domain for subdomains assigned to projects. Use if you have your own Cloudflare domain. |
+
+### Usage Example
+
+```yaml
+# orbitron.yaml
+services:
+  web:
+    build_command: "npm ci && npm run build"
+    start_command: "npm start"
+    port: 3000
+    env:
+      - "NODE_ENV=production"
+      - "DOCKER_NO_CACHE=true"    # Force clean build for this deployment!
+```
+
+Or simply add `DOCKER_NO_CACHE=true` in the **Settings > Environment Variables** tab of the dashboard — it works exactly the same way.

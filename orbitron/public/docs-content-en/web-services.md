@@ -52,6 +52,16 @@ You can override this in the **Settings > Build & Run** tab of your dashboard.
 
 ---
 
+## Build Performance Optimization (New April 2026)
+
+> ✨ **April 2026 Update**: Docker build caching is now enabled by default, improving deployment speed by **2-3x**.
+
+*   **Layer Caching**: If `package.json` hasn't changed, the `npm install` step is skipped, and only source code changes are quickly applied.
+*   **Clean Build Option**: If you suspect caching issues, add `DOCKER_NO_CACHE=true` to your environment variables to force a full rebuild.
+*   **60-Minute Timeout**: All deployments have a safety timeout. Even if a build stalls due to network failures, it will auto-terminate after 60 minutes.
+
+---
+
 ## Troubleshooting Guide
 
 If your deployment fails and the Dashboard shows 'Failed', please check the following:

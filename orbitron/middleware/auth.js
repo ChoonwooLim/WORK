@@ -13,7 +13,7 @@ module.exports = (req, res, next) => {
 
     if (token) {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'orbitron-secret-key');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
             req.user = { userId: decoded.userId, username: decoded.username, role: decoded.role };
             return next();
         } catch (e) {

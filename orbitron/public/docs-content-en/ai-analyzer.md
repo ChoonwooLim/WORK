@@ -133,3 +133,22 @@ Orbitron automatically saves AI-analyzed errors and their solutions to an **Erro
 ```
 
 Just like this, Orbitron is a **learning deployment platform** that remembers more errors and resolves them faster over time!
+
+---
+
+## 🛡️ Deployment Stability Engine (New April 2026)
+
+> ✨ **April 2026 Update**: The stability of the deployment pipeline itself has been significantly strengthened.
+
+### 60-Minute Deployment Timeout
+All deployments have a **60-minute auto-timeout**. If a deployment exceeds 60 minutes for any reason — network failures, infinite loop builds, stuck Docker processes — it is automatically terminated and transitions to `failed` status. This completely prevents zombie processes from consuming server resources.
+
+### Automatic Log Management
+*   **Log Size Limit (512KB)**: Build logs exceeding 512KB are automatically truncated. This prevents hundreds of lines of `npm install` logs or massive build outputs from bloating the database indefinitely.
+*   **Container Log Rotation**: Running container logs are automatically rotated with `max-size=10MB, max-file=3` to prevent disk from filling up.
+
+### Automatic Docker Image Cleanup
+After each deployment, the following is automatically performed:
+*   Immediate removal of dangling images
+*   Automatic cleanup of unused images older than 24 hours
+*   Automatic rollback to previous successful image on build failure (prevents service disruption)

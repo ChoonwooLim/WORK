@@ -73,6 +73,30 @@ class Deployer extends EventEmitter {
         }
         this.activeDeployments.add(project.id);
 
+        const DEPLOY_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`배포 타임아웃: ${DEPLOY_TIMEOUT_MS / 60000}분 초과`)), DEPLOY_TIMEOUT_MS)
+        );
+
+        return Promise.race([
+            this._doDeploy(project, commitHash, commitMessage),
+            timeoutPromise
+        ]).catch(async (error) => {
+            this.activeDeployments.delete(project.id);
+            this.emitProgress(project.id, 'done', `배포 실패: ${error.message}`, 'failed');
+            await db.query(`UPDATE projects SET status = 'failed' WHERE id = $1`, [project.id]);
+            return { success: false, error: error.message };
+        });
+    }
+
+    // Truncate log string to prevent unbounded DB growth
+    _truncateLogs(logs, maxBytes = 512 * 1024) {
+        if (Buffer.byteLength(logs, 'utf8') <= maxBytes) return logs;
+        const truncated = Buffer.from(logs, 'utf8').subarray(0, maxBytes).toString('utf8');
+        return truncated + '\n\n... [로그가 512KB를 초과하여 잘렸습니다] ...\n';
+    }
+
+    async _doDeploy(project, commitHash = null, commitMessage = null) {
         const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
         let deploymentId;
         let logs = '';
@@ -83,7 +107,7 @@ class Deployer extends EventEmitter {
             if (!deploymentId) return;
             try {
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                const logWithTime = logs + `\n⏱ 경과 시간: ${elapsed}초\n`;
+                const logWithTime = this._truncateLogs(logs + `\n⏱ 경과 시간: ${elapsed}초\n`);
                 await db.query(
                     `UPDATE deployments SET logs = $1, status = $2 WHERE id = $3`,
                     [logWithTime, status, deploymentId]
@@ -621,7 +645,7 @@ class Deployer extends EventEmitter {
             // Final log save with 'success' status
             await db.query(
                 `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,
-                [logs, deploymentId]
+                [this._truncateLogs(logs), deploymentId]
             );
 
             // Clean up old Blue-Green containers AFTER successful routing
@@ -713,7 +737,7 @@ class Deployer extends EventEmitter {
 
                                     await db.query(
                                         `UPDATE deployments SET logs = $1, status = 'success' WHERE id = $2`,
-                                        [retryResult.logs + '\n\n🤖 [AI_AUTO_REPAIR_DATA]\n' + JSON.stringify(autoRepairInfo), deploymentId]
+                                        [this._truncateLogs(retryResult.logs + '\n\n🤖 [AI_AUTO_REPAIR_DATA]\n' + JSON.stringify(autoRepairInfo)), deploymentId]
                                     );
 
                                     this.emitProgress(project.id, 'done', '🤖 AI 자동 복구 성공! 배포 완료.', 'success');
@@ -773,7 +797,7 @@ class Deployer extends EventEmitter {
             if (deploymentId) {
                 await db.query(
                     `UPDATE deployments SET status = 'failed', logs = $1, finished_at = NOW() WHERE id = $2`,
-                    [logs, deploymentId]
+                    [this._truncateLogs(logs), deploymentId]
                 );
             }
 
@@ -807,7 +831,7 @@ class Deployer extends EventEmitter {
         if (fs.existsSync(path.join(projectDir, '.git'))) {
             const resetTarget = commitHash || `origin/${project.branch}`;
             try {
-                const { stdout, stderr } = await execAsync(`cd ${projectDir} && git fetch origin && git reset --hard ${resetTarget}`, { maxBuffer: 1024 * 1024 * 50 });
+                const { stdout, stderr } = await execAsync(`cd ${projectDir} && git fetch origin && git reset --hard ${resetTarget}`, { maxBuffer: 1024 * 1024 * 10 });
                 return `Git pull${commitHash ? ` (rollback to ${commitHash.substring(0, 7)})` : ''}:\n${stdout}${stderr}`;
             } catch (error) {
                 throw new Error(`Git pull failed: ${error.stderr || error.message}`);
@@ -816,7 +840,7 @@ class Deployer extends EventEmitter {
             // Clone
             fs.mkdirSync(projectDir, { recursive: true });
             try {
-                const { stdout, stderr } = await execAsync(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 50 });
+                const { stdout, stderr } = await execAsync(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 10 });
                 return `Git clone:\n${stdout}${stderr}`;
             } catch (error) {
                 throw new Error(`Git clone failed: ${error.stderr || error.message}`);
