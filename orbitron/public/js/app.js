@@ -238,6 +238,7 @@ function navigateTo(page) {
         'admin-users': '👥 유저 관리',
         'admin-projects': '🌐 전체 프로젝트',
         'admin-bugs': '🐞 버그 수정 로그',
+        'business-plan': '🚀 Orbitron 상용 서비스 계획서',
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
 
@@ -322,6 +323,7 @@ function navigateTo(page) {
     if (page === 'admin-users') renderAdminUsers();
     if (page === 'admin-projects') renderAdminProjects();
     if (page === 'admin-bugs') loadAdminBugs();
+    if (page === 'business-plan') renderBusinessPlan();
 }
 
 // ============ PROJECT LIST ============
@@ -4174,4 +4176,606 @@ async function deleteBug(id) {
     } catch (e) {
         toast(e.message, 'error');
     }
+}
+
+// ============ BUSINESS PLAN PAGE ============
+
+function renderBusinessPlan() {
+    const el = document.getElementById('business-plan-content');
+    if (!el) return;
+
+    const sectionStyle = `background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:28px; margin-bottom:24px;`;
+    const h2Style = `margin:0 0 20px 0; font-size:20px; color:var(--text-primary); display:flex; align-items:center; gap:10px;`;
+    const h3Style = `margin:24px 0 12px 0; font-size:16px; color:var(--accent); font-weight:600;`;
+    const pStyle = `font-size:14px; color:var(--text-secondary); line-height:1.8; margin:8px 0;`;
+    const tableStyle = `width:100%; border-collapse:collapse; margin:16px 0; font-size:13px;`;
+    const thStyle = `background:rgba(88,166,255,0.08); padding:10px 14px; text-align:left; font-weight:600; color:var(--text-primary); border-bottom:2px solid var(--border);`;
+    const tdStyle = `padding:10px 14px; border-bottom:1px solid var(--border); color:var(--text-secondary);`;
+    const tdRStyle = `padding:10px 14px; border-bottom:1px solid var(--border); color:var(--text-secondary); text-align:right; font-family:var(--font-mono); font-weight:600;`;
+    const highlightBox = `background:rgba(88,166,255,0.06); border:1px solid rgba(88,166,255,0.15); border-radius:8px; padding:16px; margin:16px 0;`;
+    const warnBox = `background:rgba(210,153,34,0.08); border:1px solid rgba(210,153,34,0.2); border-radius:8px; padding:16px; margin:16px 0;`;
+    const successBox = `background:rgba(63,185,80,0.08); border:1px solid rgba(63,185,80,0.2); border-radius:8px; padding:16px; margin:16px 0;`;
+    const badgeBlue = `display:inline-block; background:rgba(88,166,255,0.15); color:#58a6ff; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600;`;
+    const badgeGreen = `display:inline-block; background:rgba(63,185,80,0.15); color:#3fb950; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600;`;
+    const badgeOrange = `display:inline-block; background:rgba(210,153,34,0.15); color:#d29922; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600;`;
+
+    el.innerHTML = `
+    <!-- Header -->
+    <div style="text-align:center; margin-bottom:36px; padding:40px 20px; background:linear-gradient(135deg, rgba(88,166,255,0.08), rgba(189,147,249,0.08)); border-radius:16px; border:1px solid rgba(88,166,255,0.1);">
+        <div style="font-size:48px; margin-bottom:12px;">🪐</div>
+        <h1 style="margin:0 0 8px 0; font-size:28px; color:var(--text-primary); font-weight:700;">Orbitron 상용 서비스 전환 계획서</h1>
+        <p style="margin:0; font-size:14px; color:var(--text-muted);">Server Migration & Commercial Service Launch Plan</p>
+        <div style="margin-top:16px; display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+            <span style="${badgeBlue}">v1.0</span>
+            <span style="${badgeGreen}">작성일: 2026-04-03</span>
+            <span style="${badgeOrange}">Phase 1 ~ Phase 3 로드맵</span>
+        </div>
+    </div>
+
+    <!-- Executive Summary -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">📌 Executive Summary</h2>
+        <p style="${pStyle}">
+            <strong>Orbitron</strong>은 GitHub 연동, Docker 기반 자동 배포, AI 오류 분석, Unreal/Unity 게임 스트리밍을 통합한
+            <strong>올인원 클라우드 배포 플랫폼</strong>입니다. 현재 온프레미스(로컬 서버)에서 운영 중인 시스템을
+            GPU 클라우드 인프라(128GB+ VRAM)로 이전하고, SaaS(Software as a Service) 모델로 상용화하여
+            개인 개발자, 스타트업, 게임 스튜디오, 교육기관을 대상으로 서비스를 제공합니다.
+        </p>
+        <div style="${highlightBox}">
+            <strong style="color:var(--text-primary);">핵심 가치 제안 (Value Proposition)</strong>
+            <ul style="${pStyle} padding-left:20px;">
+                <li><strong>원클릭 배포</strong> — GitHub URL 또는 ZIP 업로드만으로 Docker 컨테이너 자동 빌드 & 배포</li>
+                <li><strong>AI 자동 오류 진단</strong> — Claude/Gemini 기반 빌드 에러 분석 + 자동 수정 제안</li>
+                <li><strong>게임 스트리밍</strong> — Unreal Engine Pixel Streaming, Unity WebGL 원클릭 배포</li>
+                <li><strong>제로 설정 HTTPS</strong> — Cloudflare Tunnel을 통한 자동 SSL + 커스텀 도메인</li>
+                <li><strong>풀스택 대시보드</strong> — 소스 에디터, 콘솔, 환경변수, 로그, 모니터링 통합</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 1. Current System Analysis -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">1. 현재 시스템 분석</h2>
+
+        <h3 style="${h3Style}">1.1 기술 스택</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">구성 요소</th><th style="${thStyle}">기술</th><th style="${thStyle}">역할</th></tr>
+            <tr><td style="${tdStyle}">런타임</td><td style="${tdStyle}">Node.js (Express)</td><td style="${tdStyle}">API 서버, SSE 스트리밍, SPA 서빙</td></tr>
+            <tr><td style="${tdStyle}">컨테이너</td><td style="${tdStyle}">Docker + Docker Compose</td><td style="${tdStyle}">프로젝트 격리 배포, 멀티스테이지 빌드</td></tr>
+            <tr><td style="${tdStyle}">리버스 프록시</td><td style="${tdStyle}">Nginx</td><td style="${tdStyle}">라우팅, WebSocket 업그레이드, 대용량 버퍼</td></tr>
+            <tr><td style="${tdStyle}">터널링</td><td style="${tdStyle}">Cloudflare Tunnel</td><td style="${tdStyle}">HTTPS 자동 설정, DNS 라우팅</td></tr>
+            <tr><td style="${tdStyle}">데이터베이스</td><td style="${tdStyle}">PostgreSQL</td><td style="${tdStyle}">프로젝트/배포/사용자 데이터, AES-256 암호화</td></tr>
+            <tr><td style="${tdStyle}">AI 엔진</td><td style="${tdStyle}">Claude 4.6 Sonnet + Gemini 2.5 Flash</td><td style="${tdStyle}">오류 분석, 자동 수정, 코드 어시스턴트</td></tr>
+            <tr><td style="${tdStyle}">GPU 서비스</td><td style="${tdStyle}">Pixel Streaming (GTX 1080 x2)</td><td style="${tdStyle}">UE5 게임 6세션 동시 스트리밍</td></tr>
+            <tr><td style="${tdStyle}">인증</td><td style="${tdStyle}">JWT + bcrypt + RBAC</td><td style="${tdStyle}">4단계 역할 기반 접근 제어</td></tr>
+        </table>
+
+        <h3 style="${h3Style}">1.2 현재 운영 현황</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">항목</th><th style="${thStyle}">현재 상태</th><th style="${thStyle}">제한 사항</th></tr>
+            <tr><td style="${tdStyle}">서버</td><td style="${tdStyle}">로컬 온프레미스</td><td style="${tdStyle}">단일 장애점(SPOF), 확장 불가</td></tr>
+            <tr><td style="${tdStyle}">GPU</td><td style="${tdStyle}">GTX 1080 x2 (8GB x2 = 16GB VRAM)</td><td style="${tdStyle}">NVENC 2세션/GPU 제한, AI 모델 구동 불가</td></tr>
+            <tr><td style="${tdStyle}">배포 프로젝트</td><td style="${tdStyle}">7개 (twinverse, sodamfn 등)</td><td style="${tdStyle}">리소스 경합, 동시 빌드 제한</td></tr>
+            <tr><td style="${tdStyle}">스토리지</td><td style="${tdStyle}">~5GB (배포) + DB + 미디어</td><td style="${tdStyle}">백업 미자동화, 재해 복구 없음</td></tr>
+            <tr><td style="${tdStyle}">SLA</td><td style="${tdStyle}">없음</td><td style="${tdStyle}">전원/네트워크 장애 시 완전 중단</td></tr>
+            <tr><td style="${tdStyle}">스케일링</td><td style="${tdStyle}">수직 확장만 가능</td><td style="${tdStyle}">사용자 증가 대응 불가</td></tr>
+        </table>
+
+        <h3 style="${h3Style}">1.3 핵심 기능 상세 분석</h3>
+
+        <div style="${highlightBox}">
+            <strong style="color:var(--text-primary);">A. 배포 자동화 엔진 (deployer.js + docker.js)</strong>
+            <p style="${pStyle}">
+                6단계 파이프라인 (clone → build → container → nginx → tunnel → done) 으로 완전 자동 배포를 수행합니다.
+                Node.js, Python, Next.js, 정적 사이트, 풀스택, Docker Compose 등 <strong>10종 이상의 프로젝트 타입을 자동 감지</strong>하며,
+                멀티스테이지 Docker 빌드로 캐시 활용 시 2~3배 빌드 속도 향상을 달성합니다.
+                Blue-Green 배포로 무중단 업데이트가 가능하며, GitHub Webhook 연동으로 push 시 자동 배포됩니다.
+            </p>
+            <p style="${pStyle}"><strong>경쟁력:</strong> Vercel, Railway, Render 등과 달리 <u>자체 인프라에서 Docker 네이티브로 모든 언어/프레임워크를 지원</u>하며,
+            컨테이너 수준의 완전한 제어권을 제공합니다.</p>
+        </div>
+
+        <div style="${highlightBox}">
+            <strong style="color:var(--text-primary);">B. AI 오류 분석 & 자동 수정 (aiAnalyzer.js + aiAutoRepair.js)</strong>
+            <p style="${pStyle}">
+                빌드/런타임 오류 발생 시 Claude 4.6 Sonnet(1차) → Gemini 2.5 Flash(폴백) 듀얼 LLM 라우팅으로 분석합니다.
+                에러 로그에서 핵심 50줄을 자동 추출하고, 에러 지식베이스(errorKnowledge.js)의 RAG 패턴 매칭과 결합하여
+                <strong>근본 원인 분석 + 코드 패치 제안</strong>을 자동 생성합니다.
+                성공률 추적(success_count)으로 지식베이스가 지속 학습됩니다.
+            </p>
+            <p style="${pStyle}"><strong>경쟁력:</strong> 기존 PaaS에는 없는 고유 기능. Heroku, Render 등은 에러 로그만 보여주지만,
+            Orbitron은 <u>원인 분석 + 수정 코드까지 제안</u>합니다.</p>
+        </div>
+
+        <div style="${highlightBox}">
+            <strong style="color:var(--text-primary);">C. 게임 스트리밍 (pixelStreaming.js)</strong>
+            <p style="${pStyle}">
+                Unreal Engine Pixel Streaming을 GPU 슬롯 기반으로 관리합니다. 현재 6동시 세션(GPU당 3슬롯)을 지원하며,
+                자동 좀비 컨테이너 정리(60초 주기), 최대 1시간 세션 제한, GPU 로드밸런싱을 수행합니다.
+                Unity WebGL 빌드도 원클릭 배포를 지원합니다.
+            </p>
+            <p style="${pStyle}"><strong>경쟁력:</strong> 게임 배포 + 웹앱 배포를 <u>단일 플랫폼에서 통합</u>하는 유일한 서비스.
+            AWS GameLift, Parsec 등은 게임 전용이며, Vercel/Render는 게임 배포를 지원하지 않습니다.</p>
+        </div>
+
+        <div style="${highlightBox}">
+            <strong style="color:var(--text-primary);">D. 통합 개발 환경 (소스 에디터, 콘솔, 환경변수)</strong>
+            <p style="${pStyle}">
+                Monaco Editor 기반 웹 IDE로 배포된 소스코드를 직접 편집하고, 컨테이너 내부 콘솔로 실시간 명령을 실행하며,
+                AES-256-GCM 암호화된 환경변수를 안전하게 관리합니다. 배포 로그 실시간 SSE 스트리밍,
+                프로젝트 그룹핑, 이슈 보드까지 포함된 올인원 대시보드입니다.
+            </p>
+        </div>
+    </div>
+
+    <!-- 2. Migration Plan -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">2. 서버 이전 계획</h2>
+
+        <h3 style="${h3Style}">2.1 목표 인프라 사양</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">항목</th><th style="${thStyle}">현재</th><th style="${thStyle}">이전 후</th></tr>
+            <tr><td style="${tdStyle}">GPU</td><td style="${tdStyle}">GTX 1080 x2 (16GB)</td><td style="${tdStyle} font-weight:600; color:#3fb950;">MI300X 192GB / H100 x2 160GB</td></tr>
+            <tr><td style="${tdStyle}">VRAM</td><td style="${tdStyle}">16GB</td><td style="${tdStyle} font-weight:600; color:#3fb950;">128~192GB (8~12배 증가)</td></tr>
+            <tr><td style="${tdStyle}">CPU</td><td style="${tdStyle}">로컬 CPU</td><td style="${tdStyle}">32~64 vCPU</td></tr>
+            <tr><td style="${tdStyle}">RAM</td><td style="${tdStyle}">제한적</td><td style="${tdStyle}">128~256GB</td></tr>
+            <tr><td style="${tdStyle}">스토리지</td><td style="${tdStyle}">로컬 SSD</td><td style="${tdStyle}">NVMe SSD 500GB + 오브젝트 스토리지</td></tr>
+            <tr><td style="${tdStyle}">네트워크</td><td style="${tdStyle}">가정용</td><td style="${tdStyle}">1~10 Gbps 전용</td></tr>
+            <tr><td style="${tdStyle}">SLA</td><td style="${tdStyle}">없음</td><td style="${tdStyle} font-weight:600; color:#3fb950;">99.99% (연간 다운타임 &lt;53분)</td></tr>
+            <tr><td style="${tdStyle}">DDoS 보호</td><td style="${tdStyle}">없음</td><td style="${tdStyle}">기본 포함</td></tr>
+            <tr><td style="${tdStyle}">백업</td><td style="${tdStyle}">수동</td><td style="${tdStyle}">자동 일일/주간 백업</td></tr>
+        </table>
+
+        <h3 style="${h3Style}">2.2 클라우드 업체 선정 — 종량제 비교</h3>
+        <table style="${tableStyle}">
+            <tr>
+                <th style="${thStyle}">업체</th><th style="${thStyle}">GPU 구성</th><th style="${thStyle}">VRAM</th>
+                <th style="${thStyle}">시간당</th><th style="${thStyle}">8h/일</th><th style="${thStyle}">16h/일</th><th style="${thStyle}">24/7</th>
+                <th style="${thStyle}">SLA</th><th style="${thStyle}">평가</th>
+            </tr>
+            <tr style="background:rgba(63,185,80,0.05);">
+                <td style="${tdStyle} font-weight:700; color:#3fb950;">Vultr (추천)</td><td style="${tdStyle}">1x MI300X</td><td style="${tdStyle}">192GB</td>
+                <td style="${tdRStyle}">$1.85</td><td style="${tdRStyle}">$444</td><td style="${tdRStyle}">$888</td><td style="${tdRStyle}">$1,332</td>
+                <td style="${tdStyle}">99.99%</td><td style="${tdStyle}"><span style="${badgeGreen}">최적</span></td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">RunPod Secure</td><td style="${tdStyle}">2x A100 80GB</td><td style="${tdStyle}">160GB</td>
+                <td style="${tdRStyle}">$3.08</td><td style="${tdRStyle}">$739</td><td style="${tdRStyle}">$1,478</td><td style="${tdRStyle}">$2,218</td>
+                <td style="${tdStyle}">미공개</td><td style="${tdStyle}"><span style="${badgeBlue}">대안</span></td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">Lambda Labs</td><td style="${tdStyle}">2x A100 80GB</td><td style="${tdStyle}">160GB</td>
+                <td style="${tdRStyle}">~$0.70</td><td style="${tdRStyle}">$168</td><td style="${tdRStyle}">$336</td><td style="${tdRStyle}">$504</td>
+                <td style="${tdStyle}">Enterprise</td><td style="${tdStyle}"><span style="${badgeOrange}">재고 부족</span></td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">GCP a3-highgpu-2g</td><td style="${tdStyle}">2x H100</td><td style="${tdStyle}">160GB</td>
+                <td style="${tdRStyle}">$6.00</td><td style="${tdRStyle}">$1,440</td><td style="${tdRStyle}">$2,880</td><td style="${tdRStyle}">$4,320</td>
+                <td style="${tdStyle}">99.95%</td><td style="${tdStyle}"><span style="${badgeBlue}">엔터프라이즈</span></td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">AWS g6e.12xlarge</td><td style="${tdStyle}">4x L40S</td><td style="${tdStyle}">192GB</td>
+                <td style="${tdRStyle}">$10.49</td><td style="${tdRStyle}">$2,518</td><td style="${tdRStyle}">$5,035</td><td style="${tdRStyle}">$7,553</td>
+                <td style="${tdStyle}">99.99%</td><td style="${tdStyle}"><span style="${badgeOrange}">고비용</span></td>
+            </tr>
+        </table>
+
+        <div style="${successBox}">
+            <strong style="color:#3fb950;">선정 결론: Vultr MI300X (192GB VRAM)</strong>
+            <p style="${pStyle}">
+                단일 GPU 192GB로 멀티 GPU 관리 복잡도를 제거하고, 99.99% SLA, DDoS 보호, 32개 글로벌 리전을 활용합니다.
+                Full VM(Ubuntu + systemd + Docker + root)으로 <strong>기존 Orbitron 아키텍처를 변경 없이 그대로 이전</strong> 가능합니다.
+                초기 종량제($1.85/hr)로 시작하여 사용량에 따라 예약 인스턴스로 전환합니다.
+            </p>
+        </div>
+
+        <h3 style="${h3Style}">2.3 이전 타임라인</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">단계</th><th style="${thStyle}">기간</th><th style="${thStyle}">작업 내용</th><th style="${thStyle}">산출물</th></tr>
+            <tr><td style="${tdStyle}">1. 환경 구축</td><td style="${tdStyle}">1주차</td><td style="${tdStyle}">Vultr 인스턴스 프로비저닝, Ubuntu + Docker + Nginx + PostgreSQL 설치, 보안 설정(SSH 키, 방화벽, fail2ban)</td><td style="${tdStyle}">서버 구성 완료</td></tr>
+            <tr><td style="${tdStyle}">2. 데이터 마이그레이션</td><td style="${tdStyle}">2주차</td><td style="${tdStyle}">PostgreSQL pg_dump/restore, 배포 디렉토리 rsync, 환경변수 이전, Docker 이미지 재빌드</td><td style="${tdStyle}">데이터 이전 완료</td></tr>
+            <tr><td style="${tdStyle}">3. 서비스 이전</td><td style="${tdStyle}">2~3주차</td><td style="${tdStyle}">Cloudflare Tunnel 재설정, DNS 변경, Nginx 설정 이전, SSL 인증서 확인, GitHub Webhook URL 업데이트</td><td style="${tdStyle}">서비스 라이브</td></tr>
+            <tr><td style="${tdStyle}">4. GPU 서비스 이전</td><td style="${tdStyle}">3주차</td><td style="${tdStyle}">MI300X GPU 드라이버 설치, Pixel Streaming 슬롯 확장(6→20+), AI 이미지 생성(Flux.1) GPU 최적화</td><td style="${tdStyle}">GPU 서비스 정상</td></tr>
+            <tr><td style="${tdStyle}">5. 검증 & 안정화</td><td style="${tdStyle}">4주차</td><td style="${tdStyle}">부하 테스트, 모니터링 설정(Prometheus + Grafana), 자동 백업 설정, 장애 복구 테스트</td><td style="${tdStyle}">상용 준비 완료</td></tr>
+        </table>
+    </div>
+
+    <!-- 3. Commercial Service Plan -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">3. 상용 서비스 설계</h2>
+
+        <h3 style="${h3Style}">3.1 타겟 시장 & 고객 세그먼트</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">세그먼트</th><th style="${thStyle}">대상</th><th style="${thStyle}">핵심 니즈</th><th style="${thStyle}">예상 비중</th></tr>
+            <tr><td style="${tdStyle}">인디 개발자</td><td style="${tdStyle}">개인/프리랜서 개발자</td><td style="${tdStyle}">저렴한 배포, 간편한 설정, Docker 지원</td><td style="${tdStyle}">40%</td></tr>
+            <tr><td style="${tdStyle}">스타트업</td><td style="${tdStyle}">5~20명 규모 팀</td><td style="${tdStyle}">빠른 프로토타입 배포, 팀 협업, CI/CD</td><td style="${tdStyle}">30%</td></tr>
+            <tr><td style="${tdStyle}">게임 스튜디오</td><td style="${tdStyle}">UE5/Unity 개발사</td><td style="${tdStyle}">Pixel Streaming 데모, WebGL 퍼블리싱</td><td style="${tdStyle}">15%</td></tr>
+            <tr><td style="${tdStyle}">교육기관</td><td style="${tdStyle}">대학, 부트캠프</td><td style="${tdStyle}">학생 프로젝트 호스팅, 교육용 환경</td><td style="${tdStyle}">10%</td></tr>
+            <tr><td style="${tdStyle}">에이전시</td><td style="${tdStyle}">웹 에이전시, SI업체</td><td style="${tdStyle}">고객 프로젝트 데모, 스테이징 환경</td><td style="${tdStyle}">5%</td></tr>
+        </table>
+
+        <h3 style="${h3Style}">3.2 가격 정책 (Pricing Tiers)</h3>
+        <table style="${tableStyle}">
+            <tr>
+                <th style="${thStyle}">플랜</th><th style="${thStyle}">월 요금</th><th style="${thStyle}">프로젝트</th>
+                <th style="${thStyle}">빌드 시간</th><th style="${thStyle}">스토리지</th><th style="${thStyle}">대역폭</th>
+                <th style="${thStyle}">기능</th>
+            </tr>
+            <tr style="background:rgba(255,255,255,0.02);">
+                <td style="${tdStyle} font-weight:700;">Free</td>
+                <td style="${tdRStyle} color:#3fb950;">$0</td>
+                <td style="${tdStyle}">1개</td><td style="${tdStyle}">100분/월</td>
+                <td style="${tdStyle}">500MB</td><td style="${tdStyle}">1GB</td>
+                <td style="${tdStyle}">기본 배포, 커뮤니티 지원</td>
+            </tr>
+            <tr style="background:rgba(88,166,255,0.03);">
+                <td style="${tdStyle} font-weight:700; color:#58a6ff;">Starter</td>
+                <td style="${tdRStyle} color:#58a6ff;">$12</td>
+                <td style="${tdStyle}">5개</td><td style="${tdStyle}">1,000분/월</td>
+                <td style="${tdStyle}">5GB</td><td style="${tdStyle}">50GB</td>
+                <td style="${tdStyle}">커스텀 도메인, AI 오류 분석 (20회/월), 환경변수 암호화</td>
+            </tr>
+            <tr style="background:rgba(189,147,249,0.05);">
+                <td style="${tdStyle} font-weight:700; color:#bd93f9;">Pro</td>
+                <td style="${tdRStyle} color:#bd93f9;">$39</td>
+                <td style="${tdStyle}">20개</td><td style="${tdStyle}">무제한</td>
+                <td style="${tdStyle}">25GB</td><td style="${tdStyle}">200GB</td>
+                <td style="${tdStyle}">AI 어시스턴트 무제한, 자동 배포, 프로젝트 그룹, 팀원 3명</td>
+            </tr>
+            <tr style="background:rgba(210,153,34,0.05);">
+                <td style="${tdStyle} font-weight:700; color:#d29922;">Team</td>
+                <td style="${tdRStyle} color:#d29922;">$99</td>
+                <td style="${tdStyle}">50개</td><td style="${tdStyle}">무제한</td>
+                <td style="${tdStyle}">100GB</td><td style="${tdStyle}">1TB</td>
+                <td style="${tdStyle}">팀원 10명, RBAC, DB 호스팅, 우선 빌드 큐, 이메일 지원</td>
+            </tr>
+            <tr style="background:rgba(63,185,80,0.05);">
+                <td style="${tdStyle} font-weight:700; color:#3fb950;">Enterprise</td>
+                <td style="${tdRStyle} color:#3fb950;">커스텀</td>
+                <td style="${tdStyle}">무제한</td><td style="${tdStyle}">무제한</td>
+                <td style="${tdStyle}">무제한</td><td style="${tdStyle}">무제한</td>
+                <td style="${tdStyle}">전용 인프라, SLA 보장, SSO, 감사 로그, 전담 지원</td>
+            </tr>
+        </table>
+
+        <h3 style="${h3Style}">3.3 부가 서비스 (Add-ons)</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">서비스</th><th style="${thStyle}">가격</th><th style="${thStyle}">설명</th></tr>
+            <tr><td style="${tdStyle}">Pixel Streaming 세션</td><td style="${tdRStyle}">$2.50/시간</td><td style="${tdStyle}">UE5 게임 GPU 스트리밍 (세션당 과금)</td></tr>
+            <tr><td style="${tdStyle}">AI 이미지 생성</td><td style="${tdRStyle}">$0.05/장</td><td style="${tdStyle}">Flux.1-schnell 기반 이미지 생성 API</td></tr>
+            <tr><td style="${tdStyle}">추가 스토리지</td><td style="${tdRStyle}">$0.15/GB/월</td><td style="${tdStyle}">프로젝트 스토리지 추가</td></tr>
+            <tr><td style="${tdStyle}">추가 대역폭</td><td style="${tdRStyle}">$0.10/GB</td><td style="${tdStyle}">기본 포함량 초과 시</td></tr>
+            <tr><td style="${tdStyle}">PostgreSQL DB</td><td style="${tdRStyle}">$7/월~</td><td style="${tdStyle}">관리형 DB 인스턴스 (256MB~4GB)</td></tr>
+            <tr><td style="${tdStyle}">Redis Cache</td><td style="${tdRStyle}">$5/월~</td><td style="${tdStyle}">관리형 캐시 인스턴스</td></tr>
+        </table>
+    </div>
+
+    <!-- 4. Competitive Analysis -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">4. 경쟁사 분석</h2>
+
+        <table style="${tableStyle}">
+            <tr>
+                <th style="${thStyle}">기능</th>
+                <th style="${thStyle} color:#3fb950;">Orbitron</th>
+                <th style="${thStyle}">Vercel</th>
+                <th style="${thStyle}">Railway</th>
+                <th style="${thStyle}">Render</th>
+                <th style="${thStyle}">Heroku</th>
+            </tr>
+            <tr><td style="${tdStyle} font-weight:600;">Docker 네이티브</td><td style="${tdStyle} color:#3fb950;">O (완전 제어)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">O (제한적)</td><td style="${tdStyle}">O (제한적)</td><td style="${tdStyle}">부분적</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">AI 오류 분석</td><td style="${tdStyle} color:#3fb950;">O (자동 수정)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">게임 스트리밍</td><td style="${tdStyle} color:#3fb950;">O (UE5 + Unity)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">웹 IDE (소스 에디터)</td><td style="${tdStyle} color:#3fb950;">O (Monaco)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">Shell만</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">컨테이너 콘솔</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">O</td><td style="${tdStyle}">O</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">Docker Compose</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">GPU 지원</td><td style="${tdStyle} color:#3fb950;">O (192GB)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">유료 Addon</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">Starter 가격</td><td style="${tdStyle} font-weight:700; color:#3fb950;">$12/월</td><td style="${tdStyle}">$20/월</td><td style="${tdStyle}">$5/월~</td><td style="${tdStyle}">$7/월~</td><td style="${tdStyle}">$5/월~</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">Pro 가격</td><td style="${tdStyle} font-weight:700; color:#3fb950;">$39/월</td><td style="${tdStyle}">$20/유저</td><td style="${tdStyle}">$20/유저</td><td style="${tdStyle}">$19/서비스</td><td style="${tdStyle}">$25/dyno</td></tr>
+        </table>
+
+        <div style="${highlightBox}">
+            <strong style="color:var(--text-primary);">Orbitron 차별화 포인트</strong>
+            <ol style="${pStyle} padding-left:20px;">
+                <li><strong>AI 네이티브</strong> — 유일하게 LLM 기반 오류 분석 + 자동 수정을 내장</li>
+                <li><strong>게임 + 웹앱 통합</strong> — 하나의 플랫폼에서 UE5/Unity 게임과 웹앱을 모두 배포</li>
+                <li><strong>완전한 Docker 제어</strong> — Dockerfile, Compose, GPU passthrough 모두 지원</li>
+                <li><strong>올인원 대시보드</strong> — IDE, 콘솔, 모니터링, 이슈 트래킹까지 통합</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- 5. Revenue Projection -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">5. 수익 분석 & 재무 예측</h2>
+
+        <h3 style="${h3Style}">5.1 비용 구조 (월간)</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">항목</th><th style="${thStyle}">Phase 1 (1~6개월)</th><th style="${thStyle}">Phase 2 (7~12개월)</th><th style="${thStyle}">Phase 3 (13~24개월)</th></tr>
+            <tr><td style="${tdStyle}">GPU 서버 (Vultr MI300X)</td><td style="${tdRStyle}">$888 (16h/일)</td><td style="${tdRStyle}">$1,332 (24/7)</td><td style="${tdRStyle}">$2,664 (x2 인스턴스)</td></tr>
+            <tr><td style="${tdStyle}">스토리지 + 백업</td><td style="${tdRStyle}">$30</td><td style="${tdRStyle}">$80</td><td style="${tdRStyle}">$200</td></tr>
+            <tr><td style="${tdStyle}">AI API (Claude + Gemini)</td><td style="${tdRStyle}">$50</td><td style="${tdRStyle}">$200</td><td style="${tdRStyle}">$500</td></tr>
+            <tr><td style="${tdStyle}">Cloudflare (Pro)</td><td style="${tdRStyle}">$20</td><td style="${tdRStyle}">$20</td><td style="${tdRStyle}">$200 (Business)</td></tr>
+            <tr><td style="${tdStyle}">도메인 + 기타</td><td style="${tdRStyle}">$30</td><td style="${tdRStyle}">$30</td><td style="${tdRStyle}">$50</td></tr>
+            <tr><td style="${tdStyle}">마케팅</td><td style="${tdRStyle}">$100</td><td style="${tdRStyle}">$500</td><td style="${tdRStyle}">$1,500</td></tr>
+            <tr style="background:rgba(88,166,255,0.05);">
+                <td style="${tdStyle} font-weight:700; color:var(--text-primary);">총 월 비용</td>
+                <td style="${tdRStyle} font-weight:700; color:#f85149;">$1,118</td>
+                <td style="${tdRStyle} font-weight:700; color:#f85149;">$2,162</td>
+                <td style="${tdRStyle} font-weight:700; color:#f85149;">$5,114</td>
+            </tr>
+        </table>
+
+        <h3 style="${h3Style}">5.2 사용자 성장 시나리오</h3>
+        <div style="${warnBox}">
+            <strong style="color:#d29922;">산출 근거</strong>
+            <p style="${pStyle}">
+                PaaS 시장의 일반적 전환율과 Orbitron의 차별화 기능을 기반으로 <strong>보수적(Conservative)</strong>,
+                <strong>기본(Base)</strong>, <strong>낙관적(Optimistic)</strong> 3가지 시나리오로 추정합니다.
+                인디해커, Product Hunt, 개발자 커뮤니티(Reddit r/selfhosted, Hacker News) 마케팅을 가정합니다.
+                Free → Paid 전환율은 업계 평균 2~5%를 적용했습니다.
+            </p>
+        </div>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">기간</th><th style="${thStyle}" colspan="2">보수적</th><th style="${thStyle}" colspan="2">기본</th><th style="${thStyle}" colspan="2">낙관적</th></tr>
+            <tr><th style="${thStyle}"></th><th style="${thStyle}">Free</th><th style="${thStyle}">유료</th><th style="${thStyle}">Free</th><th style="${thStyle}">유료</th><th style="${thStyle}">Free</th><th style="${thStyle}">유료</th></tr>
+            <tr><td style="${tdStyle}">3개월차</td><td style="${tdRStyle}">50</td><td style="${tdRStyle}">3</td><td style="${tdRStyle}">120</td><td style="${tdRStyle}">8</td><td style="${tdRStyle}">300</td><td style="${tdRStyle}">20</td></tr>
+            <tr><td style="${tdStyle}">6개월차</td><td style="${tdRStyle}">150</td><td style="${tdRStyle}">10</td><td style="${tdRStyle}">400</td><td style="${tdRStyle}">30</td><td style="${tdRStyle}">1,000</td><td style="${tdRStyle}">70</td></tr>
+            <tr><td style="${tdStyle}">12개월차</td><td style="${tdRStyle}">400</td><td style="${tdRStyle}">30</td><td style="${tdRStyle}">1,200</td><td style="${tdRStyle}">90</td><td style="${tdRStyle}">3,000</td><td style="${tdRStyle}">250</td></tr>
+            <tr><td style="${tdStyle}">24개월차</td><td style="${tdRStyle}">1,000</td><td style="${tdRStyle}">80</td><td style="${tdRStyle}">3,500</td><td style="${tdRStyle}">280</td><td style="${tdRStyle}">10,000</td><td style="${tdRStyle}">800</td></tr>
+        </table>
+
+        <h3 style="${h3Style}">5.3 매출 예측 (기본 시나리오 — 유료 유저 ARPU $28 기준)</h3>
+        <div style="${pStyle}">ARPU(Average Revenue Per User) 산출: Free $0, Starter $12(50%), Pro $39(35%), Team $99(12%), Add-on $5(평균) = <strong>가중 ARPU $28</strong></div>
+        <table style="${tableStyle}">
+            <tr>
+                <th style="${thStyle}">기간</th><th style="${thStyle}">유료 유저</th><th style="${thStyle}">구독 매출</th>
+                <th style="${thStyle}">Add-on 매출</th><th style="${thStyle}">총 매출</th><th style="${thStyle}">비용</th><th style="${thStyle}">순이익</th>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">3개월차</td><td style="${tdRStyle}">8</td><td style="${tdRStyle}">$224</td>
+                <td style="${tdRStyle}">$40</td><td style="${tdRStyle}">$264</td><td style="${tdRStyle}">$1,118</td>
+                <td style="${tdRStyle} color:#f85149;">-$854</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">6개월차</td><td style="${tdRStyle}">30</td><td style="${tdRStyle}">$840</td>
+                <td style="${tdRStyle}">$180</td><td style="${tdRStyle}">$1,020</td><td style="${tdRStyle}">$1,118</td>
+                <td style="${tdRStyle} color:#f85149;">-$98</td>
+            </tr>
+            <tr style="background:rgba(63,185,80,0.05);">
+                <td style="${tdStyle} font-weight:600;">7개월차 (BEP)</td><td style="${tdRStyle}">35</td><td style="${tdRStyle}">$980</td>
+                <td style="${tdRStyle}">$210</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">$1,190</td><td style="${tdRStyle}">$1,118</td>
+                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+$72</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">12개월차</td><td style="${tdRStyle}">90</td><td style="${tdRStyle}">$2,520</td>
+                <td style="${tdRStyle}">$630</td><td style="${tdRStyle}">$3,150</td><td style="${tdRStyle}">$2,162</td>
+                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+$988</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle}">18개월차</td><td style="${tdRStyle}">180</td><td style="${tdRStyle}">$5,040</td>
+                <td style="${tdRStyle}">$1,440</td><td style="${tdRStyle}">$6,480</td><td style="${tdRStyle}">$3,500</td>
+                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+$2,980</td>
+            </tr>
+            <tr style="background:rgba(63,185,80,0.08);">
+                <td style="${tdStyle} font-weight:700;">24개월차</td><td style="${tdRStyle}">280</td><td style="${tdRStyle}">$7,840</td>
+                <td style="${tdRStyle}">$2,800</td><td style="${tdRStyle} font-weight:700; color:#3fb950;">$10,640</td><td style="${tdRStyle}">$5,114</td>
+                <td style="${tdRStyle} font-weight:700; color:#3fb950;">+$5,526</td>
+            </tr>
+        </table>
+
+        <h3 style="${h3Style}">5.4 누적 손익 추이</h3>
+        <div style="display:flex; align-items:flex-end; gap:4px; height:200px; padding:20px; background:rgba(0,0,0,0.2); border-radius:8px; margin:16px 0;">
+            ${[
+                {m:'1', h:8, c:'#f85149'},  {m:'2', h:12, c:'#f85149'}, {m:'3', h:16, c:'#f85149'},
+                {m:'4', h:22, c:'#f85149'},  {m:'5', h:30, c:'#f85149'}, {m:'6', h:42, c:'#d29922'},
+                {m:'7', h:50, c:'#3fb950'},  {m:'8', h:58, c:'#3fb950'}, {m:'9', h:66, c:'#3fb950'},
+                {m:'10', h:74, c:'#3fb950'}, {m:'11', h:82, c:'#3fb950'},{m:'12', h:92, c:'#3fb950'},
+                {m:'15', h:110, c:'#3fb950'},{m:'18', h:135, c:'#3fb950'},{m:'21', h:160, c:'#3fb950'},
+                {m:'24', h:185, c:'#3fb950'}
+            ].map(d => `
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                    <div style="width:100%; height:${d.h}px; background:${d.c}; border-radius:4px 4px 0 0; min-width:16px; opacity:0.8;"></div>
+                    <span style="font-size:10px; color:var(--text-muted);">${d.m}M</span>
+                </div>
+            `).join('')}
+        </div>
+        <div style="display:flex; gap:16px; justify-content:center; font-size:12px; color:var(--text-muted);">
+            <span><span style="display:inline-block; width:12px; height:12px; background:#f85149; border-radius:2px; vertical-align:middle;"></span> 적자</span>
+            <span><span style="display:inline-block; width:12px; height:12px; background:#d29922; border-radius:2px; vertical-align:middle;"></span> 손익분기점 근접</span>
+            <span><span style="display:inline-block; width:12px; height:12px; background:#3fb950; border-radius:2px; vertical-align:middle;"></span> 흑자</span>
+        </div>
+
+        <h3 style="${h3Style}">5.5 초기 투자금 회수 분석</h3>
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">항목</th><th style="${thStyle}">금액</th></tr>
+            <tr><td style="${tdStyle}">이전 비용 (1개월 서버 + 설정 작업)</td><td style="${tdRStyle}">~$1,500</td></tr>
+            <tr><td style="${tdStyle}">1~6개월 누적 적자</td><td style="${tdRStyle}">~$3,500</td></tr>
+            <tr style="background:rgba(88,166,255,0.05);">
+                <td style="${tdStyle} font-weight:700;">총 초기 투자 필요 금액</td><td style="${tdRStyle} font-weight:700; color:#58a6ff;">~$5,000</td>
+            </tr>
+            <tr><td style="${tdStyle}">손익분기점 (BEP)</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">7개월차 (유료 35명)</td></tr>
+            <tr><td style="${tdStyle}">투자금 회수 시점</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">12~14개월차</td></tr>
+            <tr><td style="${tdStyle}">24개월 누적 순이익</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">~$18,000+</td></tr>
+        </table>
+    </div>
+
+    <!-- 6. Expected Effects -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">6. 기대 효과</h2>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin:16px 0;">
+            <div style="${highlightBox}">
+                <div style="font-size:24px; margin-bottom:8px;">⚡</div>
+                <strong style="color:var(--text-primary);">성능 12배 향상</strong>
+                <p style="${pStyle}">VRAM 16GB → 192GB로 12배 증가. Pixel Streaming 동시 세션 6 → 30+, AI 이미지 생성 속도 5배 이상 향상.
+                대형 AI 모델(70B 파라미터) 로컬 호스팅 가능.</p>
+            </div>
+            <div style="${highlightBox}">
+                <div style="font-size:24px; margin-bottom:8px;">🛡</div>
+                <strong style="color:var(--text-primary);">엔터프라이즈급 안정성</strong>
+                <p style="${pStyle}">99.99% SLA (연간 다운타임 53분 이하), DDoS 보호, 자동 백업, 장애 복구.
+                SPOF(단일 장애점) 완전 제거.</p>
+            </div>
+            <div style="${highlightBox}">
+                <div style="font-size:24px; margin-bottom:8px;">🌏</div>
+                <strong style="color:var(--text-primary);">글로벌 서비스</strong>
+                <p style="${pStyle}">Vultr 32개 글로벌 리전 + Cloudflare CDN으로 전세계 사용자에게 50ms 이하 응답시간 제공.
+                한국, 일본, 미국, 유럽 등 주요 시장 커버.</p>
+            </div>
+            <div style="${highlightBox}">
+                <div style="font-size:24px; margin-bottom:8px;">📈</div>
+                <strong style="color:var(--text-primary);">확장성 확보</strong>
+                <p style="${pStyle}">수직/수평 확장 모두 가능. 사용자 증가 시 인스턴스 추가로 선형 확장.
+                쿠버네티스 전환 로드맵으로 무한 스케일링 준비.</p>
+            </div>
+            <div style="${highlightBox}">
+                <div style="font-size:24px; margin-bottom:8px;">💰</div>
+                <strong style="color:var(--text-primary);">수익 모델 확립</strong>
+                <p style="${pStyle}">5단계 가격 정책(Free → Enterprise) + 종량제 Add-on으로 다층 수익 구조.
+                ARPU $28, LTV(고객 생애 가치) 12개월 기준 $336 예상.</p>
+            </div>
+            <div style="${highlightBox}">
+                <div style="font-size:24px; margin-bottom:8px;">🎯</div>
+                <strong style="color:var(--text-primary);">시장 차별화</strong>
+                <p style="${pStyle}">AI 오류 분석 + 게임 스트리밍 + Docker 네이티브 통합은 현존 PaaS에 없는 유일한 조합.
+                니치 마켓(게임 개발자, AI 스타트업) 선점 기회.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Risk Analysis -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">7. 리스크 분석 & 대응 전략</h2>
+
+        <table style="${tableStyle}">
+            <tr><th style="${thStyle}">리스크</th><th style="${thStyle}">영향도</th><th style="${thStyle}">발생 확률</th><th style="${thStyle}">대응 전략</th></tr>
+            <tr>
+                <td style="${tdStyle} font-weight:600;">사용자 확보 부진</td>
+                <td style="${tdStyle}"><span style="${badgeOrange}">높음</span></td>
+                <td style="${tdStyle}"><span style="${badgeOrange}">중간</span></td>
+                <td style="${tdStyle}">Free 티어로 진입장벽 낮춤, Product Hunt 런칭, 개발자 커뮤니티 SEO 콘텐츠, 유튜브 데모 영상</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle} font-weight:600;">서버 비용 초과</td>
+                <td style="${tdStyle}"><span style="${badgeOrange}">높음</span></td>
+                <td style="${tdStyle}"><span style="${badgeBlue}">낮음</span></td>
+                <td style="${tdStyle}">종량제로 시작, 사용량 기반 자동 스케일링, 비용 알림 설정, 유휴 시 자동 축소</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle} font-weight:600;">대형 경쟁사 기능 추격</td>
+                <td style="${tdStyle}"><span style="${badgeBlue}">중간</span></td>
+                <td style="${tdStyle}"><span style="${badgeOrange}">중간</span></td>
+                <td style="${tdStyle}">AI + 게임 통합이라는 니치에 집중, 커뮤니티 기반 락인, 빠른 기능 반복</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle} font-weight:600;">GPU 공급 불안정</td>
+                <td style="${tdStyle}"><span style="${badgeBlue}">중간</span></td>
+                <td style="${tdStyle}"><span style="${badgeBlue}">낮음</span></td>
+                <td style="${tdStyle}">멀티 클라우드 전략(Vultr + Lambda 백업), 예약 인스턴스 확보</td>
+            </tr>
+            <tr>
+                <td style="${tdStyle} font-weight:600;">보안 사고</td>
+                <td style="${tdStyle}"><span style="display:inline-block; background:rgba(248,81,73,0.15); color:#f85149; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600;">매우 높음</span></td>
+                <td style="${tdStyle}"><span style="${badgeBlue}">낮음</span></td>
+                <td style="${tdStyle}">컨테이너 격리, 네트워크 세그멘테이션, AES-256 암호화, 정기 보안 감사, WAF 적용</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- 8. Roadmap -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">8. 실행 로드맵</h2>
+
+        <div style="position:relative; padding-left:32px; margin:20px 0;">
+            <div style="position:absolute; left:12px; top:0; bottom:0; width:2px; background:var(--border);"></div>
+
+            <div style="position:relative; margin-bottom:32px;">
+                <div style="position:absolute; left:-27px; top:0; width:14px; height:14px; background:#58a6ff; border-radius:50%; border:3px solid var(--bg-secondary);"></div>
+                <div style="${highlightBox}">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="color:#58a6ff; font-size:16px;">Phase 1: 인프라 이전 & MVP</strong>
+                        <span style="${badgeBlue}">Month 1~2</span>
+                    </div>
+                    <ul style="${pStyle} padding-left:20px; margin-top:12px;">
+                        <li>Vultr MI300X 인스턴스 프로비저닝 & 환경 구축</li>
+                        <li>기존 데이터/서비스 전체 마이그레이션</li>
+                        <li>결제 시스템 통합 (Stripe)</li>
+                        <li>사용자 가입/로그인 개선 (OAuth: GitHub, Google)</li>
+                        <li>Free/Starter/Pro 티어 구현 및 리소스 제한</li>
+                        <li>모니터링 시스템 구축 (Prometheus + Grafana)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="position:relative; margin-bottom:32px;">
+                <div style="position:absolute; left:-27px; top:0; width:14px; height:14px; background:#3fb950; border-radius:50%; border:3px solid var(--bg-secondary);"></div>
+                <div style="${successBox}">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="color:#3fb950; font-size:16px;">Phase 2: 공개 런칭 & 성장</strong>
+                        <span style="${badgeGreen}">Month 3~8</span>
+                    </div>
+                    <ul style="${pStyle} padding-left:20px; margin-top:12px;">
+                        <li>Product Hunt 런칭, Hacker News Show HN 게시</li>
+                        <li>팀 기능 (Team 플랜): 초대, RBAC, 공유 프로젝트</li>
+                        <li>API 공개 (REST + Webhook) — 외부 CI/CD 연동</li>
+                        <li>커스텀 도메인 자동화 (Let's Encrypt + Cloudflare)</li>
+                        <li>Pixel Streaming 과금 시스템 (세션 기반)</li>
+                        <li>AI 이미지 생성 API 공개 (Flux.1 기반)</li>
+                        <li>문서 사이트 + 튜토리얼 + YouTube 데모 시리즈</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="position:relative; margin-bottom:32px;">
+                <div style="position:absolute; left:-27px; top:0; width:14px; height:14px; background:#bd93f9; border-radius:50%; border:3px solid var(--bg-secondary);"></div>
+                <div style="background:rgba(189,147,249,0.08); border:1px solid rgba(189,147,249,0.2); border-radius:8px; padding:16px; margin:16px 0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="color:#bd93f9; font-size:16px;">Phase 3: 확장 & 엔터프라이즈</strong>
+                        <span style="display:inline-block; background:rgba(189,147,249,0.15); color:#bd93f9; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600;">Month 9~24</span>
+                    </div>
+                    <ul style="${pStyle} padding-left:20px; margin-top:12px;">
+                        <li>Kubernetes 전환 (Docker Swarm → K8s) — 무한 스케일링</li>
+                        <li>멀티 리전 배포 (Asia, US, EU)</li>
+                        <li>Enterprise 플랜: SSO(SAML/OIDC), 감사 로그, 전용 인프라</li>
+                        <li>마켓플레이스: 원클릭 템플릿 (WordPress, Strapi, Supabase 등)</li>
+                        <li>CLI 툴 출시 (orbitron deploy, orbitron logs)</li>
+                        <li>GitHub App 마켓플레이스 등록</li>
+                        <li>시리즈 A 또는 수익 기반 자생 확장 결정</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9. Conclusion -->
+    <div style="${sectionStyle}">
+        <h2 style="${h2Style}">9. 결론</h2>
+        <div style="${successBox}">
+            <p style="${pStyle}">
+                Orbitron은 이미 <strong>완전 동작하는 배포 자동화 플랫폼</strong>입니다.
+                10종 프로젝트 타입 자동감지, AI 오류 분석, 게임 스트리밍, Docker Compose 지원 등
+                경쟁사 대비 명확한 기술적 차별점을 보유하고 있습니다.
+            </p>
+            <p style="${pStyle}">
+                128GB+ GPU 클라우드(Vultr MI300X)로 이전 시, 초기 투자 약 <strong>$5,000</strong>(약 650만원)으로
+                상용 SaaS를 런칭할 수 있으며, <strong>7개월차에 손익분기점</strong>에 도달하고
+                <strong>24개월 누적 순이익 $18,000+</strong>(약 2,300만원)이 예상됩니다.
+            </p>
+            <p style="${pStyle}">
+                AI 네이티브 + 게임 스트리밍 통합이라는 <strong>유일한 포지셔닝</strong>과
+                이미 검증된 기술 스택을 바탕으로, 인디 개발자/스타트업/게임 스튜디오 시장에서
+                빠른 성장이 가능합니다.
+            </p>
+            <p style="${pStyle} font-weight:700; color:var(--text-primary); font-size:16px; text-align:center; margin-top:20px;">
+                "프로젝트를 궤도에 올리세요" — Orbitron, Launch Ready.
+            </p>
+        </div>
+    </div>
+
+    <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">
+        본 계획서는 2026년 4월 기준 시장 데이터를 바탕으로 작성되었으며, 실제 결과는 시장 상황에 따라 달라질 수 있습니다.<br>
+        Orbitron v1.0 &copy; 2026
+    </div>
+    `;
 }
