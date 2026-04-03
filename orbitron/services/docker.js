@@ -11,9 +11,23 @@ if (!fs.existsSync(PROJECTS_DIR)) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 }
 
+// Validate subdomain to prevent command injection — only allow [a-z0-9-]
+function sanitizeSubdomain(subdomain) {
+    if (!subdomain || typeof subdomain !== 'string') throw new Error('Invalid subdomain: empty or not a string');
+    const sanitized = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (sanitized !== subdomain.toLowerCase()) {
+        throw new Error(`Invalid subdomain characters: "${subdomain}" — only [a-z0-9-] allowed`);
+    }
+    if (sanitized.length === 0 || sanitized.length > 63) {
+        throw new Error(`Invalid subdomain length: "${subdomain}" — must be 1-63 characters`);
+    }
+    return sanitized;
+}
+
 class DockerService {
     // Build a Docker image for a project (or skip if Compose)
     async buildImage(project) {
+        sanitizeSubdomain(project.subdomain);
         const projectDir = path.join(PROJECTS_DIR, project.subdomain);
         const buildStart = Date.now();
         let detailLogs = '';
@@ -571,9 +585,9 @@ CMD [ "bash", "-c", "./${startScript} -RenderOffscreen -PixelStreamingURL=ws://1
                 const apkTxt = path.join(projectDir, subdir ? subdir : '', 'apk.txt');
                 const aptTxt = path.join(projectDir, subdir ? subdir : '', 'apt.txt');
                 if (fs.existsSync(apkTxt)) {
-                    extraApk += ' ' + fs.readFileSync(apkTxt, 'utf8').replace(/\\n/g, ' ').trim();
+                    extraApk += ' ' + fs.readFileSync(apkTxt, 'utf8').replace(/\n/g, ' ').trim();
                 } else if (fs.existsSync(aptTxt)) {
-                    extraApk += ' ' + fs.readFileSync(aptTxt, 'utf8').replace(/\\n/g, ' ').trim();
+                    extraApk += ' ' + fs.readFileSync(aptTxt, 'utf8').replace(/\n/g, ' ').trim();
                 }
             } catch (e) {
                 console.log(`Auto-detect apk deps error: ${e.message}`);
@@ -678,6 +692,7 @@ EXPOSE ${port}
 
     // Start a container for a project (creates a new uniquely named container for Blue-Green deployment)
     async startContainer(project) {
+        sanitizeSubdomain(project.subdomain);
         const imageName = `orbitron-${project.subdomain}`;
         // Generate a unique suffix for Zero-Downtime Blue-Green deployment
         const deployHash = Date.now().toString(36);
@@ -822,6 +837,7 @@ EXPOSE ${port}
 
     // Start an official Database Container
     async startDatabaseContainer(project) {
+        sanitizeSubdomain(project.subdomain);
         const containerName = `orbitron-${project.subdomain}`;
         let imageName = '';
         let port = project.port;
@@ -876,6 +892,7 @@ EXPOSE ${port}
     // Stop and remove a container asynchronously
     async stopContainer(containerName) {
         try {
+            if (!/^[a-z0-9][a-z0-9_.-]*$/i.test(containerName)) return;
             await execAsync(`docker stop ${containerName} 2>/dev/null && docker rm ${containerName} 2>/dev/null`);
         } catch (e) {
             // Container doesn't exist or already stopped, that's fine
@@ -885,6 +902,7 @@ EXPOSE ${port}
     // Clean up old containers belonging to this project (except the active one)
     async cleanupOldContainers(subdomain, keepContainerName) {
         try {
+            sanitizeSubdomain(subdomain);
             // Find all containers starting with orbitron-subdomain
             const { stdout } = await execAsync(`docker ps -a --format '{{.Names}}' | grep '^orbitron-${subdomain}-' || true`);
             const containers = stdout.trim().split('\n').filter(Boolean);
@@ -903,6 +921,7 @@ EXPOSE ${port}
     // Get container status asynchronously
     async getContainerStatus(containerName) {
         try {
+            if (!/^[a-z0-9][a-z0-9_.-]*$/i.test(containerName)) return 'stopped';
             const { stdout } = await execAsync(`docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`);
             return stdout.trim();
         } catch (e) {
@@ -913,6 +932,8 @@ EXPOSE ${port}
     // Get container logs asynchronously
     async getContainerLogs(containerName, lines = 100) {
         try {
+            if (!/^[a-z0-9][a-z0-9_.-]*$/i.test(containerName)) return 'Invalid container name';
+            lines = Math.max(1, Math.min(parseInt(lines) || 100, 5000));
             const { stdout, stderr } = await execAsync(`docker logs --tail ${lines} ${containerName} 2>&1`);
             return stdout || stderr;
         } catch (e) {
@@ -923,6 +944,7 @@ EXPOSE ${port}
     // Remove image asynchronously
     async removeImage(subdomain) {
         try {
+            sanitizeSubdomain(subdomain);
             await execAsync(`docker rmi orbitron-${subdomain} 2>/dev/null`);
         } catch (e) {
             // Image doesn't exist

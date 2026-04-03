@@ -74,14 +74,19 @@ class Deployer extends EventEmitter {
         this.activeDeployments.add(project.id);
 
         const DEPLOY_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`배포 타임아웃: ${DEPLOY_TIMEOUT_MS / 60000}분 초과`)), DEPLOY_TIMEOUT_MS)
-        );
+        let timeoutHandle;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error(`배포 타임아웃: ${DEPLOY_TIMEOUT_MS / 60000}분 초과`)), DEPLOY_TIMEOUT_MS);
+        });
 
         return Promise.race([
             this._doDeploy(project, commitHash, commitMessage),
             timeoutPromise
-        ]).catch(async (error) => {
+        ]).then((result) => {
+            clearTimeout(timeoutHandle);
+            return result;
+        }).catch(async (error) => {
+            clearTimeout(timeoutHandle);
             this.activeDeployments.delete(project.id);
             this.emitProgress(project.id, 'done', `배포 실패: ${error.message}`, 'failed');
             await db.query(`UPDATE projects SET status = 'failed' WHERE id = $1`, [project.id]);
@@ -260,7 +265,7 @@ class Deployer extends EventEmitter {
                                         }
                                     });
                                     project.env_vars = newEnv;
-                                    const encryptedEnvVars = '"' + encrypt(JSON.stringify(newEnv || {})) + '"';
+                                    const encryptedEnvVars = encrypt(JSON.stringify(newEnv || {}));
                                     updates.push(`env_vars = $${valIndex++}`);
                                     params.push(encryptedEnvVars);
                                     logs += `  - Override env_vars: ${Object.keys(newEnv).length} keys securely applied\n`;
@@ -452,6 +457,7 @@ class Deployer extends EventEmitter {
 
                     containerId = startRes.containerId;
                     containerName = startRes.containerName;
+                    const actualPort = startRes.port || project.port || 3000;
                     logs += `Container started: ${containerId} (${containerName})\n`;
                     this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
 
@@ -538,8 +544,8 @@ class Deployer extends EventEmitter {
                 for (let i = 0; i < 6; i++) {
                     await new Promise(r => setTimeout(r, 5000)); // 5초 대기
                     try {
-                        const port = project.port || 3000;
-                        const { stdout } = await execAsync(`curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:${port}/ 2>/dev/null || echo 000`);
+                        const hcPort = actualPort || project.port || 3000;
+                        const { stdout } = await execAsync(`curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:${hcPort}/ 2>/dev/null || echo 000`);
                         const code = parseInt(stdout.trim());
                         if (code >= 200 && code < 500) {
                             logs += `  ✅ Health check 통과 (HTTP ${code}, ${(i + 1) * 5}초 경과)\n`;

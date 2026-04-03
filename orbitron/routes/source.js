@@ -264,5 +264,220 @@ function collectSourceContext(projectDir) {
     return files.length > 0 ? files.join('\n\n') : null;
 }
 
+/**
+ * POST /api/projects/:id/source/ai-edit
+ * AI-powered code editing: analyze, modify, explain, or refactor code
+ *
+ * Body: { action, filePath, selectedCode, instruction, fullFileContent }
+ * Actions: 'edit' | 'explain' | 'refactor' | 'fix' | 'multi-edit'
+ */
+router.post('/:id/source/ai-edit', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const { action, filePath, selectedCode, instruction, fullFileContent } = req.body;
+        if (!action) return res.status(400).json({ error: 'action 파라미터가 필요합니다.' });
+
+        const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
+
+        // Collect project context for AI
+        const sourceContext = collectSourceContext(projectDir);
+
+        // Build the prompt based on action
+        let systemPrompt = `당신은 Orbitron AI 코드 엔지니어입니다. 프로젝트의 소스 코드를 분석하고 수정합니다.
+항상 한국어로 설명하되, 코드는 원본 언어를 유지합니다.
+프로젝트: ${project.name} (${project.type || 'web'})`;
+
+        let userPrompt = '';
+
+        if (action === 'edit' || action === 'fix' || action === 'refactor') {
+            systemPrompt += `\n\n반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만 출력합니다:
+{
+  "modified": "수정된 전체 코드 (선택 영역만)",
+  "explanation": "변경 사항 한국어 설명 (1~3줄)",
+  "changes": [
+    { "description": "변경 1 설명" },
+    { "description": "변경 2 설명" }
+  ]
+}`;
+            const actionLabel = action === 'edit' ? '수정' : action === 'fix' ? '버그 수정' : '리팩토링';
+            userPrompt = `파일: ${filePath}\n\n`;
+            if (selectedCode) {
+                userPrompt += `선택된 코드:\n\`\`\`\n${selectedCode}\n\`\`\`\n\n`;
+            }
+            if (fullFileContent) {
+                userPrompt += `전체 파일 내용 (컨텍스트):\n\`\`\`\n${fullFileContent}\n\`\`\`\n\n`;
+            }
+            userPrompt += `요청: ${instruction || actionLabel + '해주세요'}\n\n`;
+            userPrompt += `위 선택된 코드를 ${actionLabel}하여 modified 필드에 수정된 코드만 반환하세요.`;
+
+        } else if (action === 'explain') {
+            systemPrompt += `\n코드를 분석하고 한국어로 명확하게 설명합니다.`;
+            userPrompt = `파일: ${filePath}\n\n코드:\n\`\`\`\n${selectedCode}\n\`\`\`\n\n이 코드를 상세히 설명해주세요. 역할, 로직 흐름, 주요 변수/함수의 목적을 설명합니다.`;
+
+        } else if (action === 'multi-edit') {
+            systemPrompt += `\n\n여러 파일을 동시에 수정합니다. 반드시 아래 JSON 형식으로만 응답하세요:
+{
+  "patches": [
+    {
+      "file": "상대 경로",
+      "original": "원본 코드 조각",
+      "modified": "수정된 코드 조각",
+      "explanation": "변경 이유"
+    }
+  ],
+  "summary": "전체 변경 요약 (한국어)"
+}`;
+            userPrompt = `프로젝트 소스 컨텍스트:\n${sourceContext || '(없음)'}\n\n요청: ${instruction}\n\n관련 파일들을 찾아서 필요한 모든 수정을 patches 배열로 반환하세요.`;
+
+        } else if (action === 'generate') {
+            systemPrompt += `\n\n새 코드를 생성합니다. 반드시 아래 JSON 형식으로만 응답하세요:
+{
+  "code": "생성된 코드",
+  "explanation": "설명",
+  "language": "언어"
+}`;
+            userPrompt = `파일: ${filePath || '(새 파일)'}\n\n`;
+            if (fullFileContent) {
+                userPrompt += `현재 파일 내용:\n\`\`\`\n${fullFileContent}\n\`\`\`\n\n`;
+            }
+            userPrompt += `요청: ${instruction}`;
+        }
+
+        // Call AI (try Claude first, then Gemini fallback)
+        let aiResponse;
+        const anthropicKey = process.env.ANTHROPIC_API_KEY;
+        const geminiKey = process.env.GEMINI_API_KEY;
+
+        if (anthropicKey) {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 45000);
+                const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': anthropicKey,
+                        'anthropic-version': '2023-06-01'
+                    },
+                    body: JSON.stringify({
+                        model: project.ai_model || 'claude-sonnet-4-20250514',
+                        max_tokens: 4096,
+                        system: systemPrompt,
+                        messages: [{ role: 'user', content: userPrompt }]
+                    }),
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+                const data = await resp.json();
+                aiResponse = data.content?.[0]?.text || data.error?.message || 'AI 응답 없음';
+            } catch (e) {
+                if (e.name === 'AbortError' && geminiKey) {
+                    // Fallback to Gemini
+                } else if (!geminiKey) {
+                    return res.status(500).json({ error: `AI 호출 실패: ${e.message}` });
+                }
+            }
+        }
+
+        if (!aiResponse && geminiKey) {
+            try {
+                const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        system_instruction: { parts: [{ text: systemPrompt }] },
+                        contents: [{ parts: [{ text: userPrompt }] }],
+                        generationConfig: { maxOutputTokens: 4096, temperature: 0.2 }
+                    })
+                });
+                const data = await resp.json();
+                aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Gemini 응답 없음';
+            } catch (e) {
+                return res.status(500).json({ error: `AI 호출 실패: ${e.message}` });
+            }
+        }
+
+        if (!aiResponse) {
+            return res.status(500).json({ error: 'AI API 키가 설정되지 않았습니다.' });
+        }
+
+        // Parse response based on action
+        if (action === 'explain') {
+            return res.json({ action, result: { explanation: aiResponse } });
+        }
+
+        // Try to parse JSON from response
+        try {
+            // Extract JSON from potential markdown code blocks
+            let jsonStr = aiResponse;
+            const jsonMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
+            if (jsonMatch) jsonStr = jsonMatch[1];
+            // Also try to find raw JSON
+            const rawMatch = jsonStr.match(/\{[\s\S]*\}/);
+            if (rawMatch) jsonStr = rawMatch[0];
+
+            const parsed = JSON.parse(jsonStr);
+            return res.json({ action, result: parsed });
+        } catch {
+            // If JSON parse fails, return raw text
+            return res.json({ action, result: { raw: aiResponse, explanation: aiResponse } });
+        }
+
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * POST /api/projects/:id/source/ai-apply
+ * Apply AI-generated patches to files
+ */
+router.post('/:id/source/ai-apply', async (req, res) => {
+    try {
+        const project = await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const { patches } = req.body;
+        if (!patches || !Array.isArray(patches)) return res.status(400).json({ error: 'patches 배열이 필요합니다.' });
+
+        const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
+        const results = [];
+
+        for (const patch of patches) {
+            const fullPath = path.join(projectDir, patch.file);
+            if (!fullPath.startsWith(projectDir)) {
+                results.push({ file: patch.file, success: false, error: '접근 거부' });
+                continue;
+            }
+            try {
+                if (!fs.existsSync(fullPath)) {
+                    results.push({ file: patch.file, success: false, error: '파일 없음' });
+                    continue;
+                }
+                let content = fs.readFileSync(fullPath, 'utf-8');
+                if (patch.original && content.includes(patch.original)) {
+                    content = content.replace(patch.original, patch.modified);
+                    fs.writeFileSync(fullPath, content, 'utf-8');
+                    results.push({ file: patch.file, success: true });
+                } else if (patch.fullContent) {
+                    // Full file replacement
+                    fs.writeFileSync(fullPath, patch.fullContent, 'utf-8');
+                    results.push({ file: patch.file, success: true });
+                } else {
+                    results.push({ file: patch.file, success: false, error: '원본 코드를 찾을 수 없음' });
+                }
+            } catch (e) {
+                results.push({ file: patch.file, success: false, error: e.message });
+            }
+        }
+
+        res.json({ results, applied: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 module.exports = router;
 module.exports.collectSourceContext = collectSourceContext;

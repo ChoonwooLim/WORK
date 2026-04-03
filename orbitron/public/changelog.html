@@ -460,6 +460,111 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- RemoteAGT v1.2.0 — 2026-04-03 (Major Refactoring)  -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">RemoteAGT v1.2.0</span>
+                <span class="version-date">2026년 4월 3일</span>
+            </div>
+            <p class="version-title">🏗️ RemoteAGT 대규모 아키텍처 리팩토링</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">리팩토링</span>
+                    <div class="change-content">
+                        <strong>server.js 748줄 → 230줄 (-69%) 경량화</strong>
+                        <p>텔레그램·카카오 시뮬레이터 라우트(~370줄, 80% 중복 코드)를 <code>src/routes/simulator.js</code>로 분리하고, 공통 명령 핸들러 <code>handleSimulatorCommand()</code> 하나로 통합했습니다. SSE 클라이언트 관리도 <code>createSSEHandler()</code> 팩토리 함수로 일원화되었습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">보안</span>
+                    <div class="change-content">
+                        <strong>마크다운 렌더러 XSS 완전 차단 (marked + DOMPurify)</strong>
+                        <p>15개 정규식 체인으로 구현된 자체 마크다운 렌더러를 <code>marked</code> + <code>DOMPurify</code>로 교체했습니다. <code>[click](javascript:alert(1))</code>, <code>&lt;script&gt;</code>, <code>&lt;img onerror=...&gt;</code> 등 3가지 XSS 공격 벡터가 모두 차단됩니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>레거시 API 경로 호환성 유지</strong>
+                        <p>기존 <code>/api/telegram/simulate</code>, <code>/api/kakao/simulate</code> 등의 엔드포인트가 새로운 <code>/api/simulator/*</code> 경로로 자동 프록시되어 프론트엔드 변경 없이 원활하게 동작합니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.8.1 — 2026-04-03 (Code Review Hotfix)           -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.8.1</span>
+                <span class="version-date">2026년 4월 3일</span>
+            </div>
+            <p class="version-title">🔬 코드 리뷰 기반 치명적 버그 긴급 수정</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-fix">긴급 수정</span>
+                    <div class="change-content">
+                        <strong>Cloudflare Named 터널 생성 실패 원인 수정</strong>
+                        <p><code>_writeConfig</code> 메서드가 async로 전환된 후 <code>await</code> 없이 호출되어 configPath가 <code>[object Promise]</code> 문자열로 전달되던 치명적 버그가 수정되었습니다. 이 버그로 인해 모든 Named 터널이 시작에 실패했습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">긴급 수정</span>
+                    <div class="change-content">
+                        <strong>중복 stopTunnel 메서드 병합 (Systemd 터널 미정지 해결)</strong>
+                        <p><code>stopTunnel()</code>이 2번 정의되어 Systemd 터널 정지 코드가 Dead Code였던 문제가 수정되었습니다. 이제 Systemd·Quick·Legacy 터널이 모두 올바르게 정지됩니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">버그 수정</span>
+                    <div class="change-content">
+                        <strong>환경변수 암호화 따옴표 버그 & Health Check 포트 불일치</strong>
+                        <p><code>orbitron.yaml</code> env 오버라이드 시 암호화 값에 여분의 따옴표(<code>"</code>)가 감싸져 복호화 실패하던 버그, Health Check가 자동 변경된 포트 대신 원래 포트를 사용하던 버그, 배포 성공 후 60분 타이머 미해제 메모리 누수, <code>apk.txt</code> 개행 파싱 regex 오류가 모두 수정되었습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- RemoteAGT v1.1.1 — 2026-04-03 (Code Review Hotfix) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">RemoteAGT v1.1.1</span>
+                <span class="version-date">2026년 4월 3일</span>
+            </div>
+            <p class="version-title">🔬 RemoteAGT 코드 리뷰 긴급 수정</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-fix">긴급 수정</span>
+                    <div class="change-content">
+                        <strong>SuperAdmin 권한 상승 버그 수정</strong>
+                        <p><code>superAdminRequired</code> 미들웨어가 <code>admin</code> 역할도 허용하여 일반 관리자가 비밀번호 리셋·계정 비활성화 등 SuperAdmin 전용 작업을 수행할 수 있었던 권한 상승 버그가 수정되었습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">긴급 수정</span>
+                    <div class="change-content">
+                        <strong>텔레그램/카카오 docker logs Command Injection 차단</strong>
+                        <p>Telegram·Kakao 게이트웨이에서 프로젝트 로그 조회 시 <code>exec()</code>에 subdomain이 직접 삽입되던 Command Injection 취약점이 <code>execFile('docker', ['logs', ...])</code> 배열 인자 방식으로 수정되었습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>비밀번호 리셋 정책 통일, 모니터링 최적화, Shutdown 강화</strong>
+                        <p>관리자 비밀번호 리셋 최소 8자 통일, <code>si.currentLoad()</code> 중복 호출 제거, 서버 종료 시 DB 커넥션 풀 안전 정리가 추가되었습니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.8.0 — 2026-04-03                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">
@@ -524,6 +629,48 @@
                     <div class="change-content">
                         <strong>비동기 I/O 전환 & exec 버퍼 최적화</strong>
                         <p>Nginx 설정 및 터널 설정 파일 쓰기가 비동기(async)로 전환되어 이벤트 루프 블로킹이 해소되었습니다. <code>exec()</code> 호출의 maxBuffer도 50MB에서 10MB로 최적화되어 메모리 효율이 개선됩니다.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- RemoteAGT v1.1.0 — 2026-04-03                      -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">RemoteAGT v1.1.0</span>
+                <span class="version-date">2026년 4월 3일</span>
+            </div>
+            <p class="version-title">🔒 RemoteAGT 보안 & 안정성 대규모 최적화</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">보안</span>
+                    <div class="change-content">
+                        <strong>하드코딩 시크릿 완전 제거 & Command Injection 차단</strong>
+                        <p>PM2 설정에 노출되던 Telegram 봇 토큰·Admin ID, Orbitron 기본 패스워드 폴백(<code>admin1234</code>)이 완전 제거되었습니다. Docker 로그 조회 시 서브도메인 입력값이 <code>[a-z0-9-]</code> 패턴으로 검증되어 셸 명령 주입을 원천 차단합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">보안</span>
+                    <div class="change-content">
+                        <strong>레이트 리밋 & 비밀번호 정책 강화</strong>
+                        <p>로그인/회원가입 API에 15분당 20회 레이트 리밋이 적용되었습니다. 비밀번호 최소 길이가 4자에서 8자로 강화되어 브루트포스 공격을 방어합니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">개선</span>
+                    <div class="change-content">
+                        <strong>SSE 메모리 누수 방지 & 비동기 I/O 전환</strong>
+                        <p>텔레그램·카카오톡 시뮬레이터 SSE 연결이 최대 50개로 제한됩니다. 파일 읽기가 비동기로 전환되어 이벤트 루프 블로킹이 해소되었습니다.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">버그 수정</span>
+                    <div class="change-content">
+                        <strong>카카오톡 시뮬레이터 크래시 버그 수정</strong>
+                        <p>카카오톡 시뮬레이터에서 미정의 함수(<code>formatContainers</code>, <code>formatDisk</code>, <code>formatProjects</code>)를 호출하여 발생하던 크래시가 수정되었습니다. 관리자 API의 N+1 쿼리가 <code>Promise.all</code>로 병렬화되어 응답 속도가 개선됩니다.</p>
                     </div>
                 </li>
             </ul>

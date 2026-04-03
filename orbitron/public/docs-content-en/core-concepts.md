@@ -66,6 +66,16 @@ Projects deployed on Orbitron fundamentally start in a state where **"they canno
 *   **Graceful Shutdown**: On SIGTERM/SIGINT signals, the DB connection pool is safely closed and the process terminates cleanly within 10 seconds.
 *   **Tunnel Exponential Backoff**: Cloudflare tunnel retry intervals progressively increase (5s→10s→20s→...max 5min) to prevent excessive requests during network outages.
 
+### Code Review Bug Fixes (April 2026 Addendum)
+*   **Tunnel Config Async Write (Missing `await` Fixed)**: A critical bug where the config file write completed after the tunnel process started was fixed. Previously, configPath was passed as the string `[object Promise]`, causing all Named tunnels to fail.
+*   **Duplicate `stopTunnel` Method Merged**: Two `stopTunnel()` definitions existed — the second silently overwrote the first. Systemd tunnels were never properly stopped. Now unified into a single method handling Systemd, Quick, and Legacy tunnels.
+*   **Environment Variable Encryption Quote Bug**: Encrypted env vars from `orbitron.yaml` `env` overrides were wrapped in extraneous `"` quotes, causing decryption to fail. The extra quotes have been removed.
+*   **Health Check Port Mismatch**: After auto-resolving port conflicts, health checks now use the actual assigned port instead of the original project port.
+*   **Deploy Timeout Timer Leak**: The 60-minute timeout timer was not cleared on successful deploys, preventing garbage collection. Now cleaned up via `clearTimeout()`.
+*   **apk.txt Package Parsing Error**: The regex for parsing `apk.txt`/`apt.txt` matched the literal `\n` string instead of actual newline characters. Fixed to `/\n/g`.
+*   **RemoteAGT XSS Fully Blocked**: The custom regex markdown renderer has been replaced with `marked` + `DOMPurify`, blocking all XSS vectors including `javascript:` links, `<script>` tags, and `onerror` attributes.
+*   **RemoteAGT Server Slimmed Down**: server.js reduced from 748 to 230 lines (-69%). Telegram/KakaoTalk simulator 80% duplicate code unified into a single shared handler.
+
 ---
 
 Did you understand the most basic concepts?

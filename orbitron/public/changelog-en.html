@@ -461,6 +461,111 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- RemoteAGT v1.2.0 — 2026-04-03 (Major Refactoring)  -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">RemoteAGT v1.2.0</span>
+                <span class="version-date">April 3, 2026</span>
+            </div>
+            <p class="version-title">🏗️ RemoteAGT Major Architecture Refactoring</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Refactor</span>
+                    <div class="change-content">
+                        <strong>server.js 748 lines → 230 lines (-69%)</strong>
+                        <p>Telegram and KakaoTalk simulator routes (~370 lines, 80% duplicate code) extracted to <code>src/routes/simulator.js</code> with a single unified command handler <code>handleSimulatorCommand()</code>. SSE client management consolidated into a <code>createSSEHandler()</code> factory function.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Security</span>
+                    <div class="change-content">
+                        <strong>Markdown Renderer XSS Fully Blocked (marked + DOMPurify)</strong>
+                        <p>The custom 15-regex markdown renderer has been replaced with <code>marked</code> + <code>DOMPurify</code>. All 3 XSS attack vectors — <code>[click](javascript:alert(1))</code>, <code>&lt;script&gt;</code>, <code>&lt;img onerror=...&gt;</code> — are now blocked.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>Legacy API Path Backward Compatibility</strong>
+                        <p>Existing endpoints like <code>/api/telegram/simulate</code> and <code>/api/kakao/simulate</code> are automatically proxied to the new <code>/api/simulator/*</code> paths, working seamlessly without frontend changes.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v1.8.1 — 2026-04-03 (Code Review Hotfix)           -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">v1.8.1</span>
+                <span class="version-date">April 3, 2026</span>
+            </div>
+            <p class="version-title">🔬 Code Review Critical Bug Hotfix</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Hotfix</span>
+                    <div class="change-content">
+                        <strong>Cloudflare Named Tunnel Creation Failure Fixed</strong>
+                        <p>After <code>_writeConfig</code> was converted to async, it was called without <code>await</code>, causing configPath to be the string <code>[object Promise]</code>. This critical bug caused all Named tunnels to fail on startup.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Hotfix</span>
+                    <div class="change-content">
+                        <strong>Duplicate stopTunnel Method Merged (Systemd Tunnels Never Stopped)</strong>
+                        <p><code>stopTunnel()</code> was defined twice — the second silently overwrote the first, making Systemd tunnel stop code dead. Now unified to properly handle Systemd, Quick, and Legacy tunnels.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Bug Fix</span>
+                    <div class="change-content">
+                        <strong>Env Var Encryption Quote Bug, Health Check Port Mismatch & More</strong>
+                        <p>Fixed: encrypted env vars wrapped in extraneous quotes causing decryption failure; health check using original port instead of auto-resolved port; 60-min timer not cleared on success; <code>apk.txt</code> newline regex matching literal <code>\n</code> instead of actual newlines.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- RemoteAGT v1.1.1 — 2026-04-03 (Code Review Hotfix) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">RemoteAGT v1.1.1</span>
+                <span class="version-date">April 3, 2026</span>
+            </div>
+            <p class="version-title">🔬 RemoteAGT Code Review Hotfix</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Hotfix</span>
+                    <div class="change-content">
+                        <strong>SuperAdmin Privilege Escalation Bug Fixed</strong>
+                        <p><code>superAdminRequired</code> middleware allowed <code>admin</code> role, enabling regular admins to perform SuperAdmin-only operations (password resets, account deactivation). Now only <code>superadmin</code> is permitted.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Hotfix</span>
+                    <div class="change-content">
+                        <strong>Telegram/Kakao docker logs Command Injection Blocked</strong>
+                        <p>Docker log queries in Telegram and Kakao gateways used <code>exec()</code> with direct subdomain interpolation. Converted to <code>execFile('docker', ['logs', ...])</code> with array args to eliminate shell injection.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>Password Reset Policy Unified, Monitoring Optimized, Shutdown Enhanced</strong>
+                        <p>Admin password reset minimum unified to 8 chars, duplicate <code>si.currentLoad()</code> call removed, DB connection pool safely closed on shutdown.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v1.8.0 — 2026-04-03                                -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">
@@ -525,6 +630,48 @@
                     <div class="change-content">
                         <strong>Async I/O Conversion & Exec Buffer Optimization</strong>
                         <p>Nginx and tunnel config file writes have been converted to async operations, eliminating event loop blocking. <code>exec()</code> maxBuffer has been optimized from 50MB to 10MB for improved memory efficiency.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- RemoteAGT v1.1.0 — 2026-04-03                      -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot"></div>
+            <div class="version-header">
+                <span class="version-tag">RemoteAGT v1.1.0</span>
+                <span class="version-date">April 3, 2026</span>
+            </div>
+            <p class="version-title">🔒 RemoteAGT Security & Stability Major Optimization</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Security</span>
+                    <div class="change-content">
+                        <strong>Hardcoded Secrets Removed & Command Injection Blocked</strong>
+                        <p>Exposed Telegram bot token/Admin ID in PM2 config and Orbitron default password fallback (<code>admin1234</code>) have been completely removed. Docker log query subdomain inputs are now validated against <code>[a-z0-9-]</code> patterns, blocking shell command injection at the source.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Security</span>
+                    <div class="change-content">
+                        <strong>Rate Limiting & Password Policy Strengthened</strong>
+                        <p>Login/registration APIs now enforce 20 requests per 15 minutes rate limiting. Minimum password length increased from 4 to 8 characters to defend against brute-force attacks.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-improve">Improved</span>
+                    <div class="change-content">
+                        <strong>SSE Memory Leak Prevention & Async I/O Conversion</strong>
+                        <p>Telegram/KakaoTalk simulator SSE connections are capped at 50 max. File reads converted to async to eliminate event loop blocking.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Bug Fix</span>
+                    <div class="change-content">
+                        <strong>KakaoTalk Simulator Crash Bug Fixed</strong>
+                        <p>Fixed a crash caused by calling undefined functions (<code>formatContainers</code>, <code>formatDisk</code>, <code>formatProjects</code>) in the KakaoTalk simulator. Admin API N+1 queries parallelized via <code>Promise.all</code> for improved response times.</p>
                     </div>
                 </li>
             </ul>

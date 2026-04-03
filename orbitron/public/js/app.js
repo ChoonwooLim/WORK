@@ -1943,6 +1943,9 @@ function initMonacoEditor() {
                 document.getElementById('editor-status').textContent = '변경사항 있음';
             }
         });
+
+        // Initialize AI editor extensions (context menu, keybindings, selection tracking)
+        initMonacoEditorExtensions();
     });
 }
 
@@ -2062,6 +2065,480 @@ async function saveCurrentFile() {
         if (btn.textContent === '저장 중...') btn.textContent = '저장';
     }
 }
+// ============ AI CODE EDITOR ENGINE ============
+let monacoDiffEditor = null;
+let aiPendingChange = null; // { filePath, original, modified, explanation, changes }
+let aiMultiPatches = null;  // For multi-file edits
+
+function initMonacoEditorExtensions() {
+    if (!monacoEditor || !window.monaco) return;
+
+    // Track selection changes → enable/disable AI buttons
+    monacoEditor.onDidChangeCursorSelection((e) => {
+        const sel = monacoEditor.getSelection();
+        const hasSelection = sel && !sel.isEmpty();
+        document.getElementById('btn-ai-explain').disabled = !hasSelection;
+        document.getElementById('btn-ai-fix').disabled = !hasSelection;
+        document.getElementById('btn-ai-refactor').disabled = !hasSelection;
+
+        if (hasSelection) {
+            const model = monacoEditor.getModel();
+            const lines = sel.endLineNumber - sel.startLineNumber + 1;
+            const chars = model.getValueInRange(sel).length;
+            document.getElementById('editor-selection-info').textContent = `선택: ${lines}줄, ${chars}자`;
+        } else {
+            document.getElementById('editor-selection-info').textContent = '';
+        }
+    });
+
+    // Ctrl+I → Toggle inline AI prompt
+    monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
+        toggleAiPromptInline();
+    });
+
+    // Context menu: AI actions
+    monacoEditor.addAction({
+        id: 'ai-edit-selection',
+        label: '🤖 AI로 수정 (Ctrl+I)',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
+        contextMenuGroupId: '1_ai',
+        contextMenuOrder: 1,
+        run: () => toggleAiPromptInline()
+    });
+    monacoEditor.addAction({
+        id: 'ai-explain-selection',
+        label: '💡 AI 코드 설명',
+        contextMenuGroupId: '1_ai',
+        contextMenuOrder: 2,
+        precondition: 'editorHasSelection',
+        run: () => aiEditorAction('explain')
+    });
+    monacoEditor.addAction({
+        id: 'ai-fix-selection',
+        label: '🔧 AI 버그 수정',
+        contextMenuGroupId: '1_ai',
+        contextMenuOrder: 3,
+        precondition: 'editorHasSelection',
+        run: () => aiEditorAction('fix')
+    });
+    monacoEditor.addAction({
+        id: 'ai-refactor-selection',
+        label: '♻️ AI 리팩토링',
+        contextMenuGroupId: '1_ai',
+        contextMenuOrder: 4,
+        precondition: 'editorHasSelection',
+        run: () => aiEditorAction('refactor')
+    });
+}
+
+function toggleAiPromptInline() {
+    const bar = document.getElementById('ai-inline-prompt');
+    const isVisible = bar.style.display === 'flex';
+    bar.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) {
+        const input = document.getElementById('ai-inline-input');
+        input.focus();
+        input.select();
+    }
+}
+
+function openAiPanel() {
+    document.getElementById('ai-result-panel').style.width = '360px';
+}
+
+function closeAiPanel() {
+    document.getElementById('ai-result-panel').style.width = '0';
+    document.getElementById('ai-result-actions').style.display = 'none';
+    aiPendingChange = null;
+    // If diff view is open, switch back
+    if (document.getElementById('monaco-diff-container').style.display !== 'none') {
+        toggleDiffView();
+    }
+}
+
+async function aiEditorAction(action) {
+    if (!currentProject || !monacoEditor) return;
+
+    const sel = monacoEditor.getSelection();
+    let selectedCode = '';
+    if (sel && !sel.isEmpty()) {
+        selectedCode = monacoEditor.getModel().getValueInRange(sel);
+    }
+
+    const instruction = document.getElementById('ai-inline-input')?.value?.trim() || '';
+    const fullFileContent = monacoEditor.getValue();
+
+    // Validate
+    if ((action === 'explain' || action === 'fix' || action === 'refactor') && !selectedCode) {
+        toast('먼저 코드를 선택해주세요.', 'warning');
+        return;
+    }
+    if (action === 'edit' && !instruction) {
+        toast('AI에게 지시할 내용을 입력해주세요.', 'warning');
+        return;
+    }
+    if (action === 'multi-edit') {
+        const multiInstr = prompt('멀티파일 리팩토링 지시사항을 입력하세요:\n예: "모든 console.log를 logger로 변경해줘"');
+        if (!multiInstr) return;
+        return aiMultiFileEdit(multiInstr);
+    }
+
+    openAiPanel();
+    const resultContent = document.getElementById('ai-result-content');
+    const actionLabels = { edit: '코드 수정', explain: '코드 설명', fix: '버그 수정', refactor: '리팩토링', generate: '코드 생성' };
+    resultContent.innerHTML = `
+        <div style="text-align:center; padding:40px;">
+            <div style="font-size:28px; margin-bottom:12px; animation: pulse 1.5s infinite;">🤖</div>
+            <div style="color:#bd93f9; font-weight:600; margin-bottom:4px;">${actionLabels[action] || 'AI 처리'} 중...</div>
+            <div style="color:var(--text-muted); font-size:12px;">AI가 코드를 분석하고 있습니다</div>
+        </div>
+    `;
+    document.getElementById('ai-result-actions').style.display = 'none';
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/source/ai-edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action,
+                filePath: currentSourceFile,
+                selectedCode: selectedCode || undefined,
+                instruction: instruction || undefined,
+                fullFileContent: (action !== 'explain' && selectedCode) ? fullFileContent : undefined
+            })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'AI 호출 실패');
+
+        const result = data.result;
+
+        if (action === 'explain') {
+            resultContent.innerHTML = `
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                        💡 코드 설명
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; margin-bottom:12px;">
+                        <pre style="white-space:pre-wrap; font-size:12px; color:#8b949e; margin:0; font-family:var(--font-mono);">${escapeHtml(selectedCode)}</pre>
+                    </div>
+                    <div style="line-height:1.8; color:var(--text-secondary);">
+                        ${formatMarkdownLite(result.explanation || result.raw || '')}
+                    </div>
+                </div>
+            `;
+        } else if (result.modified !== undefined) {
+            // Single edit result
+            aiPendingChange = {
+                filePath: currentSourceFile,
+                original: selectedCode,
+                modified: result.modified,
+                explanation: result.explanation,
+                changes: result.changes || [],
+                selection: sel
+            };
+
+            resultContent.innerHTML = `
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        ${action === 'fix' ? '🔧 수정 제안' : action === 'refactor' ? '♻️ 리팩토링 제안' : '✏️ AI 수정 제안'}
+                    </div>
+                    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:12px; line-height:1.7;">
+                        ${escapeHtml(result.explanation || '')}
+                    </div>
+                    ${result.changes && result.changes.length > 0 ? `
+                        <div style="margin-bottom:12px;">
+                            <div style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;">변경 사항:</div>
+                            ${result.changes.map(c => `
+                                <div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:4px;">
+                                    <span style="color:#50fa7b; font-size:11px; margin-top:2px;">●</span>
+                                    <span style="font-size:12px; color:var(--text-secondary);">${escapeHtml(c.description)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    <div style="margin-bottom:8px;">
+                        <div style="font-size:12px; font-weight:600; color:#f85149; margin-bottom:4px;">- 원본 (삭제)</div>
+                        <pre style="background:rgba(248,81,73,0.08); border:1px solid rgba(248,81,73,0.2); border-radius:6px; padding:10px; font-size:12px; color:#ffa198; overflow-x:auto; white-space:pre-wrap; margin:0; font-family:var(--font-mono);">${escapeHtml(selectedCode)}</pre>
+                    </div>
+                    <div>
+                        <div style="font-size:12px; font-weight:600; color:#50fa7b; margin-bottom:4px;">+ 수정안 (추가)</div>
+                        <pre style="background:rgba(63,185,80,0.08); border:1px solid rgba(63,185,80,0.2); border-radius:6px; padding:10px; font-size:12px; color:#7ee787; overflow-x:auto; white-space:pre-wrap; margin:0; font-family:var(--font-mono);">${escapeHtml(result.modified)}</pre>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('ai-result-actions').style.display = 'block';
+            document.getElementById('btn-toggle-diff').style.display = 'inline-flex';
+
+            // Show inline decoration in editor
+            showInlineAiDecoration(sel);
+
+        } else if (result.raw) {
+            resultContent.innerHTML = `
+                <div style="line-height:1.8; color:var(--text-secondary);">
+                    ${formatMarkdownLite(result.raw)}
+                </div>
+            `;
+        }
+
+        // Hide inline prompt after action
+        document.getElementById('ai-inline-prompt').style.display = 'none';
+
+    } catch (e) {
+        resultContent.innerHTML = `
+            <div style="text-align:center; padding:40px; color:#f85149;">
+                <div style="font-size:24px; margin-bottom:8px;">❌</div>
+                <div style="font-weight:600; margin-bottom:4px;">AI 오류</div>
+                <div style="font-size:13px; color:var(--text-muted);">${escapeHtml(e.message)}</div>
+            </div>
+        `;
+    }
+}
+
+// Show a yellow highlight decoration on the lines that AI wants to change
+let aiDecorationIds = [];
+function showInlineAiDecoration(selection) {
+    if (!monacoEditor || !selection) return;
+    clearAiDecorations();
+
+    aiDecorationIds = monacoEditor.deltaDecorations([], [{
+        range: new monaco.Range(selection.startLineNumber, 1, selection.endLineNumber, 1),
+        options: {
+            isWholeLine: true,
+            className: 'ai-pending-change-line',
+            glyphMarginClassName: 'ai-pending-glyph',
+            overviewRuler: { color: '#bd93f9', position: monaco.editor.OverviewRulerLane.Center }
+        }
+    }]);
+}
+
+function clearAiDecorations() {
+    if (monacoEditor && aiDecorationIds.length > 0) {
+        aiDecorationIds = monacoEditor.deltaDecorations(aiDecorationIds, []);
+    }
+}
+
+function acceptAiChange() {
+    if (!aiPendingChange || !monacoEditor) return;
+
+    const { original, modified, selection } = aiPendingChange;
+
+    if (selection && !selection.isEmpty()) {
+        // Replace selected range with modified code
+        monacoEditor.executeEdits('ai-edit', [{
+            range: selection,
+            text: modified
+        }]);
+    } else {
+        // Full file content replacement
+        const fullContent = monacoEditor.getValue();
+        const newContent = fullContent.replace(original, modified);
+        monacoEditor.setValue(newContent);
+    }
+
+    clearAiDecorations();
+    aiPendingChange = null;
+    document.getElementById('ai-result-actions').style.display = 'none';
+    document.getElementById('btn-toggle-diff').style.display = 'none';
+
+    // Switch back from diff view if open
+    if (document.getElementById('monaco-diff-container').style.display !== 'none') {
+        toggleDiffView();
+    }
+
+    toast('✅ AI 수정이 적용되었습니다. 저장 버튼을 눌러 서버에 반영하세요.', 'success');
+    document.getElementById('btn-save-file').disabled = false;
+    document.getElementById('editor-status').textContent = 'AI 수정 적용됨 — 저장 필요';
+}
+
+function rejectAiChange() {
+    clearAiDecorations();
+    aiPendingChange = null;
+    document.getElementById('ai-result-actions').style.display = 'none';
+    document.getElementById('btn-toggle-diff').style.display = 'none';
+
+    if (document.getElementById('monaco-diff-container').style.display !== 'none') {
+        toggleDiffView();
+    }
+
+    toast('AI 수정을 거부했습니다.', 'info');
+}
+
+function toggleDiffView() {
+    const editorContainer = document.getElementById('monaco-editor-container');
+    const diffContainer = document.getElementById('monaco-diff-container');
+
+    if (diffContainer.style.display === 'none') {
+        // Show diff view
+        if (!aiPendingChange) return;
+
+        editorContainer.style.display = 'none';
+        diffContainer.style.display = 'block';
+
+        if (monacoDiffEditor) {
+            monacoDiffEditor.dispose();
+        }
+
+        const originalModel = monaco.editor.createModel(aiPendingChange.original, getLanguageFromExtension(currentSourceFile ? '.' + currentSourceFile.split('.').pop() : '.js'));
+        const modifiedModel = monaco.editor.createModel(aiPendingChange.modified, getLanguageFromExtension(currentSourceFile ? '.' + currentSourceFile.split('.').pop() : '.js'));
+
+        monacoDiffEditor = monaco.editor.createDiffEditor(diffContainer, {
+            automaticLayout: true,
+            theme: 'vs-dark',
+            readOnly: true,
+            renderSideBySide: true,
+            minimap: { enabled: false },
+            fontSize: 14,
+            fontFamily: 'var(--font-mono)'
+        });
+
+        monacoDiffEditor.setModel({ original: originalModel, modified: modifiedModel });
+
+        document.getElementById('btn-toggle-diff').innerHTML = '<span style="font-size:13px;">📝 에디터</span>';
+    } else {
+        // Back to editor
+        diffContainer.style.display = 'none';
+        editorContainer.style.display = 'block';
+
+        if (monacoDiffEditor) {
+            monacoDiffEditor.dispose();
+            monacoDiffEditor = null;
+        }
+
+        document.getElementById('btn-toggle-diff').innerHTML = '<span style="font-size:13px;">📊 Diff 보기</span>';
+    }
+}
+
+async function aiMultiFileEdit(instruction) {
+    if (!currentProject) return;
+
+    openAiPanel();
+    const resultContent = document.getElementById('ai-result-content');
+    resultContent.innerHTML = `
+        <div style="text-align:center; padding:40px;">
+            <div style="font-size:28px; margin-bottom:12px; animation: pulse 1.5s infinite;">📂</div>
+            <div style="color:#bd93f9; font-weight:600; margin-bottom:4px;">멀티파일 분석 중...</div>
+            <div style="color:var(--text-muted); font-size:12px;">프로젝트 전체를 분석하고 수정안을 생성합니다</div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/source/ai-edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'multi-edit', instruction })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'AI 호출 실패');
+
+        const result = data.result;
+        if (!result.patches || result.patches.length === 0) {
+            resultContent.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-muted);">
+                    <div style="font-size:24px; margin-bottom:8px;">📋</div>
+                    <div>수정이 필요한 파일을 찾지 못했습니다.</div>
+                </div>
+            `;
+            return;
+        }
+
+        aiMultiPatches = result.patches;
+
+        resultContent.innerHTML = `
+            <div style="margin-bottom:16px;">
+                <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">📂 멀티파일 수정 제안</div>
+                <div style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">${escapeHtml(result.summary || instruction)}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">${result.patches.length}개 파일 수정</div>
+            </div>
+            ${result.patches.map((p, i) => `
+                <div style="margin-bottom:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:8px; border-left:3px solid #58a6ff;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:13px; font-weight:600; color:#58a6ff;">📄 ${escapeHtml(p.file)}</span>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-muted); cursor:pointer;">
+                            <input type="checkbox" checked data-patch-idx="${i}" class="multi-patch-check" style="accent-color:#50fa7b;">
+                            적용
+                        </label>
+                    </div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">${escapeHtml(p.explanation)}</div>
+                    <div style="margin-bottom:4px;">
+                        <pre style="background:rgba(248,81,73,0.06); border-radius:4px; padding:6px 8px; font-size:11px; color:#ffa198; white-space:pre-wrap; margin:0 0 4px; font-family:var(--font-mono);">- ${escapeHtml(p.original || '').split('\n').join('\n- ')}</pre>
+                        <pre style="background:rgba(63,185,80,0.06); border-radius:4px; padding:6px 8px; font-size:11px; color:#7ee787; white-space:pre-wrap; margin:0; font-family:var(--font-mono);">+ ${escapeHtml(p.modified || '').split('\n').join('\n+ ')}</pre>
+                    </div>
+                </div>
+            `).join('')}
+        `;
+
+        // Show apply button
+        const actionsDiv = document.getElementById('ai-result-actions');
+        actionsDiv.style.display = 'block';
+        actionsDiv.innerHTML = `
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-sm btn-primary" onclick="applyMultiPatches()" style="flex:1; background:#238636; border-color:#238636;">
+                    ✅ 선택 항목 적용
+                </button>
+                <button class="btn btn-sm btn-ghost" onclick="closeAiPanel()" style="flex:1; color:#f85149;">
+                    ❌ 취소
+                </button>
+            </div>
+        `;
+
+    } catch (e) {
+        resultContent.innerHTML = `
+            <div style="text-align:center; padding:40px; color:#f85149;">
+                <div style="font-size:24px; margin-bottom:8px;">❌</div>
+                <div style="font-weight:600;">${escapeHtml(e.message)}</div>
+            </div>
+        `;
+    }
+}
+
+async function applyMultiPatches() {
+    if (!aiMultiPatches || !currentProject) return;
+
+    // Get checked patches
+    const checks = document.querySelectorAll('.multi-patch-check');
+    const selectedPatches = [];
+    checks.forEach(chk => {
+        if (chk.checked) {
+            selectedPatches.push(aiMultiPatches[parseInt(chk.dataset.patchIdx)]);
+        }
+    });
+
+    if (selectedPatches.length === 0) {
+        toast('적용할 패치를 선택해주세요.', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/source/ai-apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patches: selectedPatches })
+        });
+        const data = await res.json();
+
+        if (data.applied > 0) {
+            toast(`✅ ${data.applied}개 파일이 수정되었습니다.${data.failed > 0 ? ` (${data.failed}개 실패)` : ''}`, 'success');
+            // Reload current file if it was modified
+            if (currentSourceFile) {
+                const wasModified = selectedPatches.some(p => p.file === currentSourceFile);
+                if (wasModified) {
+                    openSourceFile(currentSourceFile, currentSourceFile.split('/').pop(), '.' + currentSourceFile.split('.').pop());
+                }
+            }
+        } else {
+            toast('패치를 적용할 수 없었습니다. 원본 코드가 변경되었을 수 있습니다.', 'error');
+        }
+
+        closeAiPanel();
+        aiMultiPatches = null;
+    } catch (e) {
+        toast('패치 적용 실패: ' + e.message, 'error');
+    }
+}
+
 function formatMarkdownLite(text) {
     if (!text) return '';
     return text

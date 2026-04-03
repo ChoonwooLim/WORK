@@ -37,6 +37,11 @@ This unique address permanently belongs solely to 'that specific project card', 
 *   **Exponential Backoff Retry**: When a tunnel disconnects due to network issues, reconnection attempts follow progressive intervals of 5s→10s→20s→40s→80s→max 5min. This prevents network overload from excessive reconnection requests.
 *   **Systemd Service Integration**: Named tunnels are registered as Linux Systemd services, operating independently from the Orbitron server. Tunnels auto-recover even if the server restarts.
 
+### Code Review Critical Bug Fixes
+
+*   **Tunnel Config Async Write Fix**: After converting config file writes to async, they were called without `await`, causing configPath to be passed as the literal string `[object Promise]`. This critical bug caused **all Named tunnels to fail on startup**. Now fixed with proper `await`.
+*   **Tunnel Stop Logic Unified**: `stopTunnel()` was defined twice — the second definition silently overwrote the first, making Systemd tunnel stop code effectively dead. Now merged into a single method that properly cleans up Systemd services, Quick tunnels, and Legacy processes.
+
 ---
 
 ## 🔗 Connecting Custom (Personal) Domains

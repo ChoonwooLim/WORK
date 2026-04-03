@@ -85,7 +85,7 @@ class TunnelService {
             await this._ensureDnsRoute(tunnelName, tunnelId, hostname);
 
             // Step 3: Write config file
-            const configPath = this._writeConfig(tunnelName, tunnelId, hostname, project.port);
+            const configPath = await this._writeConfig(tunnelName, tunnelId, hostname, project.port);
 
             // Step 4: Run the tunnel process
             this._runTunnel(project, key, tunnelName, configPath, fixedUrl);
@@ -230,31 +230,37 @@ WantedBy=multi-user.target
         }
     }
 
-    // Stop a tunnel for a project using systemctl
+    // Unified stop: handles systemd, quick tunnel, and legacy processes
     stopTunnel(key) {
-        if (TUNNEL_PROCS[key]) {
-            const tunnelConfig = TUNNEL_PROCS[key];
-            if (tunnelConfig.isSystemd) {
-                try {
-                    const sudoPwd = process.env.SUDO_PASSWORD;
-                    if (sudoPwd) {
-                        const serviceName = `cloudflared-${tunnelConfig.tunnelName}`;
-                        const stopCmd = `
-                            echo "${sudoPwd}" | sudo -S systemctl stop ${serviceName} && 
-                            echo "${sudoPwd}" | sudo -S systemctl disable ${serviceName}
-                        `;
-                        require('child_process').execSync(stopCmd, { stdio: 'ignore' });
-                    }
-                } catch (e) {
-                    console.error('Failed to stop systemd tunnel:', e.message);
-                }
-            } else if (tunnelConfig.proc) {
-                // Fallback for old legacy spawned processes (during migration)
-                try { tunnelConfig.proc.kill(); } catch (e) { }
-            }
+        const tunnel = TUNNEL_PROCS[key];
+        if (!tunnel) return;
 
-            delete TUNNEL_PROCS[key];
+        // Clear retry timer (quick tunnels)
+        if (tunnel.retryTimer) clearTimeout(tunnel.retryTimer);
+
+        // Stop systemd service
+        if (tunnel.isSystemd && tunnel.tunnelName) {
+            try {
+                const sudoPwd = process.env.SUDO_PASSWORD;
+                if (sudoPwd) {
+                    const serviceName = `cloudflared-${tunnel.tunnelName}`;
+                    const stopCmd = `
+                        echo "${sudoPwd}" | sudo -S systemctl stop ${serviceName} &&
+                        echo "${sudoPwd}" | sudo -S systemctl disable ${serviceName}
+                    `;
+                    require('child_process').execSync(stopCmd, { stdio: 'ignore' });
+                }
+            } catch (e) {
+                console.error('Failed to stop systemd tunnel:', e.message);
+            }
         }
+
+        // Kill spawned process (quick tunnel / legacy)
+        if (tunnel.proc) {
+            try { tunnel.proc.kill('SIGTERM'); } catch (e) { /* already dead */ }
+        }
+
+        delete TUNNEL_PROCS[key];
     }
 
     // Fallback: quick tunnel (trycloudflare.com) if no cert
@@ -298,18 +304,6 @@ WantedBy=multi-user.target
             });
             setTimeout(() => { if (!resolved) { resolved = true; resolve(entry.url); } }, 20000);
         });
-    }
-
-    // Stop a tunnel process
-    stopTunnel(key) {
-        const tunnel = TUNNEL_PROCS[key];
-        if (tunnel) {
-            if (tunnel.retryTimer) clearTimeout(tunnel.retryTimer);
-            if (tunnel.proc) {
-                try { tunnel.proc.kill('SIGTERM'); } catch (e) { /* dead */ }
-            }
-            delete TUNNEL_PROCS[key];
-        }
     }
 
     // Delete a tunnel completely (when project is deleted)

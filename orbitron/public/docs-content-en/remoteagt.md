@@ -198,6 +198,55 @@ RemoteAGT periodically collects server status so you can view it on both the web
 
 ---
 
+## 🔒 Security & Stability Hardening (New April 2026)
+
+> ✨ **April 2026 Update**: Enterprise-grade security and stability optimizations have been applied to the RemoteAGT core engine.
+
+### Security Enhancements
+
+| Item | Change |
+|------|--------|
+| **Secret Management** | Hard-coded Telegram bot token and Admin ID in PM2 config have been removed and migrated to environment variables (.env) exclusively. |
+| **Authentication Security** | Default password fallback (`admin1234`) used for Orbitron API integration has been completely removed. `ADMIN_EMAIL`/`ADMIN_PASSWORD` environment variables are now mandatory. |
+| **Command Injection Prevention** | Subdomain inputs for Docker log queries are now validated against `[a-z0-9-]` patterns, completely blocking shell command injection. |
+| **Password Policy** | Minimum password length for registration has been strengthened from 4 to **8 characters**. |
+| **Brute-force Protection** | Login/registration endpoints now have **rate limiting of 20 requests per 15 minutes**. |
+
+### Performance & Stability Improvements
+
+| Item | Change |
+|------|--------|
+| **SSE Connection Limit** | Telegram/KakaoTalk simulator SSE clients are now capped at **50 max** to prevent memory leaks. |
+| **Async I/O** | Manual/plan/schema file reads have been converted from `readFileSync` to `fs.promises`, eliminating event loop blocking. |
+| **Query Parallelization** | Three sequential queries in admin user detail endpoint now run in parallel via `Promise.all`, improving response times. |
+| **DB Connection Timeout** | A 5-second connection timeout has been added to the PostgreSQL connection pool to prevent indefinite waiting during DB outages. |
+| **Crash Bug Fix** | Fixed a bug where the KakaoTalk simulator called undefined functions (`formatContainers`, etc.), causing crashes. |
+
+### Code Review Additional Fixes (April 2026 Addendum)
+
+| Item | Change |
+|------|--------|
+| **SuperAdmin Privilege Separation** | The `superAdminRequired` middleware also allowed `admin` role, enabling regular admins to perform SuperAdmin-only operations (password resets, account deactivation). This **privilege escalation bug** has been fixed — only `superadmin` is now permitted. |
+| **Telegram/Kakao docker logs Command Injection** | Docker log queries in Telegram and Kakao gateways now use `execFile('docker', ['logs', ...])` with array arguments instead of `exec()`, completely blocking shell injection. Subdomain regex validation also added. |
+| **Password Reset Policy Unified** | Admin password reset minimum length increased from 4 to **8 characters** to match registration policy. |
+| **Monitoring Duplicate Call Removed** | `si.currentLoad()` was called twice in parallel, wasting system resources. Duplicate removed. |
+| **Graceful Shutdown Enhanced** | DB connection pool (`pool.end()`) is now safely closed on server shutdown, preventing dangling connections. |
+
+### Architecture Refactoring (April 2026 Addendum)
+
+Server code maintainability and security have been significantly improved.
+
+| Item | Before | After |
+|------|--------|-------|
+| **server.js size** | 748 lines (14 endpoints + all business logic) | **230 lines** (-69%, route mounting + startup only) |
+| **Simulator code** | Telegram/Kakao 80% duplicated (~370 lines) | Extracted to `src/routes/simulator.js`, unified into **single shared handler** |
+| **SSE management** | 2 separate arrays + duplicate handlers | Unified `createSSEHandler()` factory function |
+| **Markdown renderer** | 15-regex chain (3 XSS vectors present) | Replaced with `marked` + `DOMPurify` (**XSS fully blocked**) |
+
+> 💡 **XSS Defense**: Previously, markdown links like `[click](javascript:alert(1))` were rendered as-is, enabling script injection. `DOMPurify` now automatically strips all dangerous HTML/attributes.
+
+---
+
 ## 🛡 Role-Based Access Control (RBAC)
 
 RemoteAGT provides a 3-tier user permission system.

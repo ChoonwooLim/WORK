@@ -1987,3 +1987,53 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
 }
+
+/* ============ AI CODE EDITOR ============ */
+.ai-toolbar-btn {
+  border: 1px solid rgba(255,255,255,0.06) !important;
+  border-radius: 6px !important;
+  padding: 4px 10px !important;
+  transition: all 0.2s !important;
+}
+.ai-toolbar-btn:hover:not(:disabled) {
+  background: rgba(189, 147, 249, 0.1) !important;
+  border-color: rgba(189, 147, 249, 0.3) !important;
+}
+.ai-toolbar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Monaco AI decoration: yellow highlight on pending changes */
+.ai-pending-change-line {
+  background: rgba(210, 153, 34, 0.12) !important;
+  border-left: 3px solid #d29922 !important;
+}
+.ai-pending-glyph {
+  background: #d29922;
+  border-radius: 50%;
+  width: 8px !important;
+  height: 8px !important;
+  margin-left: 4px;
+  margin-top: 6px;
+}
+
+/* File tree items */
+.file-tree-item {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-tree-item:hover {
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent);
+}
+
+/* Pulse animation for AI loading */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.1); }
+}

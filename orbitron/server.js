@@ -132,7 +132,12 @@ async function start() {
             const existing = await db.queryOne('SELECT id FROM users WHERE email = $1', [process.env.ADMIN_EMAIL]);
             if (!existing) {
                 const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
-                const adminUsername = process.env.ADMIN_EMAIL.split('@')[0];
+                let adminUsername = process.env.ADMIN_EMAIL.split('@')[0];
+                // Prevent username collision by appending random suffix if already taken
+                const nameTaken = await db.queryOne('SELECT id FROM users WHERE username = $1', [adminUsername]);
+                if (nameTaken) {
+                    adminUsername = `${adminUsername}_${Date.now().toString(36).slice(-4)}`;
+                }
                 await db.queryOne(
                     "INSERT INTO users (username, email, password_hash, role, plan) VALUES ($1, $2, $3, 'admin', 'enterprise') RETURNING id",
                     [adminUsername, process.env.ADMIN_EMAIL, hash]

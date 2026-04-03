@@ -91,4 +91,8 @@ To conserve disk space, Orbitron automatically performs the following after each
 > ⚠️ **Important**: Previous successful images are always preserved for rollback. Build failures automatically trigger a rollback to the last successful image.
 
 ### Deployment Timeout Protection
-All deployments have a **60-minute timeout**. Even if a deployment process stalls due to network failures or infinite loop builds, it will be automatically terminated after 60 minutes to prevent server resource exhaustion.
+All deployments have a **60-minute timeout**. Even if a deployment process stalls due to network failures or infinite loop builds, it will be automatically terminated after 60 minutes to prevent server resource exhaustion. The timer is immediately cleared on successful deployment to prevent memory leaks.
+
+### Code Review Fixes
+*   **`apk.txt`/`apt.txt` Package Parsing Fix**: When reading system dependency files, actual newline characters are now correctly replaced with spaces. Previously, only the literal `\n` string was matched, preventing multi-line package lists from being processed correctly.
+*   **Health Check Port Accuracy**: After auto-resolving port conflicts, health checks now use the **actual assigned port** rather than the original configured port.
