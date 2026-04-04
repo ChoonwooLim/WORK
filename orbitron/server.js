@@ -58,6 +58,62 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', uptime: process.uptime() });
 });
 
+// PDF generation endpoint — renders any local page to PDF using headless Chrome
+app.get('/api/pdf/:page', async (req, res) => {
+    const page = req.params.page;
+    const allowed = ['presentation', 'ir', 'comparison', 'patent-application'];
+    // Allow docs-content markdown via ir.html viewer
+    const isPatent = page === 'patent-application';
+
+    if (!allowed.includes(page)) {
+        return res.status(400).json({ error: '허용되지 않는 페이지입니다.' });
+    }
+
+    try {
+        const puppeteer = require('puppeteer-core');
+        const chromePath = '/usr/bin/google-chrome';
+        const port = process.env.PORT || 4000;
+
+        const browser = await puppeteer.launch({
+            executablePath: chromePath,
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        });
+        const browserPage = await browser.newPage();
+        await browserPage.setViewport({ width: 1920, height: 1080 });
+
+        let url;
+        if (page === 'presentation') {
+            url = `http://localhost:${port}/presentation.html?print-pdf`;
+        } else if (isPatent) {
+            url = `http://localhost:${port}/docs.html#/patent-application`;
+        } else {
+            url = `http://localhost:${port}/${page}.html`;
+        }
+
+        await browserPage.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+        // Wait extra for fonts/images
+        await new Promise(r => setTimeout(r, 2000));
+
+        const pdfBuffer = await browserPage.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+            ...(page === 'presentation' ? { width: '1920px', height: '1080px', landscape: true, margin: { top: 0, bottom: 0, left: 0, right: 0 } } : {})
+        });
+
+        await browser.close();
+
+        const filename = `Orbitron_${page.charAt(0).toUpperCase() + page.slice(1)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (e) {
+        console.error('PDF 생성 오류:', e.message);
+        res.status(500).json({ error: `PDF 생성 실패: ${e.message}` });
+    }
+});
+
 // SSE - Real-time deploy progress stream
 const deployer = require('./services/deployer');
 app.get('/api/deploy-stream/:projectId', authMiddleware, (req, res) => {

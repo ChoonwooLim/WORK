@@ -75,9 +75,30 @@ class DockerService {
             detailLogs += `  자동 감지 타입: ${detected.type}${detected.subdir ? ` (서브디렉토리: ${detected.subdir})` : ''}\n`;
             if (detected.frontend) detailLogs += `  프론트엔드: ${detected.frontend.path} (${detected.frontend.framework})\n`;
             if (detected.backend) detailLogs += `  백엔드: ${detected.backend.path} (${detected.backend.runtime}/${detected.backend.framework})\n`;
-            const dockerfile = this.generateDockerfile(project, projectDir);
+            let dockerfile = this.generateDockerfile(project, projectDir);
+            // Safety: fix any double-backslash line continuations that could break Docker builds
+            dockerfile = dockerfile.replace(/\\\\\s*\n/g, '\\\n');
             fs.writeFileSync(dockerfilePath, dockerfile);
             detailLogs += `  빌드 방식: 자동 생성 Dockerfile\n`;
+
+            // Validate: quick syntax check for common Dockerfile issues
+            const dfLines = dockerfile.split('\n');
+            for (let i = 0; i < dfLines.length; i++) {
+                const line = dfLines[i].trim();
+                if (line && !line.startsWith('#') && !line.startsWith('FROM') && !line.startsWith('RUN') &&
+                    !line.startsWith('COPY') && !line.startsWith('WORKDIR') && !line.startsWith('ENV') &&
+                    !line.startsWith('EXPOSE') && !line.startsWith('CMD') && !line.startsWith('ARG') &&
+                    !line.startsWith('ENTRYPOINT') && !line.startsWith('LABEL') && !line.startsWith('USER') &&
+                    !line.startsWith('VOLUME') && !line.startsWith('ADD') && !line.startsWith('HEALTHCHECK') &&
+                    !line.startsWith('SHELL') && !line.startsWith('STOPSIGNAL') && !line.startsWith('ONBUILD') &&
+                    line.length > 0) {
+                    // This line doesn't start with a Dockerfile instruction — check if previous line has continuation
+                    const prevLine = i > 0 ? dfLines[i - 1] : '';
+                    if (!prevLine.trimEnd().endsWith('\\')) {
+                        console.error(`⚠️ Dockerfile 검증 경고 (${project.subdomain}): 행 ${i + 1}에 알 수 없는 명령어 "${line.split(' ')[0]}" — 줄 연결 누락 가능성`);
+                    }
+                }
+            }
         } else {
             // Log custom Dockerfile info
             const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf-8');
@@ -456,8 +477,7 @@ COPY ${ex.path}/package*.json ./
 RUN npm ci
 COPY ${ex.path}/ ./
 ENV VITE_API_URL=""
-RUN npm run build && \\\\
-    find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
+RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
 `;
                     extraCopies += `COPY --from=${stageName} /build/dist /app/${staticDir}\n`;
                 }
@@ -473,8 +493,7 @@ COPY ${fe.path}/package*.json ./
 RUN npm ci
 COPY ${fe.path}/ ./
 ENV VITE_API_URL=""
-RUN npm run build && \\\\
-    find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
+RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
 ${extraStages}
 # Stage ${totalStages}: Production image
 FROM python:3.11-slim
@@ -501,8 +520,7 @@ WORKDIR /build
 COPY ${fe.path}/package*.json ./
 RUN npm ci
 COPY ${fe.path}/ ./
-RUN npm run build && \\\\
-    find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
+RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
 
 FROM node:20-slim
 WORKDIR /app
@@ -907,11 +925,30 @@ EXPOSE ${port}
             const { stdout } = await execAsync(`docker ps -a --format '{{.Names}}' | grep '^orbitron-${subdomain}-' || true`);
             const containers = stdout.trim().split('\n').filter(Boolean);
 
-            for (const name of containers) {
-                if (name !== keepContainerName) {
-                    console.log(`🧹 Cleaning up old container: ${name}`);
-                    await this.stopContainer(name);
+            // Build a set of container names that belong to OTHER projects
+            // e.g., if we're cleaning up "twinverseai", protect "twinverseai-db", "twinverseai-redis" etc.
+            const protectedPrefixes = [];
+            try {
+                const db = require('../db/db');
+                const otherProjects = await db.query(
+                    "SELECT subdomain FROM projects WHERE subdomain LIKE $1 AND subdomain != $2",
+                    [subdomain + '-%', subdomain]
+                );
+                for (const row of otherProjects.rows) {
+                    protectedPrefixes.push(`orbitron-${row.subdomain}`);
                 }
+            } catch (e) { /* DB unavailable — skip protection */ }
+
+            for (const name of containers) {
+                if (name === keepContainerName) continue;
+                // CRITICAL: Never delete containers belonging to OTHER projects
+                const isProtected = protectedPrefixes.some(prefix => name === prefix || name.startsWith(prefix + '-'));
+                if (isProtected) {
+                    console.log(`⏭️ Skipping container from different project: ${name}`);
+                    continue;
+                }
+                console.log(`🧹 Cleaning up old container: ${name}`);
+                await this.stopContainer(name);
             }
         } catch (e) {
             console.error(`Failed to cleanup old containers for ${subdomain}:`, e);

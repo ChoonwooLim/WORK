@@ -990,8 +990,7 @@ async function createProject() {
             toast('데이터베이스 컨테이너가 생성 및 시작 중입니다.', 'success');
             closeModal();
             loadProjects();
-            openDeployModal(project.id);
-            res.json().catch(() => { }); // Ignore further reads if needed, wait, already parsed await res.json() inline
+            deployProject(project.id);
         } catch (error) { toast(error.message, 'error'); }
         return;
     }
@@ -4705,6 +4704,7 @@ function renderBusinessPlan() {
                 <li><strong>AI 자동 오류 진단</strong> — Claude/Gemini 기반 빌드 에러 분석 + 자동 수정 제안</li>
                 <li><strong>게임 스트리밍</strong> — Unreal Engine Pixel Streaming, Unity WebGL 원클릭 배포</li>
                 <li><strong>제로 설정 HTTPS</strong> — Cloudflare Tunnel을 통한 자동 SSL + 커스텀 도메인</li>
+                <li><strong>AI 코드 에디터</strong> — 웹 IDE에서 인라인 AI 수정, Diff 뷰, 멀티파일 리팩토링 (특허 기술)</li>
                 <li><strong>풀스택 대시보드</strong> — 소스 에디터, 콘솔, 환경변수, 로그, 모니터링 통합</li>
             </ul>
         </div>
@@ -4771,7 +4771,7 @@ function renderBusinessPlan() {
                 자동 좀비 컨테이너 정리(60초 주기), 최대 1시간 세션 제한, GPU 로드밸런싱을 수행합니다.
                 Unity WebGL 빌드도 원클릭 배포를 지원합니다.
             </p>
-            <p style="${pStyle}"><strong>경쟁력:</strong> 게임 배포 + 웹앱 배포를 <u>단일 플랫폼에서 통합</u>하는 유일한 서비스.
+            <p style="${pStyle}"><strong>경쟁력:</strong> 게임 배포 + 웹앱 배포를 <u>단일 플랫폼에서 통합</u>하며, 직접 경쟁 제품이 없는 영역.
             AWS GameLift, Parsec 등은 게임 전용이며, Vercel/Render는 게임 배포를 지원하지 않습니다.</p>
         </div>
 
@@ -4782,6 +4782,18 @@ function renderBusinessPlan() {
                 AES-256-GCM 암호화된 환경변수를 안전하게 관리합니다. 배포 로그 실시간 SSE 스트리밍,
                 프로젝트 그룹핑, 이슈 보드까지 포함된 올인원 대시보드입니다.
             </p>
+        </div>
+
+        <div style="${highlightBox} border-color:rgba(255,121,198,0.3); background:rgba(255,121,198,0.04);">
+            <strong style="color:#ff79c6;">E. AI 코드 에디터 — 웹 IDE 내장 LLM 연동 (특허 제6호 출원 예정)</strong>
+            <p style="${pStyle}">
+                Monaco Editor에 LLM을 직접 연동한 <strong>인라인 AI 코드 수정 시스템</strong>입니다.
+                코드 선택 → Ctrl+I 또는 우클릭 컨텍스트 메뉴 → AI 지시 → 수정안 생성 → Diff 비교 → 수락/거부 워크플로우를 제공합니다.
+                프로젝트 전체 소스를 분석한 <strong>멀티파일 일괄 리팩토링</strong>과 체크박스 기반 선택적 패치 적용을 지원합니다.
+                Claude(1차) → Gemini(폴백) 듀얼 LLM 라우팅으로 안정성을 확보합니다.
+            </p>
+            <p style="${pStyle}"><strong>경쟁력:</strong> GitHub Copilot, Cursor 등은 데스크톱 IDE 전용. <u>웹 브라우저에서 배포된 서버 코드를 AI로 직접 편집</u>하는 서비스는
+            현재 직접적인 경쟁 제품이 확인되지 않으며, 이 기능에 대한 특허를 출원합니다.</p>
         </div>
     </div>
 
@@ -4812,27 +4824,27 @@ function renderBusinessPlan() {
             </tr>
             <tr style="background:rgba(63,185,80,0.05);">
                 <td style="${tdStyle} font-weight:700; color:#3fb950;">Vultr (추천)</td><td style="${tdStyle}">1x MI300X</td><td style="${tdStyle}">192GB</td>
-                <td style="${tdRStyle}">$1.85</td><td style="${tdRStyle}">$444</td><td style="${tdRStyle}">$888</td><td style="${tdRStyle}">$1,332</td>
+                <td style="${tdRStyle}">₩2,775</td><td style="${tdRStyle}">₩67만</td><td style="${tdRStyle}">₩133만</td><td style="${tdRStyle}">₩200만</td>
                 <td style="${tdStyle}">99.99%</td><td style="${tdStyle}"><span style="${badgeGreen}">최적</span></td>
             </tr>
             <tr>
                 <td style="${tdStyle}">RunPod Secure</td><td style="${tdStyle}">2x A100 80GB</td><td style="${tdStyle}">160GB</td>
-                <td style="${tdRStyle}">$3.08</td><td style="${tdRStyle}">$739</td><td style="${tdRStyle}">$1,478</td><td style="${tdRStyle}">$2,218</td>
+                <td style="${tdRStyle}">₩4,620</td><td style="${tdRStyle}">₩111만</td><td style="${tdRStyle}">₩222만</td><td style="${tdRStyle}">₩333만</td>
                 <td style="${tdStyle}">미공개</td><td style="${tdStyle}"><span style="${badgeBlue}">대안</span></td>
             </tr>
             <tr>
                 <td style="${tdStyle}">Lambda Labs</td><td style="${tdStyle}">2x A100 80GB</td><td style="${tdStyle}">160GB</td>
-                <td style="${tdRStyle}">~$0.70</td><td style="${tdRStyle}">$168</td><td style="${tdRStyle}">$336</td><td style="${tdRStyle}">$504</td>
+                <td style="${tdRStyle}">₩1,050</td><td style="${tdRStyle}">₩25만</td><td style="${tdRStyle}">₩50만</td><td style="${tdRStyle}">₩76만</td>
                 <td style="${tdStyle}">Enterprise</td><td style="${tdStyle}"><span style="${badgeOrange}">재고 부족</span></td>
             </tr>
             <tr>
                 <td style="${tdStyle}">GCP a3-highgpu-2g</td><td style="${tdStyle}">2x H100</td><td style="${tdStyle}">160GB</td>
-                <td style="${tdRStyle}">$6.00</td><td style="${tdRStyle}">$1,440</td><td style="${tdRStyle}">$2,880</td><td style="${tdRStyle}">$4,320</td>
+                <td style="${tdRStyle}">₩9,000</td><td style="${tdRStyle}">₩216만</td><td style="${tdRStyle}">₩432만</td><td style="${tdRStyle}">₩648만</td>
                 <td style="${tdStyle}">99.95%</td><td style="${tdStyle}"><span style="${badgeBlue}">엔터프라이즈</span></td>
             </tr>
             <tr>
                 <td style="${tdStyle}">AWS g6e.12xlarge</td><td style="${tdStyle}">4x L40S</td><td style="${tdStyle}">192GB</td>
-                <td style="${tdRStyle}">$10.49</td><td style="${tdRStyle}">$2,518</td><td style="${tdRStyle}">$5,035</td><td style="${tdRStyle}">$7,553</td>
+                <td style="${tdRStyle}">₩15,735</td><td style="${tdRStyle}">₩378만</td><td style="${tdRStyle}">₩755만</td><td style="${tdRStyle}">₩1,133만</td>
                 <td style="${tdStyle}">99.99%</td><td style="${tdStyle}"><span style="${badgeOrange}">고비용</span></td>
             </tr>
         </table>
@@ -4842,7 +4854,7 @@ function renderBusinessPlan() {
             <p style="${pStyle}">
                 단일 GPU 192GB로 멀티 GPU 관리 복잡도를 제거하고, 99.99% SLA, DDoS 보호, 32개 글로벌 리전을 활용합니다.
                 Full VM(Ubuntu + systemd + Docker + root)으로 <strong>기존 Orbitron 아키텍처를 변경 없이 그대로 이전</strong> 가능합니다.
-                초기 종량제($1.85/hr)로 시작하여 사용량에 따라 예약 인스턴스로 전환합니다.
+                초기 종량제(시간당 ₩2,775)로 시작하여 사용량에 따라 예약 인스턴스로 전환합니다.
             </p>
         </div>
 
@@ -4880,28 +4892,28 @@ function renderBusinessPlan() {
             </tr>
             <tr style="background:rgba(255,255,255,0.02);">
                 <td style="${tdStyle} font-weight:700;">Free</td>
-                <td style="${tdRStyle} color:#3fb950;">$0</td>
+                <td style="${tdRStyle} color:#3fb950;">₩0</td>
                 <td style="${tdStyle}">1개</td><td style="${tdStyle}">100분/월</td>
                 <td style="${tdStyle}">500MB</td><td style="${tdStyle}">1GB</td>
                 <td style="${tdStyle}">기본 배포, 커뮤니티 지원</td>
             </tr>
             <tr style="background:rgba(88,166,255,0.03);">
                 <td style="${tdStyle} font-weight:700; color:#58a6ff;">Starter</td>
-                <td style="${tdRStyle} color:#58a6ff;">$12</td>
+                <td style="${tdRStyle} color:#58a6ff;">₩15,000</td>
                 <td style="${tdStyle}">5개</td><td style="${tdStyle}">1,000분/월</td>
                 <td style="${tdStyle}">5GB</td><td style="${tdStyle}">50GB</td>
                 <td style="${tdStyle}">커스텀 도메인, AI 오류 분석 (20회/월), 환경변수 암호화</td>
             </tr>
             <tr style="background:rgba(189,147,249,0.05);">
                 <td style="${tdStyle} font-weight:700; color:#bd93f9;">Pro</td>
-                <td style="${tdRStyle} color:#bd93f9;">$39</td>
+                <td style="${tdRStyle} color:#bd93f9;">₩49,000</td>
                 <td style="${tdStyle}">20개</td><td style="${tdStyle}">무제한</td>
                 <td style="${tdStyle}">25GB</td><td style="${tdStyle}">200GB</td>
                 <td style="${tdStyle}">AI 어시스턴트 무제한, 자동 배포, 프로젝트 그룹, 팀원 3명</td>
             </tr>
             <tr style="background:rgba(210,153,34,0.05);">
                 <td style="${tdStyle} font-weight:700; color:#d29922;">Team</td>
-                <td style="${tdRStyle} color:#d29922;">$99</td>
+                <td style="${tdRStyle} color:#d29922;">₩129,000</td>
                 <td style="${tdStyle}">50개</td><td style="${tdStyle}">무제한</td>
                 <td style="${tdStyle}">100GB</td><td style="${tdStyle}">1TB</td>
                 <td style="${tdStyle}">팀원 10명, RBAC, DB 호스팅, 우선 빌드 큐, 이메일 지원</td>
@@ -4918,12 +4930,12 @@ function renderBusinessPlan() {
         <h3 style="${h3Style}">3.3 부가 서비스 (Add-ons)</h3>
         <table style="${tableStyle}">
             <tr><th style="${thStyle}">서비스</th><th style="${thStyle}">가격</th><th style="${thStyle}">설명</th></tr>
-            <tr><td style="${tdStyle}">Pixel Streaming 세션</td><td style="${tdRStyle}">$2.50/시간</td><td style="${tdStyle}">UE5 게임 GPU 스트리밍 (세션당 과금)</td></tr>
-            <tr><td style="${tdStyle}">AI 이미지 생성</td><td style="${tdRStyle}">$0.05/장</td><td style="${tdStyle}">Flux.1-schnell 기반 이미지 생성 API</td></tr>
-            <tr><td style="${tdStyle}">추가 스토리지</td><td style="${tdRStyle}">$0.15/GB/월</td><td style="${tdStyle}">프로젝트 스토리지 추가</td></tr>
-            <tr><td style="${tdStyle}">추가 대역폭</td><td style="${tdRStyle}">$0.10/GB</td><td style="${tdStyle}">기본 포함량 초과 시</td></tr>
-            <tr><td style="${tdStyle}">PostgreSQL DB</td><td style="${tdRStyle}">$7/월~</td><td style="${tdStyle}">관리형 DB 인스턴스 (256MB~4GB)</td></tr>
-            <tr><td style="${tdStyle}">Redis Cache</td><td style="${tdRStyle}">$5/월~</td><td style="${tdStyle}">관리형 캐시 인스턴스</td></tr>
+            <tr><td style="${tdStyle}">Pixel Streaming 세션</td><td style="${tdRStyle}">₩3,500/시간</td><td style="${tdStyle}">UE5 게임 GPU 스트리밍 (세션당 과금)</td></tr>
+            <tr><td style="${tdStyle}">AI 이미지 생성</td><td style="${tdRStyle}">₩70/장</td><td style="${tdStyle}">Flux.1-schnell 기반 이미지 생성 API</td></tr>
+            <tr><td style="${tdStyle}">추가 스토리지</td><td style="${tdRStyle}">₩200/GB/월</td><td style="${tdStyle}">프로젝트 스토리지 추가</td></tr>
+            <tr><td style="${tdStyle}">추가 대역폭</td><td style="${tdRStyle}">₩130/GB</td><td style="${tdStyle}">기본 포함량 초과 시</td></tr>
+            <tr><td style="${tdStyle}">PostgreSQL DB</td><td style="${tdRStyle}">₩9,000/월~</td><td style="${tdStyle}">관리형 DB 인스턴스 (256MB~4GB)</td></tr>
+            <tr><td style="${tdStyle}">Redis Cache</td><td style="${tdRStyle}">₩7,000/월~</td><td style="${tdStyle}">관리형 캐시 인스턴스</td></tr>
         </table>
     </div>
 
@@ -4947,14 +4959,17 @@ function renderBusinessPlan() {
             <tr><td style="${tdStyle} font-weight:600;">컨테이너 콘솔</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">O</td><td style="${tdStyle}">O</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">Docker Compose</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">GPU 지원</td><td style="${tdStyle} color:#3fb950;">O (192GB)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">유료 Addon</td></tr>
-            <tr><td style="${tdStyle} font-weight:600;">Starter 가격</td><td style="${tdStyle} font-weight:700; color:#3fb950;">$12/월</td><td style="${tdStyle}">$20/월</td><td style="${tdStyle}">$5/월~</td><td style="${tdStyle}">$7/월~</td><td style="${tdStyle}">$5/월~</td></tr>
-            <tr><td style="${tdStyle} font-weight:600;">Pro 가격</td><td style="${tdStyle} font-weight:700; color:#3fb950;">$39/월</td><td style="${tdStyle}">$20/유저</td><td style="${tdStyle}">$20/유저</td><td style="${tdStyle}">$19/서비스</td><td style="${tdStyle}">$25/dyno</td></tr>
+            <tr><td style="${tdStyle} font-weight:600; color:#ff79c6;">AI 인라인 코드 에디터</td><td style="${tdStyle} color:#3fb950;">O (웹 IDE+LLM)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600; color:#ff79c6;">멀티파일 AI 리팩토링</td><td style="${tdStyle} color:#3fb950;">O (선택적 적용)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">Starter 가격</td><td style="${tdStyle} font-weight:700; color:#3fb950;">₩15,000/월</td><td style="${tdStyle}">₩30,000/월</td><td style="${tdStyle}">₩7,500/월~</td><td style="${tdStyle}">₩10,500/월~</td><td style="${tdStyle}">₩7,500/월~</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">Pro 가격</td><td style="${tdStyle} font-weight:700; color:#3fb950;">₩49,000/월</td><td style="${tdStyle}">₩30,000/유저</td><td style="${tdStyle}">₩30,000/유저</td><td style="${tdStyle}">₩28,500/서비스</td><td style="${tdStyle}">₩37,500/dyno</td></tr>
         </table>
 
         <div style="${highlightBox}">
             <strong style="color:var(--text-primary);">Orbitron 차별화 포인트</strong>
             <ol style="${pStyle} padding-left:20px;">
                 <li><strong>AI 네이티브</strong> — 유일하게 LLM 기반 오류 분석 + 자동 수정을 내장</li>
+                <li><strong>AI 코드 에디터</strong> — 웹 IDE에서 인라인 AI 수정 + Diff 뷰 + 멀티파일 리팩토링 (특허 제6호)</li>
                 <li><strong>게임 + 웹앱 통합</strong> — 하나의 플랫폼에서 UE5/Unity 게임과 웹앱을 모두 배포</li>
                 <li><strong>완전한 Docker 제어</strong> — Dockerfile, Compose, GPU passthrough 모두 지원</li>
                 <li><strong>올인원 대시보드</strong> — IDE, 콘솔, 모니터링, 이슈 트래킹까지 통합</li>
@@ -4969,17 +4984,17 @@ function renderBusinessPlan() {
         <h3 style="${h3Style}">5.1 비용 구조 (월간)</h3>
         <table style="${tableStyle}">
             <tr><th style="${thStyle}">항목</th><th style="${thStyle}">Phase 1 (1~6개월)</th><th style="${thStyle}">Phase 2 (7~12개월)</th><th style="${thStyle}">Phase 3 (13~24개월)</th></tr>
-            <tr><td style="${tdStyle}">GPU 서버 (Vultr MI300X)</td><td style="${tdRStyle}">$888 (16h/일)</td><td style="${tdRStyle}">$1,332 (24/7)</td><td style="${tdRStyle}">$2,664 (x2 인스턴스)</td></tr>
-            <tr><td style="${tdStyle}">스토리지 + 백업</td><td style="${tdRStyle}">$30</td><td style="${tdRStyle}">$80</td><td style="${tdRStyle}">$200</td></tr>
-            <tr><td style="${tdStyle}">AI API (Claude + Gemini)</td><td style="${tdRStyle}">$50</td><td style="${tdRStyle}">$200</td><td style="${tdRStyle}">$500</td></tr>
-            <tr><td style="${tdStyle}">Cloudflare (Pro)</td><td style="${tdRStyle}">$20</td><td style="${tdRStyle}">$20</td><td style="${tdRStyle}">$200 (Business)</td></tr>
-            <tr><td style="${tdStyle}">도메인 + 기타</td><td style="${tdRStyle}">$30</td><td style="${tdRStyle}">$30</td><td style="${tdRStyle}">$50</td></tr>
-            <tr><td style="${tdStyle}">마케팅</td><td style="${tdRStyle}">$100</td><td style="${tdRStyle}">$500</td><td style="${tdRStyle}">$1,500</td></tr>
+            <tr><td style="${tdStyle}">GPU 서버 (Vultr MI300X)</td><td style="${tdRStyle}">₩133만 (16h/일)</td><td style="${tdRStyle}">₩200만 (24/7)</td><td style="${tdRStyle}">₩400만 (x2)</td></tr>
+            <tr><td style="${tdStyle}">스토리지 + 백업</td><td style="${tdRStyle}">₩5만</td><td style="${tdRStyle}">₩12만</td><td style="${tdRStyle}">₩30만</td></tr>
+            <tr><td style="${tdStyle}">AI API (Claude + Gemini)</td><td style="${tdRStyle}">₩8만</td><td style="${tdRStyle}">₩30만</td><td style="${tdRStyle}">₩75만</td></tr>
+            <tr><td style="${tdStyle}">Cloudflare (Pro)</td><td style="${tdRStyle}">₩3만</td><td style="${tdRStyle}">₩3만</td><td style="${tdRStyle}">₩30만 (Business)</td></tr>
+            <tr><td style="${tdStyle}">도메인 + 기타</td><td style="${tdRStyle}">₩5만</td><td style="${tdRStyle}">₩5만</td><td style="${tdRStyle}">₩8만</td></tr>
+            <tr><td style="${tdStyle}">마케팅</td><td style="${tdRStyle}">₩15만</td><td style="${tdRStyle}">₩75만</td><td style="${tdRStyle}">₩225만</td></tr>
             <tr style="background:rgba(88,166,255,0.05);">
                 <td style="${tdStyle} font-weight:700; color:var(--text-primary);">총 월 비용</td>
-                <td style="${tdRStyle} font-weight:700; color:#f85149;">$1,118</td>
-                <td style="${tdRStyle} font-weight:700; color:#f85149;">$2,162</td>
-                <td style="${tdRStyle} font-weight:700; color:#f85149;">$5,114</td>
+                <td style="${tdRStyle} font-weight:700; color:#f85149;">₩169만</td>
+                <td style="${tdRStyle} font-weight:700; color:#f85149;">₩325만</td>
+                <td style="${tdRStyle} font-weight:700; color:#f85149;">₩768만</td>
             </tr>
         </table>
 
@@ -5002,42 +5017,42 @@ function renderBusinessPlan() {
             <tr><td style="${tdStyle}">24개월차</td><td style="${tdRStyle}">1,000</td><td style="${tdRStyle}">80</td><td style="${tdRStyle}">3,500</td><td style="${tdRStyle}">280</td><td style="${tdRStyle}">10,000</td><td style="${tdRStyle}">800</td></tr>
         </table>
 
-        <h3 style="${h3Style}">5.3 매출 예측 (기본 시나리오 — 유료 유저 ARPU $28 기준)</h3>
-        <div style="${pStyle}">ARPU(Average Revenue Per User) 산출: Free $0, Starter $12(50%), Pro $39(35%), Team $99(12%), Add-on $5(평균) = <strong>가중 ARPU $28</strong></div>
+        <h3 style="${h3Style}">5.3 매출 예측 (기본 시나리오 — 유료 유저 ARPU ₩38,000 기준)</h3>
+        <div style="${pStyle}">ARPU 산출: Free ₩0, Starter ₩15,000(50%), Pro ₩49,000(35%), Team ₩129,000(12%), Add-on ₩7,000(평균) = <strong>가중 ARPU ₩38,000</strong></div>
         <table style="${tableStyle}">
             <tr>
                 <th style="${thStyle}">기간</th><th style="${thStyle}">유료 유저</th><th style="${thStyle}">구독 매출</th>
                 <th style="${thStyle}">Add-on 매출</th><th style="${thStyle}">총 매출</th><th style="${thStyle}">비용</th><th style="${thStyle}">순이익</th>
             </tr>
             <tr>
-                <td style="${tdStyle}">3개월차</td><td style="${tdRStyle}">8</td><td style="${tdRStyle}">$224</td>
-                <td style="${tdRStyle}">$40</td><td style="${tdRStyle}">$264</td><td style="${tdRStyle}">$1,118</td>
-                <td style="${tdRStyle} color:#f85149;">-$854</td>
+                <td style="${tdStyle}">3개월차</td><td style="${tdRStyle}">8</td><td style="${tdRStyle}">₩30만</td>
+                <td style="${tdRStyle}">₩6만</td><td style="${tdRStyle}">₩36만</td><td style="${tdRStyle}">₩169만</td>
+                <td style="${tdRStyle} color:#f85149;">-₩133만</td>
             </tr>
             <tr>
-                <td style="${tdStyle}">6개월차</td><td style="${tdRStyle}">30</td><td style="${tdRStyle}">$840</td>
-                <td style="${tdRStyle}">$180</td><td style="${tdRStyle}">$1,020</td><td style="${tdRStyle}">$1,118</td>
-                <td style="${tdRStyle} color:#f85149;">-$98</td>
+                <td style="${tdStyle}">6개월차</td><td style="${tdRStyle}">30</td><td style="${tdRStyle}">₩114만</td>
+                <td style="${tdRStyle}">₩27만</td><td style="${tdRStyle}">₩141만</td><td style="${tdRStyle}">₩169만</td>
+                <td style="${tdRStyle} color:#f85149;">-₩28만</td>
             </tr>
             <tr style="background:rgba(63,185,80,0.05);">
-                <td style="${tdStyle} font-weight:600;">7개월차 (BEP)</td><td style="${tdRStyle}">35</td><td style="${tdRStyle}">$980</td>
-                <td style="${tdRStyle}">$210</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">$1,190</td><td style="${tdRStyle}">$1,118</td>
-                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+$72</td>
+                <td style="${tdStyle} font-weight:600;">7개월차 (BEP)</td><td style="${tdRStyle}">35</td><td style="${tdRStyle}">₩133만</td>
+                <td style="${tdRStyle}">₩32만</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">₩175만</td><td style="${tdRStyle}">₩169만</td>
+                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+₩6만</td>
             </tr>
             <tr>
-                <td style="${tdStyle}">12개월차</td><td style="${tdRStyle}">90</td><td style="${tdRStyle}">$2,520</td>
-                <td style="${tdRStyle}">$630</td><td style="${tdRStyle}">$3,150</td><td style="${tdRStyle}">$2,162</td>
-                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+$988</td>
+                <td style="${tdStyle}">12개월차</td><td style="${tdRStyle}">90</td><td style="${tdRStyle}">₩342만</td>
+                <td style="${tdRStyle}">₩95만</td><td style="${tdRStyle}">₩437만</td><td style="${tdRStyle}">₩325만</td>
+                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+₩112만</td>
             </tr>
             <tr>
-                <td style="${tdStyle}">18개월차</td><td style="${tdRStyle}">180</td><td style="${tdRStyle}">$5,040</td>
-                <td style="${tdRStyle}">$1,440</td><td style="${tdRStyle}">$6,480</td><td style="${tdRStyle}">$3,500</td>
-                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+$2,980</td>
+                <td style="${tdStyle}">18개월차</td><td style="${tdRStyle}">180</td><td style="${tdRStyle}">₩684만</td>
+                <td style="${tdRStyle}">₩216만</td><td style="${tdRStyle}">₩900만</td><td style="${tdRStyle}">₩525만</td>
+                <td style="${tdRStyle} color:#3fb950; font-weight:700;">+₩375만</td>
             </tr>
             <tr style="background:rgba(63,185,80,0.08);">
-                <td style="${tdStyle} font-weight:700;">24개월차</td><td style="${tdRStyle}">280</td><td style="${tdRStyle}">$7,840</td>
-                <td style="${tdRStyle}">$2,800</td><td style="${tdRStyle} font-weight:700; color:#3fb950;">$10,640</td><td style="${tdRStyle}">$5,114</td>
-                <td style="${tdRStyle} font-weight:700; color:#3fb950;">+$5,526</td>
+                <td style="${tdStyle} font-weight:700;">24개월차</td><td style="${tdRStyle}">280</td><td style="${tdRStyle}">₩1,064만</td>
+                <td style="${tdRStyle}">₩420만</td><td style="${tdRStyle} font-weight:700; color:#3fb950;">₩1,484만</td><td style="${tdRStyle}">₩768만</td>
+                <td style="${tdRStyle} font-weight:700; color:#3fb950;">+₩716만</td>
             </tr>
         </table>
 
@@ -5066,14 +5081,14 @@ function renderBusinessPlan() {
         <h3 style="${h3Style}">5.5 초기 투자금 회수 분석</h3>
         <table style="${tableStyle}">
             <tr><th style="${thStyle}">항목</th><th style="${thStyle}">금액</th></tr>
-            <tr><td style="${tdStyle}">이전 비용 (1개월 서버 + 설정 작업)</td><td style="${tdRStyle}">~$1,500</td></tr>
-            <tr><td style="${tdStyle}">1~6개월 누적 적자</td><td style="${tdRStyle}">~$3,500</td></tr>
+            <tr><td style="${tdStyle}">이전 비용 (1개월 서버 + 설정 작업)</td><td style="${tdRStyle}">~₩225만</td></tr>
+            <tr><td style="${tdStyle}">1~6개월 누적 적자</td><td style="${tdRStyle}">~₩525만</td></tr>
             <tr style="background:rgba(88,166,255,0.05);">
-                <td style="${tdStyle} font-weight:700;">총 초기 투자 필요 금액</td><td style="${tdRStyle} font-weight:700; color:#58a6ff;">~$5,000</td>
+                <td style="${tdStyle} font-weight:700;">총 초기 투자 필요 금액</td><td style="${tdRStyle} font-weight:700; color:#58a6ff;">~₩750만</td>
             </tr>
             <tr><td style="${tdStyle}">손익분기점 (BEP)</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">7개월차 (유료 35명)</td></tr>
             <tr><td style="${tdStyle}">투자금 회수 시점</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">12~14개월차</td></tr>
-            <tr><td style="${tdStyle}">24개월 누적 순이익</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">~$18,000+</td></tr>
+            <tr><td style="${tdStyle}">24개월 누적 순이익</td><td style="${tdRStyle} color:#3fb950; font-weight:700;">~₩2,700만+</td></tr>
         </table>
     </div>
 
@@ -5110,13 +5125,20 @@ function renderBusinessPlan() {
                 <div style="font-size:24px; margin-bottom:8px;">💰</div>
                 <strong style="color:var(--text-primary);">수익 모델 확립</strong>
                 <p style="${pStyle}">5단계 가격 정책(Free → Enterprise) + 종량제 Add-on으로 다층 수익 구조.
-                ARPU $28, LTV(고객 생애 가치) 12개월 기준 $336 예상.</p>
+                ARPU ₩38,000, LTV(고객 생애 가치) 12개월 기준 ₩456,000 예상.</p>
             </div>
             <div style="${highlightBox}">
                 <div style="font-size:24px; margin-bottom:8px;">🎯</div>
                 <strong style="color:var(--text-primary);">시장 차별화</strong>
-                <p style="${pStyle}">AI 오류 분석 + 게임 스트리밍 + Docker 네이티브 통합은 현존 PaaS에 없는 유일한 조합.
+                <p style="${pStyle}">AI 오류 분석 + AI 인라인 코드 에디터 + 게임 스트리밍 + Docker 네이티브 통합은 현존 PaaS에서 직접 경쟁 제품이 확인되지 않는 조합.
                 니치 마켓(게임 개발자, AI 스타트업) 선점 기회.</p>
+            </div>
+            <div style="${highlightBox} border-color:rgba(255,121,198,0.3);">
+                <div style="font-size:24px; margin-bottom:8px;">🤖</div>
+                <strong style="color:#ff79c6;">AI 코드 에디터 (특허 기술)</strong>
+                <p style="${pStyle}">배포된 애플리케이션 코드를 브라우저에서 AI로 검토 · 수정 · 재배포하는 통합 워크플로우.
+                인라인 수정, Diff 비교, 멀티파일 리팩토링, 듀얼 LLM 폴백 — 특허 제6호 출원 예정.
+                GitHub Copilot, Cursor와 차별화된 웹 네이티브 AI IDE.</p>
             </div>
         </div>
     </div>
@@ -5231,16 +5253,15 @@ function renderBusinessPlan() {
         <div style="${successBox}">
             <p style="${pStyle}">
                 Orbitron은 이미 <strong>완전 동작하는 배포 자동화 플랫폼</strong>입니다.
-                10종 프로젝트 타입 자동감지, AI 오류 분석, 게임 스트리밍, Docker Compose 지원 등
-                경쟁사 대비 명확한 기술적 차별점을 보유하고 있습니다.
+                10종 프로젝트 타입 자동감지, AI 오류 분석, AI 인라인 코드 에디터, 게임 스트리밍, Docker Compose 지원 등
+                경쟁사 대비 명확한 기술적 차별점을 보유하고 있습니다. <strong>6건의 핵심 기술 특허</strong>를 출원하여 기술 우위를 법적으로 보호합니다.
             </p>
             <p style="${pStyle}">
-                128GB+ GPU 클라우드(Vultr MI300X)로 이전 시, 초기 투자 약 <strong>$5,000</strong>(약 650만원)으로
-                상용 SaaS를 런칭할 수 있으며, <strong>7개월차에 손익분기점</strong>에 도달하고
-                <strong>24개월 누적 순이익 $18,000+</strong>(약 2,300만원)이 예상됩니다.
+                128GB+ GPU 클라우드(Vultr MI300X)로 이전하고 5억원 투자를 유치하여,
+                7명 조직으로 법인을 설립하고 18개월 내 시리즈 A 투자를 유치합니다.
             </p>
             <p style="${pStyle}">
-                AI 네이티브 + 게임 스트리밍 통합이라는 <strong>유일한 포지셔닝</strong>과
+                AI 네이티브 + AI 코드 에디터(특허) + 게임 스트리밍 통합이라는 <strong>차별화된 포지셔닝</strong>과
                 이미 검증된 기술 스택을 바탕으로, 인디 개발자/스타트업/게임 스튜디오 시장에서
                 빠른 성장이 가능합니다.
             </p>
