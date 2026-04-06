@@ -383,9 +383,9 @@
             </div>
             <div class="card">
                 <div class="card-icon">📦</div>
-                <h3>멀티 서비스 오케스트레이션</h3>
-                <p><code>orbitron.yaml</code>의 <code>services</code> 배열로 백엔드, 프론트엔드, 직원앱 등 여러 서비스를 한 번에 정의합니다.
-                    <code>from:</code> 참조로 서비스 간 URL을 자동 연결하고, 의존관계 기반으로 배포 순서를 결정합니다.
+                <h3>멀티 서비스 그룹 배포</h3>
+                <p>프로젝트 그룹으로 Frontend, Backend, DB를 묶고, "그룹 전체 배포" 한 번으로 의존성 순서(DB→Backend→Frontend)에 따라 자동 배포합니다.
+                    DATABASE_URL 등 서비스 간 연결 정보를 자동 주입하고, Docker 내부 네트워크(<code>orbitron_internal</code>)로 안전하게 통신합니다.
                 </p>
             </div>
             <div class="card">

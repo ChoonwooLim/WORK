@@ -537,6 +537,26 @@
                         <li>fullstack(vite+fastapi) 프로젝트 배포 실패 해결</li>
                     </ul>
                 </div>
+                <div class="change-group">
+                    <div class="change-title feature">멀티서비스 배포 오케스트레이션</div>
+                    <ul>
+                        <li>그룹 전체 배포 <code>POST /api/groups/:id/deploy</code> — DB → Backend → Frontend 의존성 순서 자동 배포</li>
+                        <li>그룹 전체 중지 <code>POST /api/groups/:id/stop</code> — 역순 중지 (Frontend → DB)</li>
+                        <li>DATABASE_URL 자동 주입 — 그룹 내 DB 프로젝트 감지 시 앱 서비스에 연결 정보 자동 설정</li>
+                        <li>Docker Compose 프로젝트에 <code>orbitron_internal</code> 네트워크 자동 주입</li>
+                        <li>Compose 내 모든 서비스를 내부 네트워크에 자동 연결 (기존: 메인 서비스만)</li>
+                        <li>서버 시작 시 <code>orbitron_internal</code> Docker 네트워크 자동 생성</li>
+                        <li>프론트엔드에 "그룹 전체 배포" / "전체 중지" 버튼 추가</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">컨테이너 정리 시 관련 프로젝트 삭제 방지 (Critical Fix)</div>
+                    <ul>
+                        <li><code>cleanupOldContainers()</code>가 서브도메인 패턴 매칭 시 하위 프로젝트(예: twinverseai-db)까지 삭제하던 치명적 버그 수정</li>
+                        <li>DB 조회 기반 보호 목록(protected prefixes) 도입 — 다른 프로젝트의 컨테이너는 절대 삭제하지 않음</li>
+                        <li>DB 프로젝트 생성 시 <code>openDeployModal()</code>만 호출하고 실제 배포 API를 호출하지 않던 버그 수정 → <code>deployProject()</code>로 교체</li>
+                    </ul>
+                </div>
             </div>
         </div>
 

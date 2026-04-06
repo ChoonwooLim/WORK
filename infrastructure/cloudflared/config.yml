@@ -1,0 +1,15 @@
+# Cloudflare Fixed Tunnels for DevDeploy
+# Dashboard tunnel
+tunnel: 089ee1bd-b613-414a-8e4f-0e5169fb3b6c
+credentials-file: /home/stevenlim/.cloudflared/089ee1bd-b613-414a-8e4f-0e5169fb3b6c.json
+
+ingress:
+  - hostname: orbitron.twinverse.org
+    service: http://localhost:4000
+  - hostname: wra.twinverse.org
+    service: http://localhost:3480
+  - hostname: iiff.twinverse.org
+    service: http://localhost:3481
+  - hostname: deskrpg.twinverse.org
+    service: http://localhost:3100
+  - service: http_status:404

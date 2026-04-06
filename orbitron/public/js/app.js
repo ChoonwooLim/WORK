@@ -238,6 +238,7 @@ function navigateTo(page) {
         'admin-users': '👥 유저 관리',
         'admin-projects': '🌐 전체 프로젝트',
         'admin-bugs': '🐞 버그 수정 로그',
+        'deploy-vps': '🖥 VPS 호스팅',
         'business-plan': '🚀 Orbitron 상용 서비스 계획서',
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
@@ -643,6 +644,7 @@ function renderProjectOverview() {
     }
 
     const isDatabase = p.type === 'db_postgres' || p.type === 'db_redis';
+    const isVps = p.type === 'vps';
     const isWorker = p.type === 'worker';
 
     let dbConnectionString = '';
@@ -665,6 +667,31 @@ function renderProjectOverview() {
       <div style="font-size:12px;color:var(--text-muted);margin-top:12px;">같은 Orbitron 환경에 배포된 다른 서비스에서만 위 주소로 연결할 수 있습니다.</div>
       <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
         <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 컨테이너 재시작</button>
+      </div>
+      ` : isVps ? `
+      <div style="font-size:13px;color:#58a6ff;margin-bottom:8px;font-weight:600;">🖥 VPS 서버 실행 중</div>
+      <div style="font-size:18px;color:var(--text-primary);font-weight:700;margin-bottom:8px;">${p.name}</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; text-align:left; max-width:500px; margin:12px auto;">
+        <div style="background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-muted);">SSH 접속</div>
+          <div style="font-size:14px; color:var(--accent); font-family:monospace; user-select:all;">ssh vps@${serverHost} -p ${p.port}</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-muted);">비밀번호</div>
+          <div style="font-size:14px; color:var(--text-primary); font-family:monospace;">${p.env_vars?.VPS_SSH_PASSWORD || 'orbitron123'}</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-muted);">OS / CPU / RAM</div>
+          <div style="font-size:14px; color:var(--text-primary);">${p.env_vars?.VPS_IMAGE || 'ubuntu'} · ${p.env_vars?.VPS_CPUS || '1'}코어 · ${p.env_vars?.VPS_MEMORY || '512m'}</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-muted);">홈 디렉토리</div>
+          <div style="font-size:14px; color:var(--text-primary); font-family:monospace;">/home/vps (영구 저장)</div>
+        </div>
+      </div>
+      <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
+        <button class="btn btn-outline" onclick="navigateTo('project-console')" style="background:rgba(88,166,255,0.1); border:1px solid rgba(88,166,255,0.3); color:#58a6ff;">🖥 웹 터미널</button>
+        <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 재시작</button>
       </div>
       ` : isWorker ? `
       <div style="font-size:13px;color:var(--success);margin-bottom:8px;font-weight:600;">⚙️ 백그라운드 워커 실행 중</div>
@@ -1035,6 +1062,40 @@ async function createProject() {
         toast('프로젝트가 생성되었습니다!', 'success');
         closeModal();
         loadProjects();
+    } catch (error) { toast(error.message, 'error'); }
+}
+
+async function createVps() {
+    if (isViewerUser()) return viewerBlock();
+    const name = document.getElementById('vps-name').value.trim();
+    if (!name) { toast('VPS 이름은 필수입니다.', 'error'); return; }
+
+    const os = document.getElementById('vps-os').value;
+    const password = document.getElementById('vps-password').value || 'orbitron123';
+    const cpus = document.getElementById('vps-cpu').value;
+    const memory = document.getElementById('vps-memory').value;
+
+    try {
+        const res = await fetch(`${API}/projects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                type: 'vps',
+                env_vars: {
+                    VPS_IMAGE: os,
+                    VPS_SSH_PASSWORD: password,
+                    VPS_CPUS: cpus,
+                    VPS_MEMORY: memory,
+                    VPS_SSH: 'true'
+                }
+            })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+        const project = await res.json();
+        toast('🖥 VPS를 생성하고 있습니다...', 'success');
+        loadProjects();
+        deployProject(project.id);
     } catch (error) { toast(error.message, 'error'); }
 }
 
@@ -3319,9 +3380,19 @@ function renderGroupOverview() {
       ${g.description ? '<div style="color:var(--text-secondary); margin-top:4px; font-size:14px;">' + escapeHtml(g.description) + '</div>' : ''}
     </div>
 
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; border-bottom:2px solid var(--accent); padding-bottom:8px;">
-      <span style="font-weight:600; color:var(--accent); font-size:14px;">All (${services.length})</span>
-      <span style="color:var(--text-muted); font-size:14px;">Services (${services.length})</span>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:2px solid var(--accent); padding-bottom:8px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-weight:600; color:var(--accent); font-size:14px;">All (${services.length})</span>
+        <span style="color:var(--text-muted); font-size:14px;">Services (${services.length})</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-sm btn-primary" onclick="deployGroup(${g.id})" style="background:#238636; border-color:#238636;">
+          🚀 그룹 전체 배포
+        </button>
+        <button class="btn btn-sm btn-ghost" onclick="stopGroup(${g.id})" style="color:#f85149;">
+          ⏹ 전체 중지
+        </button>
+      </div>
     </div>
 
     <div class="group-services-table">
@@ -3651,6 +3722,37 @@ async function deleteGroup(groupId) {
         currentGroup = null;
         navigateTo('groups');
     } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deployGroup(groupId) {
+    if (!confirm('그룹의 모든 서비스를 순서대로 배포합니다.\n(DB → Backend → Frontend 순서)\n\n계속하시겠습니까?')) return;
+    toast('🚀 그룹 배포를 시작합니다... (DB → 앱 순서로 배포)', 'info');
+    try {
+        const res = await fetch(`${API}/groups/${groupId}/deploy`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const succeeded = data.results.filter(r => r.status === 'success').length;
+        const failed = data.results.filter(r => r.status === 'failed').length;
+
+        if (failed === 0) {
+            toast(`✅ 그룹 배포 완료: ${succeeded}개 서비스 모두 성공`, 'success');
+        } else {
+            toast(`⚠️ 그룹 배포: ${succeeded}개 성공, ${failed}개 실패`, 'warning');
+        }
+        renderGroupOverview();
+    } catch (e) { toast('그룹 배포 실패: ' + e.message, 'error'); }
+}
+
+async function stopGroup(groupId) {
+    if (!confirm('그룹의 모든 서비스를 중지합니다.\n\n계속하시겠습니까?')) return;
+    try {
+        const res = await fetch(`${API}/groups/${groupId}/stop`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast('⏹ ' + data.message, 'success');
+        renderGroupOverview();
+    } catch (e) { toast('그룹 중지 실패: ' + e.message, 'error'); }
 }
 
 let addServiceGroupId = null;
@@ -4780,7 +4882,8 @@ function renderBusinessPlan() {
             <p style="${pStyle}">
                 Monaco Editor 기반 웹 IDE로 배포된 소스코드를 직접 편집하고, 컨테이너 내부 콘솔로 실시간 명령을 실행하며,
                 AES-256-GCM 암호화된 환경변수를 안전하게 관리합니다. 배포 로그 실시간 SSE 스트리밍,
-                프로젝트 그룹핑, 이슈 보드까지 포함된 올인원 대시보드입니다.
+                멀티서비스 그룹 오케스트레이션(DB→Backend→Frontend 의존성 순서 배포, DATABASE_URL 자동 주입),
+                이슈 보드까지 포함된 올인원 대시보드입니다.
             </p>
         </div>
 
@@ -4958,6 +5061,7 @@ function renderBusinessPlan() {
             <tr><td style="${tdStyle} font-weight:600;">웹 IDE (소스 에디터)</td><td style="${tdStyle} color:#3fb950;">O (Monaco)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">Shell만</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">컨테이너 콘솔</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">O</td><td style="${tdStyle}">O</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">Docker Compose</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">멀티서비스 그룹 배포</td><td style="${tdStyle} color:#3fb950;">O (의존성 순서)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">GPU 지원</td><td style="${tdStyle} color:#3fb950;">O (192GB)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">유료 Addon</td></tr>
             <tr><td style="${tdStyle} font-weight:600; color:#ff79c6;">AI 인라인 코드 에디터</td><td style="${tdStyle} color:#3fb950;">O (웹 IDE+LLM)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600; color:#ff79c6;">멀티파일 AI 리팩토링</td><td style="${tdStyle} color:#3fb950;">O (선택적 적용)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
@@ -5107,6 +5211,7 @@ function renderBusinessPlan() {
                 <div style="font-size:24px; margin-bottom:8px;">🛡</div>
                 <strong style="color:var(--text-primary);">엔터프라이즈급 안정성</strong>
                 <p style="${pStyle}">99.99% SLA (연간 다운타임 53분 이하), DDoS 보호, 자동 백업, 장애 복구.
+                컨테이너 격리 보호로 배포 시 관련 서비스(DB 등)의 안전을 보장.
                 SPOF(단일 장애점) 완전 제거.</p>
             </div>
             <div style="${highlightBox}">

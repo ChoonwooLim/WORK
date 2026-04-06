@@ -182,6 +182,38 @@ async function start() {
         await db.query(schema);
         console.log('✅ Database schema initialized');
 
+        // Ensure Docker internal network exists for inter-service communication
+        try {
+            await execAsync('docker network create orbitron_internal --driver bridge 2>/dev/null || true');
+            console.log('✅ Docker network orbitron_internal ready');
+        } catch (e) {
+            console.log('⚠️ Docker network check:', e.message);
+        }
+
+        // Startup orphan cleanup: remove stuck Created/Exited containers from previous crashes
+        try {
+            const dockerService = require('./services/docker');
+            const result = await dockerService.cleanupOrphanContainers();
+            if (result.removed > 0) {
+                console.log(`✅ Startup cleanup: removed ${result.removed} orphan containers`);
+            }
+        } catch (e) {
+            console.log('⚠️ Startup orphan cleanup:', e.message);
+        }
+
+        // Periodic orphan cleanup every hour to prevent container accumulation
+        setInterval(async () => {
+            try {
+                const dockerService = require('./services/docker');
+                const result = await dockerService.cleanupOrphanContainers();
+                if (result.removed > 0) {
+                    console.log(`🧹 Hourly cleanup: removed ${result.removed} orphan containers`);
+                }
+            } catch (e) {
+                console.error('Hourly cleanup failed:', e.message);
+            }
+        }, 60 * 60 * 1000); // 1 hour
+
         // Auto-create admin user from .env if not exists
         if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
             const bcrypt = require('bcrypt');

@@ -378,4 +378,157 @@ router.delete('/:id/config/service/:key', async (req, res) => {
     }
 });
 
+// ============================================================
+// POST /api/groups/:id/deploy — Deploy all services in a group
+// Deploys in dependency order: DB → Backend → Frontend
+// Auto-injects DATABASE_URL and API_URL env vars
+// ============================================================
+router.post('/:id/deploy', async (req, res) => {
+    try {
+        const group = await db.queryOne(
+            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
+            [req.params.id, req.user.userId]
+        );
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        // Get all linked projects in this group
+        const linkedResult = await db.query(
+            'SELECT * FROM projects WHERE group_id = $1',
+            [group.id]
+        );
+        const projects = linkedResult.rows;
+
+        if (projects.length === 0) {
+            return res.status(400).json({ error: '그룹에 연결된 프로젝트가 없습니다.' });
+        }
+
+        // Sort by dependency order: db_postgres/db_redis → web/worker → everything else
+        const typeOrder = { db_postgres: 0, db_redis: 0, worker: 1, web: 2 };
+        projects.sort((a, b) => (typeOrder[a.type] ?? 1) - (typeOrder[b.type] ?? 1));
+
+        const deployer = require('../services/deployer');
+        const { encrypt } = require('../db/crypto');
+        const results = [];
+
+        // Phase 1: Deploy databases first
+        const dbProjects = projects.filter(p => p.type === 'db_postgres' || p.type === 'db_redis');
+        for (const dbProj of dbProjects) {
+            try {
+                await deployer.deploy(dbProj);
+                results.push({ id: dbProj.id, name: dbProj.name, status: 'success', type: dbProj.type });
+            } catch (e) {
+                results.push({ id: dbProj.id, name: dbProj.name, status: 'failed', error: e.message });
+            }
+        }
+
+        // Phase 1.5: Wait for DB containers to be ready
+        if (dbProjects.length > 0) {
+            await new Promise(r => setTimeout(r, 3000));
+        }
+
+        // Phase 2: Auto-inject DATABASE_URL for non-DB projects
+        const pgProject = dbProjects.find(p => p.type === 'db_postgres');
+        if (pgProject) {
+            const dbContainerName = `orbitron-${pgProject.subdomain}`;
+            const dbPort = 5432; // Internal port always 5432
+            // Try to get DB credentials from config services
+            const config = JSON.parse(group.services_config || '[]');
+            const dbConfig = config.find(s => s.type === 'db_postgres' && s.connection_info);
+            const dbUser = dbConfig?.connection_info?.username || 'orbitron_user';
+            const dbPass = dbConfig?.connection_info?.password || 'orbitron_db_pass';
+            const dbName = dbConfig?.connection_info?.database || 'orbitron_db';
+            const databaseUrl = `postgresql://${dbUser}:${dbPass}@${dbContainerName}:${dbPort}/${dbName}`;
+
+            // Inject DATABASE_URL into all non-DB projects in this group
+            const webProjects = projects.filter(p => p.type !== 'db_postgres' && p.type !== 'db_redis');
+            for (const wp of webProjects) {
+                try {
+                    let envVars = {};
+                    if (wp.env_vars && typeof wp.env_vars === 'string') {
+                        try { envVars = JSON.parse(decrypt(wp.env_vars)); } catch { envVars = {}; }
+                    } else if (wp.env_vars && typeof wp.env_vars === 'object') {
+                        envVars = wp.env_vars;
+                    }
+
+                    let updated = false;
+                    if (!envVars.DATABASE_URL || envVars.DATABASE_URL.includes('localhost')) {
+                        envVars.DATABASE_URL = databaseUrl;
+                        updated = true;
+                    }
+
+                    if (updated) {
+                        const encrypted = '"' + encrypt(JSON.stringify(envVars)) + '"';
+                        await db.query('UPDATE projects SET env_vars = $1 WHERE id = $2', [encrypted, wp.id]);
+                        // Refresh the project object with new env_vars
+                        wp.env_vars = encrypted;
+                    }
+                } catch (e) {
+                    console.error(`Failed to inject DATABASE_URL for ${wp.name}:`, e.message);
+                }
+            }
+        }
+
+        // Phase 3: Deploy web/worker services
+        const appProjects = projects.filter(p => p.type !== 'db_postgres' && p.type !== 'db_redis');
+        for (const appProj of appProjects) {
+            try {
+                // Reload project with latest env_vars
+                const freshProj = await db.queryOne('SELECT * FROM projects WHERE id = $1', [appProj.id]);
+                await deployer.deploy(freshProj);
+                results.push({ id: appProj.id, name: appProj.name, status: 'success', type: appProj.type });
+            } catch (e) {
+                results.push({ id: appProj.id, name: appProj.name, status: 'failed', error: e.message });
+            }
+        }
+
+        const succeeded = results.filter(r => r.status === 'success').length;
+        const failed = results.filter(r => r.status === 'failed').length;
+
+        res.json({
+            message: `그룹 배포 완료: ${succeeded}개 성공, ${failed}개 실패`,
+            results,
+            deployOrder: projects.map(p => `${p.name} (${p.type})`),
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============================================================
+// POST /api/groups/:id/stop — Stop all services in a group
+// Stops in reverse order: Frontend → Backend → DB
+// ============================================================
+router.post('/:id/stop', async (req, res) => {
+    try {
+        const group = await db.queryOne(
+            'SELECT * FROM project_groups WHERE id = $1 AND user_id = $2',
+            [req.params.id, req.user.userId]
+        );
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const linkedResult = await db.query('SELECT * FROM projects WHERE group_id = $1', [group.id]);
+        const projects = linkedResult.rows;
+
+        // Reverse order: web first, then DB
+        const typeOrder = { web: 0, worker: 0, db_postgres: 2, db_redis: 2 };
+        projects.sort((a, b) => (typeOrder[a.type] ?? 1) - (typeOrder[b.type] ?? 1));
+
+        const deployer = require('../services/deployer');
+        const results = [];
+
+        for (const proj of projects) {
+            try {
+                await deployer.stop(proj);
+                results.push({ id: proj.id, name: proj.name, status: 'stopped' });
+            } catch (e) {
+                results.push({ id: proj.id, name: proj.name, status: 'failed', error: e.message });
+            }
+        }
+
+        res.json({ message: '그룹 전체 중지 완료', results });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

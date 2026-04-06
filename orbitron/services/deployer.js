@@ -160,8 +160,40 @@ class Deployer extends EventEmitter {
             let isWorker = false;
 
             const isDatabase = project.type === 'db_postgres' || project.type === 'db_redis';
+            const isVps = project.type === 'vps';
 
-            if (isDatabase) {
+            if (isVps) {
+                // ── VPS Deploy: Build + Start lightweight Linux container ──
+                this.emitProgress(project.id, 'clone', 'VPS 환경 구성 준비 중...');
+                this.emitProgress(project.id, 'build', 'VPS 이미지 빌드 중...');
+                logs += '\n🖥 Starting VPS container...\n';
+
+                try {
+                    const vpsResult = await dockerService.startVpsContainer(project);
+                    containerId = vpsResult.containerId;
+                    containerName = vpsResult.containerName;
+                    logs += `VPS container started: ${containerId}\n`;
+                    logs += `  OS: ${vpsResult.osImage}\n`;
+                    logs += `  CPU: ${vpsResult.cpuLimit} cores\n`;
+                    logs += `  RAM: ${vpsResult.memLimit}\n`;
+                    if (vpsResult.sshEnabled) {
+                        logs += `  SSH: port ${vpsResult.port} (user: ${vpsResult.sshUser})\n`;
+                    }
+                    this.emitProgress(project.id, 'container', 'VPS 컨테이너 시작 완료');
+
+                    // Update port in DB if changed
+                    if (vpsResult.port !== project.port) {
+                        await db.query('UPDATE projects SET port = $1 WHERE id = $2', [vpsResult.port, project.id]);
+                    }
+                } catch (e) {
+                    logs += `VPS Start failed: ${e.message}\n`;
+                    throw e;
+                }
+
+                this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (VPS 직접 접속)');
+                this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (SSH 포트 직접 노출)');
+
+            } else if (isDatabase) {
                 this.emitProgress(project.id, 'clone', '소스 코드 가져오기 건너뜀 (매니지드 DB)');
                 this.emitProgress(project.id, 'build', 'Docker 이미지 빌드 건너뜀 (공식 DB 이미지 사용)');
 
@@ -286,6 +318,78 @@ class Deployer extends EventEmitter {
                     if (!project.port && mainWebService.port) {
                         project.port = mainWebService.port;
                         logs += `  - Auto-detected port: ${project.port}\n`;
+                    }
+                }
+
+                // ── Resolve envRefs: auto-inject DATABASE_URL, service URLs, generated secrets ──
+                const allServices = manifest.services || [];
+                const allDatabases = manifest.databases || [];
+                for (const svc of allServices) {
+                    if (!svc.envRefs || Object.keys(svc.envRefs).length === 0) continue;
+
+                    const resolvedEnv = { ...(project.env_vars || {}) };
+                    let envChanged = false;
+
+                    for (const [key, ref] of Object.entries(svc.envRefs)) {
+                        let value = null;
+
+                        // database.{name}.connectionString / host / port / username / password
+                        const dbMatch = ref.match(/^database\.([^.]+)\.(.+)$/);
+                        if (dbMatch) {
+                            const dbName = dbMatch[1];
+                            const dbField = dbMatch[2];
+                            const dbDef = allDatabases.find(d => d.name === dbName);
+                            const dbSubdomain = `${project.subdomain}-db`;
+                            const dbHost = `orbitron-${dbSubdomain}`;
+                            const dbUser = 'orbitron_user';
+                            const dbPass = 'orbitron_db_pass';
+                            const dbDatabase = 'orbitron_db';
+                            const dbPort = (dbDef?.engine === 'redis') ? 6379 : 5432;
+
+                            if (dbField === 'connectionString') {
+                                value = (dbDef?.engine === 'redis')
+                                    ? `redis://${dbHost}:${dbPort}`
+                                    : `postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/${dbDatabase}`;
+                            } else if (dbField === 'host') { value = dbHost; }
+                            else if (dbField === 'port') { value = String(dbPort); }
+                            else if (dbField === 'username') { value = dbUser; }
+                            else if (dbField === 'password') { value = dbPass; }
+                        }
+
+                        // service.{name}.url / host
+                        const svcMatch = ref.match(/^service\.([^.]+)\.(.+)$/);
+                        if (svcMatch) {
+                            const svcName = svcMatch[1];
+                            const svcField = svcMatch[2];
+                            const targetSvc = allServices.find(s => s.name === svcName);
+                            const targetHost = `orbitron-${project.subdomain}`;
+                            const targetPort = targetSvc?.port || 3000;
+
+                            if (svcField === 'url') { value = `http://${targetHost}:${targetPort}`; }
+                            else if (svcField === 'host') { value = targetHost; }
+                        }
+
+                        if (value && (!resolvedEnv[key] || resolvedEnv[key].includes('localhost'))) {
+                            resolvedEnv[key] = value;
+                            envChanged = true;
+                            logs += `  📎 Auto-resolved: ${key} → ${value}\n`;
+                        }
+                    }
+
+                    // Handle generate: true
+                    for (const envItem of (svc.env || [])) {
+                        if (envItem.generate && envItem.key && !resolvedEnv[envItem.key]) {
+                            resolvedEnv[envItem.key] = require('crypto').randomBytes(32).toString('hex');
+                            envChanged = true;
+                            logs += `  🔑 Auto-generated: ${envItem.key}\n`;
+                        }
+                    }
+
+                    if (envChanged) {
+                        project.env_vars = resolvedEnv;
+                        const encryptedEnvVars = encrypt(JSON.stringify(resolvedEnv));
+                        await db.query('UPDATE projects SET env_vars = $1 WHERE id = $2', [encryptedEnvVars, project.id]);
+                        logs += `  ✅ Resolved ${Object.keys(svc.envRefs).length} env references\n`;
                     }
                 }
 
@@ -436,6 +540,24 @@ class Deployer extends EventEmitter {
                         await dockerService.cleanupOldContainers(project.subdomain, '__none__');
                         // Also try the legacy name just in case
                         await dockerService.stopContainer(`orbitron-${project.subdomain}`).catch(() => { });
+
+                        // CRITICAL: Force-kill any container still using the target port
+                        // Prevents "port already allocated" errors on redeploy
+                        if (project.port && project.type !== 'worker') {
+                            try {
+                                const { stdout: portOut } = await execAsync(
+                                    `docker ps -a --format '{{.Names}}' --filter "publish=${project.port}" 2>/dev/null || true`
+                                );
+                                const stuckContainers = portOut.trim().split('\n').filter(Boolean);
+                                for (const stuck of stuckContainers) {
+                                    if (stuck.startsWith(`orbitron-${project.subdomain}`)) {
+                                        logs += `🧹 Force-removing container holding port ${project.port}: ${stuck}\n`;
+                                        await execAsync(`docker rm -f ${stuck} 2>/dev/null || true`);
+                                    }
+                                }
+                            } catch { }
+                        }
+
                         logs += 'Old containers cleaned up.\n';
                     } catch (e) {
                         logs += `Warning: cleanup error: ${e.message}\n`;
@@ -447,6 +569,21 @@ class Deployer extends EventEmitter {
 
                     let startRes;
                     if (isCompose) {
+                        // Auto-generate .env for compose projects to override conflicting ports
+                        // This survives git pull since .env is gitignored by convention
+                        try {
+                            const composeEnvPath = path.join(projectDir, '.env');
+                            const existingEnv = fs.existsSync(composeEnvPath) ? fs.readFileSync(composeEnvPath, 'utf-8') : '';
+                            if (!existingEnv.includes('HTTP_PORT=')) {
+                                const envLines = existingEnv.trim() ? existingEnv.trim().split('\n') : [];
+                                envLines.push(`HTTP_PORT=${project.port || 3000}`);
+                                fs.writeFileSync(composeEnvPath, envLines.join('\n') + '\n');
+                                logs += `📝 Auto-set HTTP_PORT=${project.port} in .env\n`;
+                            }
+                        } catch (e) {
+                            logs += `⚠️ .env auto-generation skipped: ${e.message}\n`;
+                        }
+
                         logs += 'Using docker compose up...\n';
                         startRes = await dockerService.startCompose(project);
                         if (startRes.logs) logs += startRes.logs + '\n';
@@ -459,6 +596,34 @@ class Deployer extends EventEmitter {
                     containerName = startRes.containerName;
                     const actualPort = startRes.port || project.port || 3000;
                     logs += `Container started: ${containerId} (${containerName})\n`;
+
+                    // Post-deploy verification: ensure container is actually in Running state
+                    // Not just "started" — verify it hasn't immediately crashed/exited
+                    if (!isCompose && containerName) {
+                        await new Promise(r => setTimeout(r, 2500)); // Give it 2.5s to stabilize
+                        try {
+                            const { stdout: stateOut } = await execAsync(
+                                `docker inspect --format '{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}' ${containerName} 2>/dev/null`
+                            );
+                            const [state, exitCode, stateError] = stateOut.trim().split('|');
+                            if (state !== 'running') {
+                                logs += `⚠️ 컨테이너 상태 이상: state=${state}, exitCode=${exitCode}\n`;
+                                if (stateError) logs += `   Error: ${stateError}\n`;
+                                // Get container logs for diagnosis
+                                try {
+                                    const { stdout: cLogs } = await execAsync(`docker logs ${containerName} --tail 30 2>&1`);
+                                    logs += `\n--- 컨테이너 로그 (마지막 30줄) ---\n${cLogs}\n`;
+                                } catch { }
+                                throw new Error(`컨테이너가 시작 후 ${state} 상태 (exit: ${exitCode}). 로그를 확인하세요.`);
+                            }
+                            logs += `✅ 컨테이너 상태 검증 통과: running\n`;
+                        } catch (verifyErr) {
+                            if (verifyErr.message.includes('컨테이너가 시작 후')) throw verifyErr;
+                            // docker inspect failed — container may have been removed
+                            logs += `⚠️ 검증 실패: ${verifyErr.message}\n`;
+                        }
+                    }
+
                     this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
 
                     // Step 4: Update nginx config (Blue-Green Swap)

@@ -824,8 +824,62 @@ EXPOSE ${port}
 
         const deployHash = Date.now().toString(36);
 
-        // Map Orbitron network to compose (optional, user defined in compose overrides usually)
-        // Here we just let standard compose up happen. We assume the web service exposes ports to host.
+        // Ensure orbitron_internal network exists
+        await execAsync('docker network create orbitron_internal --driver bridge 2>/dev/null || true');
+
+        // Auto-inject orbitron_internal network into compose file if not already present
+        try {
+            const composePath = fs.existsSync(path.join(projectDir, 'docker-compose.yml'))
+                ? path.join(projectDir, 'docker-compose.yml')
+                : path.join(projectDir, 'docker-compose.yaml');
+
+            if (fs.existsSync(composePath)) {
+                let composeContent = fs.readFileSync(composePath, 'utf-8');
+                if (!composeContent.includes('orbitron_internal')) {
+                    // Append external network definition
+                    composeContent += `\n\nnetworks:\n  orbitron_internal:\n    external: true\n`;
+                    fs.writeFileSync(composePath, composeContent);
+                    console.log(`📡 Injected orbitron_internal network into ${composePath}`);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to inject network into compose file:', e.message);
+        }
+
+        // Auto-fix port 80/443 conflicts: replace default ports with project-assigned port
+        // Prevents "Bind for 0.0.0.0:80 failed: port already allocated" errors
+        try {
+            const composePath = fs.existsSync(path.join(projectDir, 'docker-compose.yml'))
+                ? path.join(projectDir, 'docker-compose.yml')
+                : path.join(projectDir, 'docker-compose.yaml');
+
+            if (fs.existsSync(composePath) && project.port) {
+                let content = fs.readFileSync(composePath, 'utf-8');
+                const conflictPorts = ['80', '443', '8080', '3000'];
+                let modified = false;
+                for (const cp of conflictPorts) {
+                    // Match patterns like "80:80", "${VAR:-80}:80", "8080:80"
+                    const hostPortRegex = new RegExp(`(- ["']?)\\$\\{[^}]*:-${cp}\\}(:${cp})`, 'g');
+                    if (hostPortRegex.test(content)) {
+                        content = content.replace(hostPortRegex, `$1\${HTTP_PORT:-${project.port}}$2`);
+                        modified = true;
+                    }
+                    // Also match direct "80:80" (without variable)
+                    const directRegex = new RegExp(`(- ["']?)${cp}:${cp}`, 'g');
+                    if (directRegex.test(content)) {
+                        content = content.replace(directRegex, `$1${project.port}:${cp}`);
+                        modified = true;
+                    }
+                }
+                if (modified) {
+                    fs.writeFileSync(composePath, content);
+                    console.log(`🔌 Auto-remapped conflicting ports to ${project.port} in compose file`);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to remap compose ports:', e.message);
+        }
+
         return new Promise((resolve, reject) => {
             exec(`cd ${projectDir} && docker compose up -d`, { maxBuffer: 1024 * 1024 * 10 }, async (error, stdout, stderr) => {
                 if (error) {
@@ -835,14 +889,25 @@ EXPOSE ${port}
                     let mainContainer = `orbitron-${project.subdomain}-compose-${deployHash}`;
                     try {
                         const { stdout: psOut } = await execAsync(`cd ${projectDir} && docker compose ps --services`);
-                        const services = psOut.trim().split('\n');
-                        const webService = services.find(s => s.includes('web') || s.includes('app') || s.includes('api')) || services[0];
+                        const services = psOut.trim().split('\n').filter(Boolean);
+
+                        // Connect ALL compose services to orbitron_internal network
+                        for (const svc of services) {
+                            try {
+                                const { stdout: nameOut } = await execAsync(`cd ${projectDir} && docker compose ps -q ${svc} | xargs docker inspect -f '{{.Name}}' | sed 's|^/||'`);
+                                const containerName = nameOut.trim();
+                                if (containerName) {
+                                    await execAsync(`docker network connect orbitron_internal ${containerName}`).catch(() => { });
+                                }
+                            } catch { }
+                        }
+
+                        // Identify the main web container for Nginx proxy
+                        const webService = services.find(s => s.includes('web') || s.includes('app') || s.includes('api') || s.includes('frontend')) || services[0];
                         if (webService) {
                             const { stdout: nameOut } = await execAsync(`cd ${projectDir} && docker compose ps -q ${webService} | xargs docker inspect -f '{{.Name}}' | sed 's|^/||'`);
                             if (nameOut.trim()) {
                                 mainContainer = nameOut.trim();
-                                // Attach main compose container to Orbitron internal network to allow Nginx Proxy to hit it
-                                await execAsync(`docker network connect orbitron_internal ${mainContainer}`).catch(() => { });
                             }
                         }
                     } catch (e) { }
@@ -882,6 +947,7 @@ EXPOSE ${port}
             throw new Error(`Unsupported database type: ${project.type}`);
         }
 
+
         await this.stopContainer(containerName);
 
         // Create persistent docker volume natively to avoid permission issues
@@ -907,6 +973,132 @@ EXPOSE ${port}
         });
     }
 
+    /**
+     * Start a VPS container — lightweight Linux environment with SSH, common tools, and persistent storage
+     * Supports resource limits (CPU, RAM) and optional SSH access
+     */
+    async startVpsContainer(project) {
+        sanitizeSubdomain(project.subdomain);
+        const containerName = `orbitron-${project.subdomain}`;
+        const envVars = project.env_vars || {};
+        let port = project.port || (3000 + Math.floor(Math.random() * 1000));
+
+        // VPS resource config from env_vars
+        const cpuLimit = envVars.VPS_CPUS || '1';        // CPU cores (e.g., '0.5', '1', '2')
+        const memLimit = envVars.VPS_MEMORY || '512m';   // Memory limit (e.g., '256m', '1g', '2g')
+        // VPS_DISK is stored as metadata for display purposes (enforced via volume quotas in future)
+        const osImage = envVars.VPS_IMAGE || 'ubuntu';   // Base image: ubuntu, alpine, debian
+        const sshEnabled = envVars.VPS_SSH !== 'false';   // SSH access (default: true)
+        const sshPassword = envVars.VPS_SSH_PASSWORD || 'orbitron123';
+
+        // Stop existing container
+        await this.stopContainer(containerName);
+
+        // Create persistent home volume
+        const volumeName = `${containerName}_home`;
+        try { await execAsync(`docker volume create ${volumeName}`); } catch { }
+
+        // Build the VPS Dockerfile dynamically
+        const imageTag = `orbitron-vps-${project.subdomain}`;
+        const baseImages = {
+            ubuntu: 'ubuntu:22.04',
+            alpine: 'alpine:3.19',
+            debian: 'debian:bookworm-slim',
+            node: 'node:20-slim',
+            python: 'python:3.11-slim'
+        };
+        const baseImage = baseImages[osImage] || baseImages.ubuntu;
+        const isAlpine = osImage === 'alpine';
+        const pkgInstall = isAlpine ? 'apk add --no-cache' : 'apt-get update && apt-get install -y --no-install-recommends';
+        const pkgClean = isAlpine ? '' : '&& rm -rf /var/lib/apt/lists/*';
+
+        const dockerfile = `FROM ${baseImage}
+# VPS environment setup
+RUN ${pkgInstall} curl wget git vim nano htop net-tools iputils-ping unzip ${sshEnabled ? 'openssh-server' : ''} sudo ${pkgClean}
+
+# Create VPS user
+RUN ${isAlpine ? 'adduser -D -s /bin/sh vps && echo "vps:' + sshPassword + '" | chpasswd' : 'useradd -m -s /bin/bash -G sudo vps && echo "vps:' + sshPassword + '" | chpasswd'}
+RUN echo 'vps ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+${sshEnabled ? `# SSH setup
+RUN mkdir -p /var/run/sshd
+RUN ${isAlpine ? "ssh-keygen -A" : "sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config"}
+RUN sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || true
+EXPOSE 22` : ''}
+
+# Keep container alive
+WORKDIR /home/vps
+CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/null\"]'}
+`;
+
+        // Write and build the Dockerfile
+        const buildDir = path.join(PROJECTS_DIR, project.subdomain);
+        try { await fs.promises.mkdir(buildDir, { recursive: true }); } catch { }
+        const dockerfilePath = path.join(buildDir, 'Dockerfile');
+        await fs.promises.writeFile(dockerfilePath, dockerfile);
+        await execAsync(`docker build -t ${imageTag} ${buildDir}`, { maxBuffer: 1024 * 1024 * 10 });
+
+        // Port conflict resolution for SSH
+        let sshPort = port;
+        if (sshEnabled) {
+            let attempts = 0;
+            while (attempts < 20) {
+                try {
+                    const { stdout } = await execAsync(`lsof -i :${sshPort} -t 2>/dev/null || true`);
+                    if (!stdout.trim()) break;
+                    sshPort++;
+                    attempts++;
+                } catch { break; }
+            }
+        }
+
+        // Resource limit flags
+        const resourceFlags = `--cpus=${cpuLimit} --memory=${memLimit}`;
+
+        // Environment flags (exclude VPS_ prefixed vars from container env)
+        const userEnvFlags = Object.entries(envVars)
+            .filter(([k]) => !k.startsWith('VPS_'))
+            .map(([k, v]) => `-e ${k}="${String(v).replace(/"/g, '\\"')}"`)
+            .join(' ');
+
+        const portFlags = sshEnabled ? `-p ${sshPort}:22` : '';
+        const volumeFlags = `-v ${volumeName}:/home/vps`;
+
+        const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${resourceFlags} ${volumeFlags} ${userEnvFlags} ${portFlags} --log-opt max-size=10m --log-opt max-file=3 ${imageTag}`;
+
+        return new Promise((resolve, reject) => {
+            exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+                if (error) reject(new Error(`VPS Start failed: ${stderr}`));
+                else resolve({
+                    containerId: stdout.trim(),
+                    containerName,
+                    port: sshPort,
+                    sshEnabled,
+                    sshUser: 'vps',
+                    sshPassword,
+                    cpuLimit,
+                    memLimit,
+                    osImage
+                });
+            });
+        });
+    }
+
+    /**
+     * Get real-time resource usage for a container (CPU, RAM, Net I/O)
+     */
+    async getContainerStats(containerName) {
+        try {
+            if (!/^[a-z0-9][a-z0-9_.-]*$/i.test(containerName)) return null;
+            const { stdout } = await execAsync(
+                `docker stats ${containerName} --no-stream --format '{"cpu":"{{.CPUPerc}}","mem":"{{.MemUsage}}","memPerc":"{{.MemPerc}}","net":"{{.NetIO}}","block":"{{.BlockIO}}","pids":"{{.PIDs}}"}'`
+            );
+            return JSON.parse(stdout.trim());
+        } catch {
+            return null;
+        }
+    }
+
     // Stop and remove a container asynchronously
     async stopContainer(containerName) {
         try {
@@ -918,10 +1110,11 @@ EXPOSE ${port}
     }
 
     // Clean up old containers belonging to this project (except the active one)
+    // Uses `docker rm -f` to guarantee removal even for stuck Created/Restarting states
     async cleanupOldContainers(subdomain, keepContainerName) {
         try {
             sanitizeSubdomain(subdomain);
-            // Find all containers starting with orbitron-subdomain
+            // Find all containers starting with orbitron-subdomain (any state: running, created, exited, restarting)
             const { stdout } = await execAsync(`docker ps -a --format '{{.Names}}' | grep '^orbitron-${subdomain}-' || true`);
             const containers = stdout.trim().split('\n').filter(Boolean);
 
@@ -947,11 +1140,47 @@ EXPOSE ${port}
                     console.log(`⏭️ Skipping container from different project: ${name}`);
                     continue;
                 }
-                console.log(`🧹 Cleaning up old container: ${name}`);
-                await this.stopContainer(name);
+                console.log(`🧹 Force-removing old container: ${name}`);
+                // Force-remove to handle stuck Created/Restarting states
+                await execAsync(`docker rm -f ${name} 2>/dev/null || true`);
             }
         } catch (e) {
             console.error(`Failed to cleanup old containers for ${subdomain}:`, e);
+        }
+    }
+
+    /**
+     * System-wide orphan cleanup: removes containers stuck in Created/Exited state
+     * that don't have a corresponding running deployment.
+     * Called on server startup and periodically to prevent accumulation.
+     */
+    async cleanupOrphanContainers() {
+        try {
+            // Find all Orbitron containers in problematic states
+            const { stdout } = await execAsync(
+                `docker ps -a --filter "name=^orbitron-" --filter "status=created" --filter "status=exited" --format '{{.Names}}|{{.Status}}' 2>/dev/null || true`
+            );
+            const orphans = stdout.trim().split('\n').filter(Boolean);
+
+            if (orphans.length === 0) return { removed: 0 };
+
+            let removed = 0;
+            for (const line of orphans) {
+                const [name] = line.split('|');
+                // Skip DB containers — they use stable names and should not be removed
+                if (/^orbitron-[^-]+(-db|-redis)?$/.test(name)) continue;
+
+                try {
+                    await execAsync(`docker rm -f ${name} 2>/dev/null`);
+                    console.log(`🧹 Removed orphan container: ${name}`);
+                    removed++;
+                } catch { }
+            }
+            if (removed > 0) console.log(`✅ Orphan cleanup complete: ${removed} containers removed`);
+            return { removed };
+        } catch (e) {
+            console.error('Orphan cleanup failed:', e.message);
+            return { removed: 0, error: e.message };
         }
     }
 
