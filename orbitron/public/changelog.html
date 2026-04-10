@@ -460,6 +460,68 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.1 — 2026-04-11 (Local Gemma 4 + Recovery Hardening) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#50fa7b; box-shadow: 0 0 12px rgba(80,250,123,0.4);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#50fa7b;">v2.1</span>
+                <span class="version-date">2026년 4월 11일</span>
+                <span class="badge badge-feature" style="background:rgba(80,250,123,0.15); color:#50fa7b;">Local Gemma 4 (Ollama)</span>
+                <span class="badge badge-fix">Recovery Hardening</span>
+                <span class="badge badge-fix">Crypto 복구</span>
+            </div>
+            <div class="version-body">
+                <div class="change-group">
+                    <div class="change-title feature">🌱 로컬 Gemma 4 E4B 통합 (Ollama 기반, API 키 불필요)</div>
+                    <ul>
+                        <li>Google DeepMind <strong>Gemma 4 E4B</strong> (Q4_K_M, 8B 파라미터, 9.6GB) 모델을 로컬 Ollama daemon으로 서빙. 외부 API 비용 0원, 인터넷 연결 불필요, 데이터가 서버 밖으로 나가지 않음</li>
+                        <li>모델 데이터는 Data 드라이브 (<code>/mnt/.../AI/ollama-models/</code>)에 저장하여 시스템 디스크 공간 압박 없음. <code>OLLAMA_MODELS</code> 환경변수로 경로 분리</li>
+                        <li>Ollama daemon은 <code>~/.config/systemd/user/ollama.service</code> 사용자 systemd 유닛으로 영속화 — 사용자 로그인 시 자동 시작 + 실패 시 자동 재시작</li>
+                        <li>NVIDIA CUDA 12 드라이버 + GTX 1080 ×2 (16GB VRAM) 자동 인식. 추론 속도 약 46 tokens/s</li>
+                        <li>듀얼 LLM(Claude/Gemini)에 이은 <strong>제3의 AI 엔진</strong>으로 등록 — 프로젝트 설정 → AI 모델 → "🌱 Gemma 4 E4B (로컬·무료, Ollama)" 선택</li>
+                        <li>3개 서비스 경로 모두 통합: <code>aiAnalyzer.analyzeError()</code> (로그 분석), <code>aiAnalyzer.chat()</code> (AI 채팅), <code>aiAutoRepair.analyzeAndGeneratePatch()</code> (자동 코드 패치 생성, JSON 모드)</li>
+                        <li>모델 ID 매핑 테이블 등록 (<code>gemma-4-e2b/e4b/26b/31b</code> → <code>gemma4:e2b/e4b/26b/31b</code>) — 추후 더 큰 variant pull 시 옵션만 추가하면 동작</li>
+                        <li><code>OLLAMA_HOST</code> 환경변수로 원격 Ollama 인스턴스 지원 (예: 다른 GPU 머신)</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">🛠️ 컨테이너 복구 로직 개선 — 고스트 재시작 방지 (포트 충돌 해결)</div>
+                    <ul>
+                        <li>Blue-Green 배포 컨테이너는 <code>orbitron-{subdomain}-{deployHash}</code> 형식인데, 서버 시작 시 복구 로직이 정확 이름 <code>orbitron-{subdomain}</code>로만 매칭하여 살아있는 컨테이너를 못 찾고 새로 만들려다 호스트 포트 충돌(<code>Bind for 0.0.0.0:3480 failed</code>) 발생하던 버그 수정</li>
+                        <li>이제 <code>docker ps --filter "name=^orbitron-{sub}"</code> 으로 prefix 매칭하여 살아있는 컨테이너를 우선 재사용. 정확 일치 우선, 없으면 가장 최근 deployHash 컨테이너 채택</li>
+                        <li>살아있는 컨테이너 발견 시 <code>--restart unless-stopped</code> 정책만 갱신하고 <code>container_id</code> 컬럼을 동기화 — 불필요한 컨테이너 재생성 0건</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">🛠️ <code>spawn E2BIG</code> 진짜 원인 발견 및 해결</div>
+                    <ul>
+                        <li>서버 시작 복구 경로가 <code>project.env_vars</code>를 <strong>복호화하지 않고</strong> <code>dockerService.startContainer()</code>에 그대로 전달하던 결정적 버그</li>
+                        <li>그 결과 <code>Object.keys(envVars)</code>가 암호화된 hex 문자열을 string으로 받아 각 문자를 키로 인식 → <code>-e 0='2' -e 1='c' -e 2='3' ...</code> × 12,748글자 → 단일 명령어 길이가 ~128KB로 <code>MAX_ARG_STRLEN</code> 한계에 도달 → execve가 <code>E2BIG</code> 반환</li>
+                        <li>1차 수정: <code>server.js</code>에 <code>decryptProjectEnvVars()</code> 헬퍼 추가하여 복구 루프에서 <code>startContainer</code> 호출 직전 복호화 보장</li>
+                        <li>2차 수정 (defense in depth): <code>docker.js startContainer()</code>에 type guard 추가 — env_vars가 plain object가 아니면 빈 객체로 강제하고 경고 로그 출력</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">🛠️ 손상된 env_vars 행 복구 — Decryption failing 로그 스팸 제거</div>
+                    <ul>
+                        <li>이전 <code>JWT_SECRET</code>으로 암호화된 채로 남아있던 4개 프로젝트 행(Twinverse, RemoteAGT, KcontentsHub, K-ContentHub_DB)이 매 요청마다 <code>Decryption failing (wrong key or corrupted data)</code> 로그를 발생시켜 <code>error.log</code>가 31MB까지 팽창</li>
+                        <li>안전한 복구 절차 수행: 손상된 행의 raw 값을 <code>backups/broken-env-vars-2026-04-11.json</code>에 메타데이터와 함께 백업 → DB 행을 빈 객체 <code>{}</code>로 reset (현재 키로 재암호화) → 이전 키를 나중에 발견하면 복구 가능</li>
+                        <li>최종 reload 후 30초 모니터링 결과 <code>Decryption failing</code> / <code>spawn E2BIG</code> / <code>Bind for 0.0.0.0</code> 에러 0건 확인</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title improvement">🎨 UI: AI 모델 선택 UX 개선</div>
+                    <ul>
+                        <li>프로젝트 설정의 AI 모델 드롭다운에 "🌱 Gemma 4 E4B (로컬·무료, Ollama)" 옵션 추가</li>
+                        <li>Gemma 모델 선택 시 자동으로 API 키 입력란이 숨겨지고, 녹색 안내 배너가 표시됨 — "로컬 실행 모델 — API 키 불필요. 이 서버의 Ollama daemon (127.0.0.1:11434)에서 직접 추론합니다"</li>
+                        <li><code>toggleAiKeyFields()</code>가 <code>gemma-</code> prefix를 인식하도록 확장</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.0 — 2026-04-04 (AI Code Editor + IR Overhaul)    -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">
@@ -555,6 +617,49 @@
                         <li><code>cleanupOldContainers()</code>가 서브도메인 패턴 매칭 시 하위 프로젝트(예: twinverseai-db)까지 삭제하던 치명적 버그 수정</li>
                         <li>DB 조회 기반 보호 목록(protected prefixes) 도입 — 다른 프로젝트의 컨테이너는 절대 삭제하지 않음</li>
                         <li>DB 프로젝트 생성 시 <code>openDeployModal()</code>만 호출하고 실제 배포 API를 호출하지 않던 버그 수정 → <code>deployProject()</code>로 교체</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">VPS 호스팅</div>
+                    <ul>
+                        <li>SSH 접속 가능한 리눅스 VPS 컨테이너 생성 기능 (Ubuntu/Debian/Alpine/Node/Python)</li>
+                        <li>CPU/RAM 리소스 제한 (<code>--cpus</code>, <code>--memory</code>), 영구 홈 디렉토리, sudo 권한</li>
+                        <li>대시보드에 VPS 생성 UI + 프로젝트 개요에 SSH 접속 정보 패널</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">orbitron.yaml 환경변수 자동 해석</div>
+                    <ul>
+                        <li><code>from: "database.{name}.connectionString"</code> — DB 접속 URL 자동 주입</li>
+                        <li><code>from: "service.{name}.url"</code> — 서비스 간 내부 URL 자동 연결</li>
+                        <li><code>generate: true</code> — 시크릿 키 자동 생성 (256-bit)</li>
+                        <li>orbitron.yaml 상세 배포 가이드 문서 작성 (docs 사이드바 추가)</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">Docker Compose 배포 안정성 대폭 개선</div>
+                    <ul>
+                        <li>포트 80/443 충돌 자동 재매핑 — 프로젝트 할당 포트로 자동 교체</li>
+                        <li>Compose 내 nginx/proxy 서비스 자동 감지 → <code>proxy_pass</code> 올바른 upstream 설정</li>
+                        <li>Compose 배포 시 <code>.env</code> 파일 자동 생성 (git pull에도 설정 유지)</li>
+                        <li>Compose 내 모든 서비스를 <code>orbitron_internal</code> 네트워크에 자동 연결</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">배포 안정성 강화 (포트 충돌 · 고아 컨테이너 · 상태 검증)</div>
+                    <ul>
+                        <li>배포 시 대상 포트를 점유 중인 컨테이너 강제 해제 (포트 충돌 근본 해결)</li>
+                        <li>서버 시작 시 + 매 1시간 주기로 고아 컨테이너(Created/Exited) 자동 정리</li>
+                        <li>배포 후 2.5초 대기 → 컨테이너 Running 상태 검증 (즉시 크래시 감지)</li>
+                        <li><code>docker rm -f</code>로 stuck Created/Restarting 상태 강제 제거</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">암호화 저장 안전 장치 (encryptForDB)</div>
+                    <ul>
+                        <li>env_vars JSONB 컬럼 저장 시 따옴표 래핑 누락으로 <code>invalid input syntax for type json</code> 에러가 발생하던 근본 원인 제거</li>
+                        <li><code>encryptForDB()</code> 헬퍼 함수 도입 — JSONB-safe 래핑을 보장하는 단일 진입점</li>
+                        <li>projects.js, groups.js, deployer.js의 모든 encrypt 호출을 <code>encryptForDB()</code>로 통일 (5곳)</li>
                     </ul>
                 </div>
             </div>

@@ -724,7 +724,14 @@ EXPOSE ${port}
         startLogs += `  컨테이너명: ${containerName}\n`;
 
         // Build env vars string (filter out internal Orbitron keys)
-        const envVars = project.env_vars || {};
+        // Defense-in-depth: if env_vars is not a plain object (e.g. an undecrypted
+        // hex string slipped through), coerce to {} to avoid Object.keys() iterating
+        // over string indices and producing tens of thousands of -e flags (spawn E2BIG).
+        let envVars = project.env_vars || {};
+        if (typeof envVars !== 'object' || Array.isArray(envVars)) {
+            console.warn(`⚠️ startContainer: project.env_vars is not a plain object (got ${typeof envVars}, len ${typeof envVars === 'string' ? envVars.length : 'n/a'}); using empty {}`);
+            envVars = {};
+        }
         const envKeys = Object.keys(envVars).filter(k => !k.startsWith('_ORBITRON_'));
         const envFlags = envKeys
             .map(k => {

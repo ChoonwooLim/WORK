@@ -311,7 +311,12 @@
             <div class="card">
                 <div class="card-icon">🤖</div>
                 <h3>AI 오류 분석 & 자동 코드 수정</h3>
-                <p>배포 실패 시 듀얼 LLM(Claude/Gemini)이 에러를 자동 분석하고, RAG 지식베이스와 결합하여 JSON 패치를 생성합니다. 코드 수정 → 재배포까지 자동으로 수행하며, 성공률 기반 자가학습을 합니다. (특허 제1호, 제4호)</p>
+                <p>배포 실패 시 <strong>트리플 LLM 라우팅(Claude / Gemini / 로컬 Gemma 4)</strong>이 에러를 자동 분석하고, RAG 지식베이스와 결합하여 JSON 패치를 생성합니다. 코드 수정 → 재배포까지 자동으로 수행하며, 성공률 기반 자가학습을 합니다. 프로젝트별로 클라우드/로컬 모델을 자유롭게 선택할 수 있어 비용·프라이버시 요구에 맞게 운영할 수 있습니다. (특허 제1호, 제4호)</p>
+            </div>
+            <div class="card" style="border: 1px solid rgba(80,250,123,0.3); background: rgba(80,250,123,0.03);">
+                <div class="card-icon">🌱</div>
+                <h3 style="color:#50fa7b;">로컬 Gemma 4 (Ollama, 신규)</h3>
+                <p>Google DeepMind <strong>Gemma 4 E4B</strong> 모델을 로컬 GPU(CUDA)에서 직접 실행하여 외부 API 비용 0원, 인터넷 연결 불필요, 데이터가 서버 밖으로 나가지 않는 완전 오프라인 AI 디버깅을 제공합니다. Anthropic/Google 가입 없이도 즉시 사용 가능. 모델 데이터는 별도 데이터 드라이브에 격리되어 시스템 디스크 압박이 없으며, systemd 사용자 유닛으로 영속화되어 부팅 시 자동 가동됩니다. (2026.04 v2.1)</p>
             </div>
             <div class="card" style="border: 1px solid rgba(189,147,249,0.3); background: rgba(189,147,249,0.03);">
                 <div class="card-icon">✏️</div>
@@ -387,6 +392,19 @@
                 <p>프로젝트 그룹으로 Frontend, Backend, DB를 묶고, "그룹 전체 배포" 한 번으로 의존성 순서(DB→Backend→Frontend)에 따라 자동 배포합니다.
                     DATABASE_URL 등 서비스 간 연결 정보를 자동 주입하고, Docker 내부 네트워크(<code>orbitron_internal</code>)로 안전하게 통신합니다.
                 </p>
+            </div>
+            <div class="card" style="border: 1px solid rgba(88,166,255,0.3); background: rgba(88,166,255,0.03);">
+                <div class="card-icon">🖥</div>
+                <h3 style="color:#58a6ff;">VPS 호스팅</h3>
+                <p>SSH 접속 가능한 리눅스 서버를 원클릭 생성합니다. Ubuntu/Debian/Alpine/Node/Python 중 선택하고,
+                    CPU/RAM 리소스를 설정합니다. sudo 권한, 영구 홈 디렉토리, <code>orbitron_internal</code> 네트워크를 통한 다른 서비스와의 통신을 지원합니다.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📋</div>
+                <h3>orbitron.yaml IaC</h3>
+                <p>프로젝트 루트에 <code>orbitron.yaml</code>을 작성하면 서비스, DB, 환경변수를 선언적으로 관리합니다.
+                    <code>from: "database.{name}.connectionString"</code>으로 DB URL 자동 주입,
+                    <code>generate: true</code>로 시크릿 자동 생성. Docker Compose는 포트 충돌 자동 재매핑까지 지원합니다.</p>
             </div>
             <div class="card">
                 <div class="card-icon">🪝</div>

@@ -5,18 +5,66 @@ Have you ever panicked during a deployment when your terminal was filled with an
 > `ModuleNotFoundError: No module named 'django.core.wsgi'`
 > `Error: listen EADDRINUSE: address already in use :::3000`
 
-When facing such nightmare errors, you normally waste dozens of minutes scouring Google or Stack Overflow. But behind the Orbitron system, **ultra-precise AI engineers (Claude, Gemini)** are on standby to instantly decipher your error codes in just 1 second.
+When facing such nightmare errors, you normally waste dozens of minutes scouring Google or Stack Overflow. But behind the Orbitron system, **ultra-precise AI engineers** are on standby to instantly decipher your error codes in just 1 second.
+
+> 🌟 **Triple LLM Routing (New in 2026.04)**: Orbitron now supports three AI engines — **Anthropic Claude · Google Gemini · Local Google Gemma 4**. Cloud models (Claude/Gemini) provide maximum reasoning power, while the local model (Gemma 4) gives you zero-cost, fully-offline inference with full data privacy. Choose freely on a per-project basis.
 
 ---
 
 ## 🔑 How to Setup the AI Assistant
 
-To use this feature, you must manually plug in the API Key (the key that borrows the AI brain). Do this just once, and you'll have a dedicated coding secretary for life.
+To use this feature, you must manually plug in the API Key for cloud models. Do this just once and you have a dedicated coding secretary for life. (However, if you pick the **Local Gemma 4** option below, no API key is needed at all.)
 
 1.  Enter the **`Settings`** menu by clicking the gear icon in the top right corner of the dashboard.
-2.  Click the **`LLM Settings`** tab, and you will see Google's paramount AI window (Gemini) and Anthropic's Tier-1 coding-specialized AI window (Claude).
-3.  Go to your preferred company's website, sign up, get your free `API Key (Secret Key)`, paste it into the blank field, and click Save.
+2.  Click the **`LLM Settings`** tab. You will see the available AI models:
+    - 👑 **Claude 4.6 Opus / Sonnet** (Anthropic Tier-1 coding specialist)
+    - 🔭 **Gemini 3.1 Pro / Flash, Gemini 2.5 Pro / Flash** (Google's strongest reasoning)
+    - 🌱 **Gemma 4 E4B** (Local · Free, Ollama) — no API key required
+3.  For Claude or Gemini, go to the company's website, sign up, get your `API Key`, paste it into the blank field, and Save. **For Gemma 4 E4B, the key field is hidden** and a green info banner appears — it works immediately.
 4.  Now, the AI Brain Activation Switch at the bottom of the system dashboard will turn green (ON).
+
+---
+
+## 🌱 Local Gemma 4 (Ollama-based) — New in 2026.04
+
+> 💡 **Zero cost · Fully offline · Data privacy**: Run the Google Gemma 4 model directly on your Orbitron server, processing all AI inference without ever calling an external API.
+
+### What's different?
+
+| Aspect | Claude / Gemini (Cloud) | 🌱 Gemma 4 E4B (Local) |
+|---|---|---|
+| API key required | ✅ Yes | ❌ No |
+| Cost | Per-token billing | Free |
+| Internet | Required | Not required |
+| Data transmission | Sent to external cloud | Never leaves the server |
+| Inference speed | 1-3s (network dependent) | ~46 tokens/s (local GPU) |
+| Model size | (managed) | 9.6GB (Q4_K_M, 8B params) |
+| GPU requirement | None | NVIDIA CUDA or Apple Silicon |
+
+### How to use
+
+1. Project settings → **🤖 AI Error Analysis Model** → select **`🌱 Gemma 4 E4B (Local · Free, Ollama)`**
+2. Save — instantly active without any key entry
+3. From now on, all AI features for that project run locally:
+   - Automatic error analysis on deployment failure
+   - **`💬 Request AI Analysis`** chat (full action-tag support including `[ACTION:FIX_AND_DEPLOY]`)
+   - Automatic code patch generation (`aiAutoRepair.analyzeAndGeneratePatch`)
+
+### When is local Gemma 4 the better choice?
+
+- **Confidential projects**: When you can't risk sensitive corporate code or env vars being sent to external LLM providers
+- **Onboarding without API keys**: When new users want to try AI debugging without first signing up with Anthropic / Google
+- **Cost reduction**: For learning/experimental projects with frequent build failures, drive token costs to zero
+- **Unstable internet**: For air-gapped or field environments where external API responses may be slow or fail
+
+### When are cloud models better?
+
+- **Complex multi-file refactoring**: When you need Claude 4.6 Opus / Gemini 3.1 Pro's 200K+ context window and stronger reasoning
+- **Rare libraries / brand-new framework errors**: When the cloud models may have more recent training data
+
+> ⚙️ **Advanced (server admins)**: Orbitron uses the Ollama endpoint at `http://127.0.0.1:11434` by default. To run the GPU server on a different machine, just add `OLLAMA_HOST=http://X.X.X.X:11434` to PM2's environment. Model data is stored at the path defined by the `OLLAMA_MODELS` environment variable (e.g., a separate data drive) instead of the system disk, eliminating system partition pressure.
+
+> 🚀 **Extending**: The default exposed model is `gemma-4-e4b` (8B, 9.6GB), but the routing table also has `gemma-4-e2b / gemma-4-26b / gemma-4-31b` registered. Pull a larger variant on the server (`ollama pull gemma4:31b` etc.) and adding the dropdown option is enough to use it.
 
 ---
 

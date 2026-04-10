@@ -321,9 +321,12 @@
             <div class="card">
                 <div class="card-icon">🤖</div>
                 <h3>AI-Powered Diagnostics</h3>
-                <p>Upon deployment failure, our integrated Claude and Gemini models analyze logs and context, instantly
-                    providing markdown guides for the cause and solutions. (Provides safe guides only, without forcibly
-                    modifying your source code.)</p>
+                <p>Upon deployment failure, our <strong>triple LLM routing (Claude / Gemini / Local Gemma 4)</strong> analyzes logs and context, instantly providing markdown guides for the cause and solutions. Per-project model selection lets you choose between maximum cloud reasoning power and zero-cost, fully-offline local inference for privacy-sensitive workloads.</p>
+            </div>
+            <div class="card" style="border: 1px solid rgba(80,250,123,0.3); background: rgba(80,250,123,0.03);">
+                <div class="card-icon">🌱</div>
+                <h3 style="color:#50fa7b;">Local Gemma 4 (Ollama, New)</h3>
+                <p>Run Google DeepMind's <strong>Gemma 4 E4B</strong> directly on your local GPU (CUDA) for AI debugging with zero external API cost, no internet connection required, and your data never leaves the server. No Anthropic/Google signup needed — works out of the box. Model data is isolated to a separate data drive to keep system disk usage low, and the Ollama daemon is persisted via systemd user units for automatic startup on login. (2026.04 v2.1)</p>
             </div>
             <div class="card">
                 <div class="card-icon">🔄</div>

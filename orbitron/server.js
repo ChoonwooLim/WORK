@@ -5,9 +5,31 @@ const cors = require('cors');
 const morgan = require('morgan');
 const fs = require('fs');
 const db = require('./db/db');
+const { decrypt } = require('./db/crypto');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
+
+// Best-effort decrypt of project.env_vars from raw DB form (string|object|null) → plain object.
+// Mirrors the logic in services/deployer.js so the recovery path doesn't pass an
+// encrypted string to dockerService.startContainer (which would treat each character as a key).
+function decryptProjectEnvVars(project) {
+    let envVars = {};
+    const raw = project.env_vars;
+    if (raw && typeof raw === 'string') {
+        try {
+            const decrypted = decrypt(raw);
+            envVars = decrypted ? JSON.parse(decrypted) : {};
+        } catch (e) {
+            console.error(`⚠️ Failed to decrypt env_vars for project ${project.id} (${project.name}); using empty {}`);
+            envVars = {};
+        }
+    } else if (raw && typeof raw === 'object') {
+        envVars = raw;
+    }
+    project.env_vars = envVars;
+    return project;
+}
 
 // Validate required environment variables
 const REQUIRED_ENV = ['JWT_SECRET'];
@@ -254,24 +276,47 @@ async function start() {
                 const result = await db.query("SELECT * FROM projects WHERE status = 'running'");
                 const runningProjects = result.rows || [];
                 for (const project of runningProjects) {
-                    // Check and restart container if needed
-                    const containerName = `orbitron-${project.subdomain}`;
-                    const containerStatus = await dockerService.getContainerStatus(containerName);
-                    if (containerStatus !== 'running') {
-                        console.log(`🔄 Restarting container for ${project.name} (was: ${containerStatus})...`);
+                    // Containers may use exact name (orbitron-<sub>) for DBs
+                    // OR Blue-Green name with deploy hash suffix (orbitron-<sub>-<hash>) for web apps.
+                    // Look up the actually-running container by prefix first to avoid spurious restarts.
+                    const namePrefix = `orbitron-${project.subdomain}`;
+                    let runningName = null;
+                    try {
+                        const { stdout: psOut } = await execAsync(
+                            `docker ps --filter "name=^${namePrefix}" --format "{{.Names}}"`
+                        );
+                        const candidates = psOut.split('\n').map(s => s.trim()).filter(Boolean);
+                        // Prefer exact match, otherwise the most recent prefix-match (highest deploy hash)
+                        runningName = candidates.find(n => n === namePrefix)
+                            || candidates.sort().reverse()[0]
+                            || null;
+                    } catch (e) { /* ignore */ }
+
+                    if (runningName) {
+                        // Container is alive — just refresh restart policy and bookkeep its name
                         try {
+                            await execAsync(`docker update --restart unless-stopped ${runningName} 2>/dev/null`);
+                        } catch (e) { /* ignore */ }
+                        if (project.container_id !== runningName) {
+                            try {
+                                await db.query('UPDATE projects SET container_id = $1 WHERE id = $2', [runningName, project.id]);
+                            } catch (e) { /* ignore */ }
+                        }
+                    } else {
+                        console.log(`🔄 Restarting container for ${project.name} (no running container found for prefix ${namePrefix})...`);
+                        try {
+                            // CRITICAL: decrypt env_vars before passing to startContainer.
+                            // The raw DB form is an encrypted hex string for ENCRYPTED rows;
+                            // without decryption, Object.keys() of the string yields one entry
+                            // per character → tens of thousands of -e flags → spawn E2BIG.
+                            decryptProjectEnvVars(project);
                             const containerId = await dockerService.startContainer(project);
                             await db.query('UPDATE projects SET container_id = $1 WHERE id = $2', [containerId, project.id]);
-                            console.log(`✅ Container restarted: ${containerName}`);
+                            console.log(`✅ Container restarted: ${namePrefix}`);
                         } catch (e) {
                             console.log(`❌ Failed to restart container for ${project.name}: ${e.message}`);
                             continue;
                         }
-                    } else {
-                        // Update restart policy for existing running containers
-                        try {
-                            await execAsync(`docker update --restart unless-stopped ${containerName} 2>/dev/null`);
-                        } catch (e) { /* ignore */ }
                     }
 
                     // Recover tunnel

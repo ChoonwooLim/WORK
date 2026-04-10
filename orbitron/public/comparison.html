@@ -800,8 +800,8 @@
                     <div class="diff-icon">🤖</div>
                     <div class="diff-content">
                         <h3>AI 에러 분석 & 자동 코드 수정</h3>
-                        <p>단순히 에러 로그를 표시하고 끝나는 것에 그치지 않습니다. Orbitron은 RAG 지식베이스 + 듀얼 LLM(Claude/Gemini)이 실패 원인을
-                            즉시 진단하고, JSON 패치를 자동 생성하여 코드를 수정한 뒤 재배포까지 수행합니다. (특허 제1호, 제4호)</p>
+                        <p>단순히 에러 로그를 표시하고 끝나는 것에 그치지 않습니다. Orbitron은 RAG 지식베이스 + <strong>트리플 LLM(Claude / Gemini / 로컬 Gemma 4)</strong>이 실패 원인을
+                            즉시 진단하고, JSON 패치를 자동 생성하여 코드를 수정한 뒤 재배포까지 수행합니다. 클라우드 모델은 최대 추론력을, 로컬 Gemma 4는 0원 비용 + 데이터 프라이버시를 제공합니다. (특허 제1호, 제4호)</p>
                         <div class="vs-box">
                             <div class="vs-global">✘ 타사: 개발자가 직접 스택 트레이스를 구글링</div>
                             <div class="vs-orbitron">✔ Orbitron: AI가 자가 치유(Self-Healing) 브리핑</div>
@@ -948,6 +948,33 @@
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                     </tr>
+                    <tr>
+                        <td>VPS 호스팅 (SSH 서버, CPU/RAM 제한)</td>
+                        <td class="td-orbitron"><span class="check">✔</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                    </tr>
+                    <tr>
+                        <td>Compose 포트 충돌 자동 재매핑</td>
+                        <td class="td-orbitron"><span class="check">✔</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                    </tr>
+                    <tr>
+                        <td>IaC 환경변수 자동 주입 (from: / generate:)</td>
+                        <td class="td-orbitron"><span class="check">✔ (orbitron.yaml)</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                        <td><span class="cross">✘</span></td>
+                    </tr>
 
                     <tr class="cat-header">
                         <td>네트워크 & 트래픽</td>
@@ -997,7 +1024,7 @@
                     </tr>
                     <tr>
                         <td>배포 에러 AI 진단 + 자동 코드 수정</td>
-                        <td class="td-orbitron"><span class="check">✔ (듀얼 LLM + RAG)</span></td>
+                        <td class="td-orbitron"><span class="check">✔ (트리플 LLM + RAG, 로컬 Gemma 4 포함)</span></td>
                         <td><span class="partial">△ (v0 제한적)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
@@ -1238,7 +1265,7 @@
                     </tr>
                     <tr>
                         <td>배포 에러 AI 원인 진단 (RAG)</td>
-                        <td class="td-orbitron"><span class="check">✔ (Gemini/Claude)</span></td>
+                        <td class="td-orbitron"><span class="check">✔ (Gemini/Claude/Gemma 4)</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>
                         <td><span class="cross">✘</span></td>

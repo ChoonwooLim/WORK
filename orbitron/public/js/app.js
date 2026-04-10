@@ -909,7 +909,12 @@ function renderSettings() {
           <option value="gemini-3.0-flash" ${p.ai_model === 'gemini-3.0-flash' ? 'selected' : ''}>🚀 Gemini 3.0 Flash (초고속)</option>
           <option value="gemini-2.5-pro" ${p.ai_model === 'gemini-2.5-pro' ? 'selected' : ''}>📚 Gemini 2.5 Pro</option>
           <option value="gemini-2.5-flash" ${p.ai_model === 'gemini-2.5-flash' ? 'selected' : ''}>✨ Gemini 2.5 Flash</option>
+          <option value="gemma-4-e4b" ${p.ai_model === 'gemma-4-e4b' ? 'selected' : ''}>🌱 Gemma 4 E4B (로컬·무료, Ollama)</option>
       </select>
+
+      <div id="ai-info-gemma" style="display: ${p.ai_model?.startsWith('gemma-') ? 'block' : 'none'}; padding:10px 12px; border-radius:6px; background:rgba(80,200,120,0.08); border:1px solid rgba(80,200,120,0.3); font-size:12px; color:var(--text-secondary); margin-bottom:8px;">
+         🌱 <strong>로컬 실행 모델</strong> — API 키 불필요. 이 서버의 Ollama daemon (<code>127.0.0.1:11434</code>)에서 직접 추론합니다. 인터넷 연결과 외부 비용이 발생하지 않습니다.
+      </div>
 
       <div id="ai-key-anthropic" style="display: ${(!p.ai_model || p.ai_model.startsWith('claude')) ? 'block' : 'none'};">
          <label style="font-size:13px;font-weight:600;color:var(--text-secondary);">🔑 Anthropic API Key <span style="font-weight:normal;font-size:11px;">(해당 프로젝트 전용)</span></label>
@@ -946,8 +951,10 @@ window.toggleAiKeyFields = function () {
     const model = document.getElementById('set-ai-model').value;
     const anthropicDiv = document.getElementById('ai-key-anthropic');
     const geminiDiv = document.getElementById('ai-key-gemini');
+    const gemmaInfo = document.getElementById('ai-info-gemma');
     if (anthropicDiv) anthropicDiv.style.display = model.startsWith('claude') ? 'block' : 'none';
     if (geminiDiv) geminiDiv.style.display = model.startsWith('gemini') ? 'block' : 'none';
+    if (gemmaInfo) gemmaInfo.style.display = model.startsWith('gemma-') ? 'block' : 'none';
 };
 
 let currentSourceTab = 'github';
@@ -4807,6 +4814,8 @@ function renderBusinessPlan() {
                 <li><strong>게임 스트리밍</strong> — Unreal Engine Pixel Streaming, Unity WebGL 원클릭 배포</li>
                 <li><strong>제로 설정 HTTPS</strong> — Cloudflare Tunnel을 통한 자동 SSL + 커스텀 도메인</li>
                 <li><strong>AI 코드 에디터</strong> — 웹 IDE에서 인라인 AI 수정, Diff 뷰, 멀티파일 리팩토링 (특허 기술)</li>
+                <li><strong>VPS 호스팅</strong> — SSH 접속 리눅스 서버 원클릭 생성 (Ubuntu/Debian/Alpine, CPU/RAM 제한)</li>
+                <li><strong>IaC 자동 주입</strong> — orbitron.yaml로 DB URL, 서비스 URL, 시크릿 키를 선언적으로 자동 연결</li>
                 <li><strong>풀스택 대시보드</strong> — 소스 에디터, 콘솔, 환경변수, 로그, 모니터링 통합</li>
             </ul>
         </div>
@@ -5062,6 +5071,9 @@ function renderBusinessPlan() {
             <tr><td style="${tdStyle} font-weight:600;">컨테이너 콘솔</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">O</td><td style="${tdStyle}">O</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">Docker Compose</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">멀티서비스 그룹 배포</td><td style="${tdStyle} color:#3fb950;">O (의존성 순서)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">VPS 호스팅 (SSH 서버)</td><td style="${tdStyle} color:#3fb950;">O (리소스 제한)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">Compose 포트 자동 재매핑</td><td style="${tdStyle} color:#3fb950;">O</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
+            <tr><td style="${tdStyle} font-weight:600;">IaC 환경변수 자동 주입</td><td style="${tdStyle} color:#3fb950;">O (from:/generate:)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600;">GPU 지원</td><td style="${tdStyle} color:#3fb950;">O (192GB)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle}">유료 Addon</td></tr>
             <tr><td style="${tdStyle} font-weight:600; color:#ff79c6;">AI 인라인 코드 에디터</td><td style="${tdStyle} color:#3fb950;">O (웹 IDE+LLM)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>
             <tr><td style="${tdStyle} font-weight:600; color:#ff79c6;">멀티파일 AI 리팩토링</td><td style="${tdStyle} color:#3fb950;">O (선택적 적용)</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td><td style="${tdStyle} color:#f85149;">X</td></tr>

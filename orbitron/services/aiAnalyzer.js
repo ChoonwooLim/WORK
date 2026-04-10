@@ -1,6 +1,51 @@
 const { GoogleGenAI } = require('@google/genai');
 const Anthropic = require('@anthropic-ai/sdk');
 
+// Local Ollama endpoint (Gemma 4 etc). Override via env if running on a different host/port.
+const OLLAMA_HOST = (process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').replace(/\/$/, '');
+
+// Map UI model id (gemma-4-e4b) → ollama tag (gemma4:e4b)
+function gemmaToOllamaTag(aiModel) {
+    const map = {
+        'gemma-4-e2b': 'gemma4:e2b',
+        'gemma-4-e4b': 'gemma4:e4b',
+        'gemma-4-26b': 'gemma4:26b',
+        'gemma-4-31b': 'gemma4:31b',
+    };
+    return map[aiModel] || 'gemma4:e4b';
+}
+
+// Single-shot prompt → text via Ollama /api/chat
+async function callOllamaChat(model, systemPrompt, messagesArray, { timeoutMs = 120000 } = {}) {
+    const ollamaModel = gemmaToOllamaTag(model);
+    const messages = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    for (const m of messagesArray) {
+        messages.push({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content
+        });
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: ollamaModel, messages, stream: false }),
+            signal: controller.signal
+        });
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            throw new Error(`Ollama HTTP ${res.status}: ${errText.slice(0, 300)}`);
+        }
+        const data = await res.json();
+        return data?.message?.content || '';
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 class AIAnalyzer {
     // The constructor is no longer strictly necessary to cache globals because we generate per-request clients now based on DB env vars
     constructor() {
@@ -12,8 +57,10 @@ class AIAnalyzer {
         // Retrieve keys from project env vars, falling back to server-side globals
         const anthropicKey = projectEnvVars.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
         const geminiKey = projectEnvVars.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        const isGemma = typeof aiModel === 'string' && aiModel.startsWith('gemma-');
 
-        if (!anthropicKey && !geminiKey) {
+        // Local Gemma via Ollama needs no API key — only gate cloud routing
+        if (!isGemma && !anthropicKey && !geminiKey) {
             console.log('Skipping AI analysis: Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY are set.');
             return null;
         }
@@ -59,6 +106,20 @@ ${recentLogs}
 
             console.log(`Requesting AI Error Analysis using model: ${aiModel}`);
 
+            // Route to local Gemma via Ollama (no API key required)
+            if (isGemma) {
+                try {
+                    const text = await callOllamaChat(aiModel, null, [{ role: 'user', content: fullPrompt }], { timeoutMs: 180000 });
+                    return text || 'Gemma 응답이 비어 있습니다.';
+                } catch (gemmaErr) {
+                    console.warn(`[AI Analyze] Gemma(Ollama) failed: ${gemmaErr.message}`);
+                    // Fall through to cloud fallback if any key is set
+                    if (!anthropicKey && !geminiKey) {
+                        return `로컬 Gemma 호출 실패: ${gemmaErr.message}`;
+                    }
+                }
+            }
+
             // Route to Anthropic models if requested and key is present
             if (aiModel.startsWith('claude-') && anthropicKey) {
                 const anthropicClient = new Anthropic({ apiKey: anthropicKey });
@@ -100,8 +161,10 @@ ${recentLogs}
     async chat(messagesArray, aiModel = 'claude-4-6-sonnet-20260217', projectEnvVars = {}, projectContext = null) {
         const anthropicKey = projectEnvVars.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
         const geminiKey = projectEnvVars.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        const isGemma = typeof aiModel === 'string' && aiModel.startsWith('gemma-');
 
-        if (!anthropicKey && !geminiKey) {
+        // Local Gemma via Ollama needs no API key — only gate cloud routing
+        if (!isGemma && !anthropicKey && !geminiKey) {
             return 'AI 에러 대화 기능을 사용할 수 없습니다. (API 키 누락)';
         }
 
@@ -208,6 +271,20 @@ ${recentLogs}
 
         try {
             console.log(`[AI Chat] Routing chat to model: ${aiModel}`);
+
+            // Local Gemma via Ollama (no API key required)
+            if (isGemma) {
+                try {
+                    const text = await callOllamaChat(aiModel, systemPrompt, messagesArray, { timeoutMs: 180000 });
+                    return text || 'Gemma 응답이 비어 있습니다.';
+                } catch (gemmaErr) {
+                    console.warn(`[AI Chat] Gemma(Ollama) failed: ${gemmaErr.message}`);
+                    if (!anthropicKey && !geminiKey) {
+                        return `로컬 Gemma 호출 실패: ${gemmaErr.message}`;
+                    }
+                    // else fall through to cloud
+                }
+            }
 
             // Anthropic Claude (with 15s timeout + Gemini fallback)
             if (aiModel.startsWith('claude-') && anthropicKey) {

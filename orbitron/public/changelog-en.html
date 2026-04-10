@@ -461,6 +461,55 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.1 — 2026-04-11 (Local Gemma 4 + Recovery Hardening) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#50fa7b; box-shadow: 0 0 12px rgba(80,250,123,0.4);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#50fa7b;">v2.1</span>
+                <span class="version-date">April 11, 2026</span>
+            </div>
+            <p class="version-title">🌱 Local Gemma 4 (Ollama) + Recovery Path Hardening</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Feature</span>
+                    <div class="change-content">
+                        <strong>Local Google Gemma 4 E4B Integration (Ollama-based, no API key required)</strong>
+                        <p>Google DeepMind <strong>Gemma 4 E4B</strong> (Q4_K_M, 8B parameters, 9.6GB) is now served locally via an Ollama daemon — zero external API cost, no internet required, data never leaves the server. Model data lives on a separate data drive (<code>OLLAMA_MODELS</code> env), and the Ollama daemon is persisted as a user systemd unit (<code>~/.config/systemd/user/ollama.service</code>) with auto-restart on failure. NVIDIA CUDA 12 + dual GTX 1080 (16GB VRAM) detected automatically; ~46 tokens/s inference speed. Joins Anthropic Claude / Google Gemini as the <strong>third LLM engine</strong> — selectable per-project via "🌱 Gemma 4 E4B (Local · Free, Ollama)". All three service paths integrated: error analysis, AI chat (with full action-tag protocol), and auto code patch generation (JSON mode). Future variants (E2B / 26B / 31B) can be enabled by simply pulling the model and adding the dropdown option — the routing table is already wired. Configurable via <code>OLLAMA_HOST</code> environment variable for remote GPU servers.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Fix</span>
+                    <div class="change-content">
+                        <strong>Container Recovery Logic — Eliminated Ghost Restart (Port Conflict Resolved)</strong>
+                        <p>Blue-Green containers use the <code>orbitron-{subdomain}-{deployHash}</code> naming scheme, but the recovery logic was matching exact name <code>orbitron-{subdomain}</code> only — failing to find live containers and trying to spawn new ones, resulting in host port conflicts (<code>Bind for 0.0.0.0:3480 failed</code>). Now uses <code>docker ps --filter "name=^orbitron-{sub}"</code> prefix matching to prefer live containers. Exact match wins, otherwise the most recent deployHash variant is reused. When a live container is found, only the <code>--restart unless-stopped</code> policy is refreshed and <code>container_id</code> is synced — zero unnecessary container recreations.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Critical Fix</span>
+                    <div class="change-content">
+                        <strong>True Root Cause of <code>spawn E2BIG</code> Identified and Fixed</strong>
+                        <p>The recovery path was passing <code>project.env_vars</code> (an encrypted hex string) directly to <code>dockerService.startContainer()</code> without decryption. <code>Object.keys(envVars)</code> then iterated over the string's character indices — producing one <code>-e N='X'</code> flag per character (12,748 of them) and inflating the single command string to ~128KB, hitting <code>MAX_ARG_STRLEN</code> in execve. Fixed by adding a <code>decryptProjectEnvVars()</code> helper to <code>server.js</code> and applying it in the recovery loop before <code>startContainer</code>. Defense-in-depth: a type guard was also added to <code>docker.js startContainer()</code> that coerces non-object env_vars to <code>{}</code> with a warning.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Cleanup</span>
+                    <div class="change-content">
+                        <strong>Broken env_vars Rows Recovered — Decryption Failing Log Spam Eliminated</strong>
+                        <p>Four projects (Twinverse, RemoteAGT, KcontentsHub, K-ContentHub_DB) had env_vars encrypted with a previous <code>JWT_SECRET</code>, causing <code>Decryption failing</code> errors on every request and bloating <code>error.log</code> to 31MB. Safe recovery procedure performed: raw values backed up to <code>backups/broken-env-vars-2026-04-11.json</code> with full metadata, then DB rows reset to empty <code>{}</code> (re-encrypted with the current key). Original values can be recovered from the backup if the previous key is found later. Final reload monitoring confirmed zero <code>Decryption failing</code> / <code>spawn E2BIG</code> / <code>Bind for 0.0.0.0</code> errors over a 30-second window.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">UI</span>
+                    <div class="change-content">
+                        <strong>AI Model Selector Updated</strong>
+                        <p>The project settings AI model dropdown now exposes "🌱 Gemma 4 E4B (Local · Free, Ollama)". Selecting Gemma automatically hides the API key input fields and shows a green info banner explaining that the model runs locally with no external API or cost. The <code>toggleAiKeyFields()</code> JS function now recognizes the <code>gemma-</code> prefix.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- RemoteAGT v1.2.0 — 2026-04-03 (Major Refactoring)  -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

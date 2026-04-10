@@ -6,6 +6,47 @@ const execAsync = util.promisify(exec);
 const fs = require('fs');
 const path = require('path');
 
+// Local Ollama endpoint for Gemma 4 etc.
+const OLLAMA_HOST = (process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').replace(/\/$/, '');
+
+function gemmaToOllamaTag(aiModel) {
+    const map = {
+        'gemma-4-e2b': 'gemma4:e2b',
+        'gemma-4-e4b': 'gemma4:e4b',
+        'gemma-4-26b': 'gemma4:26b',
+        'gemma-4-31b': 'gemma4:31b',
+    };
+    return map[aiModel] || 'gemma4:e4b';
+}
+
+async function callOllamaSingle(aiModel, prompt, { timeoutMs = 240000 } = {}) {
+    const ollamaModel = gemmaToOllamaTag(aiModel);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: ollamaModel,
+                messages: [{ role: 'user', content: prompt }],
+                stream: false,
+                format: 'json',
+                options: { temperature: 0.1 }
+            }),
+            signal: controller.signal
+        });
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            throw new Error(`Ollama HTTP ${res.status}: ${errText.slice(0, 300)}`);
+        }
+        const data = await res.json();
+        return data?.message?.content || '';
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 class AIAutoRepair {
 
     /**
@@ -15,8 +56,10 @@ class AIAutoRepair {
     async analyzeAndGeneratePatch(logs, projectDir, aiModel = 'claude-4-6-sonnet-20260217', envVars = {}) {
         const anthropicKey = envVars.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
         const geminiKey = envVars.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        const isGemma = typeof aiModel === 'string' && aiModel.startsWith('gemma-');
 
-        if (!anthropicKey && !geminiKey) {
+        // Local Gemma via Ollama needs no API key
+        if (!isGemma && !anthropicKey && !geminiKey) {
             console.log('[AI AutoRepair] Skipping: No AI API key available.');
             return null;
         }
@@ -94,7 +137,9 @@ ${sourceContext}
             console.log(`[AI AutoRepair] Requesting patch generation via ${aiModel}...`);
             let responseText;
 
-            if (aiModel.startsWith('claude-') && anthropicKey) {
+            if (isGemma) {
+                responseText = await callOllamaSingle(aiModel, prompt, { timeoutMs: 240000 });
+            } else if (aiModel.startsWith('claude-') && anthropicKey) {
                 const client = new Anthropic({ apiKey: anthropicKey });
                 const response = await client.messages.create({
                     model: aiModel,

@@ -488,8 +488,8 @@
                 <div style="font-size:12px; color:var(--text-muted);">자동감지 프로젝트 타입</div>
             </div>
             <div style="text-align:center; padding:12px 20px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px;">
-                <div style="font-size:24px; font-weight:800; color:#ff79c6;">192GB</div>
-                <div style="font-size:12px; color:var(--text-muted);">GPU VRAM</div>
+                <div style="font-size:24px; font-weight:800; color:#ff79c6;">VPS</div>
+                <div style="font-size:12px; color:var(--text-muted);">SSH 호스팅</div>
             </div>
         </div>
     </section>
@@ -572,22 +572,20 @@
                         <span class="accordion-icon">▼</span>
                     </div>
                     <div class="accordion-body">
-                        <p><strong>💡 소개:</strong> 배포가 실패하거나 시스템이 멈췄을 때 붉게 출력되는 외계어 같은 로그를, 천재 개발자(Claude 3.7, Gemini
-                            2.5)가 1초
+                        <p><strong>💡 소개:</strong> 배포가 실패하거나 시스템이 멈췄을 때 붉게 출력되는 외계어 같은 로그를, 천재 개발자(<strong>Claude 4.6, Gemini 3.1, 로컬 Gemma 4</strong>)가 1초
                             만에 분석하여 "이 부분에 패스워드가 틀렸으니 이 코드로 고치세요"라고 한글로 친절히 답변하고 과외해주는 인공지능 분석 기능입니다. 특히 최근 도입된
                             <strong>지식 데이터베이스(Knowledge DB) 검색 아키텍처</strong>를 통해 이전 배포에서의 시행착오와 해결책을 시스템이 자가 학습하여 더욱 정확한
-                            솔루션을 제안합니다.
+                            솔루션을 제안합니다. <strong>2026.04 신규 — 트리플 LLM 라우팅</strong>: 클라우드 모델(Claude/Gemini)과 함께 로컬 GPU에서 동작하는 <strong>Google Gemma 4 E4B</strong>가 추가되어, API 키 없이 0원 비용으로 완전 오프라인 디버깅이 가능합니다.
                         </p>
                         <p><strong>✅ 사용 예시:</strong> 코딩 초보자나 문제가 어디서 발생했는지 오리무중인 베테랑 모두, 구글에 에러 코드를 붙여넣기하며 허비하던 수많은 시간을
                             클릭 한 번의 AI 가이드라인으로 해결하여 퇴근 시간을 앞당깁니다. 이전에 풀었던 유사한 에러가 있다면 시스템이 과거의 기억을 꺼내어 즉시 정답을 알려줍니다.</p>
                         <hr style="border-top:1px solid rgba(255,255,255,0.05); margin:16px 0;">
                         <h4>🛠 사용 방법:</h4>
                         <p>1. 프로젝트 대시보드의 우측 상단 <code>설정(Settings)</code> 탭으로 이동합니다.<br>
-                            2. <code>🤖 AI 에러 분석 모델 설정</code>의 드롭다운 선택상자에서 사용할 언어 모델(Claude 3.7 Sonnet / Google Gemini
-                            2.5 Flash)을 취향껏
+                            2. <code>🤖 AI 에러 분석 모델 설정</code>의 드롭다운 선택상자에서 사용할 언어 모델(<strong>Claude 4.6 / Google Gemini 3.1 / 🌱 Gemma 4 E4B (로컬·무료)</strong>)을 취향껏
                             고릅니다.<br>
-                            3. 옆의 <code>발급받기</code> 버튼을 눌러 Anthropic 콘솔 또는 Google AI Studio에서 (다량 무료 제공되는) API Key를 복사해
-                            붙여넣습니다.<br>
+                            3. 클라우드 모델을 선택했다면 옆의 <code>발급받기</code> 버튼을 눌러 Anthropic 콘솔 또는 Google AI Studio에서 API Key를 복사해
+                            붙여넣습니다. <strong>Gemma 4 E4B를 선택하면 키 입력이 필요 없습니다</strong> — 즉시 사용 가능.<br>
                             4. 이제부터 <strong>배포 실패 시</strong> 마다 에러 분석 리포트가 자동으로 생성되며, <code>💬 AI 어시스턴트</code> 탭에서 프로젝트
                             환경에 대한 질문을 이어나갈 수 있습니다.</p>
                     </div>
