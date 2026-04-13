@@ -41,12 +41,20 @@ for (const key of REQUIRED_ENV) {
 }
 
 const app = express();
-app.set('trust proxy', true);
+// Trust exactly one proxy hop (Cloudflare → local). `true` was permissive and broke
+// express-rate-limit's IP identity check (ERR_ERL_PERMISSIVE_TRUST_PROXY), allowing
+// clients to spoof X-Forwarded-For and bypass rate limits.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 // Middleware
 app.use(cors());
-app.use(morgan('dev'));
+// Skip high-frequency dashboard polling endpoints in access logs to prevent the
+// PM2 stdout log from ballooning (was 158MB / 2.5M lines — 99% was /api/projects/*/stats polling).
+app.use(morgan('dev', {
+    skip: (req) => /^\/api\/projects\/\d+\/stats$/.test(req.path)
+        || (req.method === 'GET' && req.path === '/api/projects')
+}));
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf;
@@ -269,6 +277,34 @@ async function start() {
 ║   Webhook: POST /api/webhooks/github ║
 ╚══════════════════════════════════════╝
 `);
+
+            // Warm up local Gemma 4 (Ollama) so the first real chat/analysis
+            // doesn't pay a 30s cold-start model load. Fire-and-forget.
+            (async () => {
+                const ollamaHost = (process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').replace(/\/$/, '');
+                try {
+                    const t0 = Date.now();
+                    const res = await fetch(`${ollamaHost}/api/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: 'gemma4:e4b',
+                            messages: [{ role: 'user', content: 'hi' }],
+                            stream: false,
+                            options: { num_predict: 1 }
+                        }),
+                        signal: AbortSignal.timeout(60000)
+                    });
+                    if (res.ok) {
+                        console.log(`🌱 Gemma 4 (Ollama) warmed up in ${((Date.now() - t0) / 1000).toFixed(1)}s — local LLM ready`);
+                    } else {
+                        console.log(`🌱 Ollama warmup skipped (HTTP ${res.status})`);
+                    }
+                } catch (e) {
+                    console.log(`🌱 Ollama warmup skipped (${e.name === 'TimeoutError' ? 'timeout' : e.message}) — local LLM optional`);
+                }
+            })();
+
             // Auto-recover tunnels for running projects
             try {
                 const tunnelService = require('./services/tunnel');
