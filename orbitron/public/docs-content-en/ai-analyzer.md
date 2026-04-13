@@ -68,6 +68,60 @@ To use this feature, you must manually plug in the API Key for cloud models. Do 
 
 ---
 
+## 🖥 Routing Gemma to a Remote GPU Server (New in 2026.04 v2.2)
+
+Orbitron now supports **splitting the dashboard host from a dedicated AI-inference GPU box**. Run the lightweight dashboard on a low-power machine and offload the heavy AI to a Threadripper + RTX 3090 class server.
+
+### How
+
+Add one line to `.env`:
+
+```bash
+OLLAMA_HOST=http://192.168.219.117:11434
+```
+
+All Gemma calls automatically route to the remote server — no code changes. `services/aiAnalyzer.js` and `services/aiAutoRepair.js` read this env var to build their fetch URLs.
+
+### Measured performance
+
+| Environment | Inference speed | Warmup (cold start) |
+|-------------|-----------------|---------------------|
+| Local GTX 1080 ×2 (16GB split) | ~46 tokens/s | 43.5 s |
+| Remote RTX 3090 24GB (dedicated) | **~133 tokens/s (2.9×)** | **5.2 s (8.4×)** |
+
+### Additional benefits
+
+- **Scalability**: point at any number of GPU hosts by flipping `OLLAMA_HOST`; load balancers drop in behind the same contract.
+- **Isolation**: restarting Orbitron no longer interrupts an active AI inference.
+- **GPU sharing**: when Gemma and the Wan video pipelines share a single RTX 3090, `OLLAMA_KEEP_ALIVE=30s` makes Gemma hold VRAM *only while active*. See the [AI Video Generation guide](/docs-en.html#/ai-video) for the full story.
+- **Security**: the GPU server is LAN-only via UFW; clients reach it exclusively through Orbitron's authenticated proxy.
+
+### Topologies
+
+**Single host (default)**:
+```
+[Orbitron + Ollama on one box] → local GPU
+.env: (OLLAMA_HOST unset → defaults to 127.0.0.1:11434)
+```
+
+**Two-tier (recommended)**:
+```
+[Orbitron dashboard box] ──LAN──→ [Dedicated GPU box (RTX 3090, etc.)]
+.env: OLLAMA_HOST=http://192.168.219.117:11434
+```
+
+**Multi-GPU (future)**:
+```
+[Orbitron] ──┬──→ [GPU box A: LLMs]
+             └──→ [GPU box B: video gen]
+.env: OLLAMA_HOST=http://gpu-a.internal:11434
+      WAN_VIDEO_HOST=http://gpu-b.internal:8200
+```
+
+Full architecture diagram: see the "Distributed GPU Routing" section in the [AI Video Generation guide](/docs-en.html#/ai-video).
+
+---
+
 ## 🩺 Practical Use: "Where should I fix this?"
 
 All preparations are now complete! If your container blows up (Build Failed) or crashes at runtime during a future deployment, click the red highlighted project in the bottom left.

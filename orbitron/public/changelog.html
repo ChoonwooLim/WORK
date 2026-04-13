@@ -460,6 +460,73 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.2 — 2026-04-13 (AI Video Gen + Dedicated GPU Server) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#ff79c6; box-shadow: 0 0 14px rgba(255,121,198,0.5);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#ff79c6;">v2.2</span>
+                <span class="version-date">2026년 4월 13일</span>
+                <span class="badge badge-feature" style="background:rgba(255,121,198,0.15); color:#ff79c6;">AI 영상 생성 (Wan 2.2)</span>
+                <span class="badge badge-feature" style="background:rgba(80,250,123,0.15); color:#50fa7b;">전용 GPU 서버</span>
+                <span class="badge badge-fix">보안·운영 정리</span>
+            </div>
+            <div class="version-body">
+                <div class="change-group">
+                    <div class="change-title feature">🎬 Wan 2.2 AI 영상 생성 — 대시보드 내 원클릭</div>
+                    <ul>
+                        <li>Alibaba <strong>Wan 2.2</strong> (공식 최신 오픈소스) 3개 variant 통합: <code>ti2v-5b</code> (5B, 빠름, ~36s/클립) · <code>t2v-14b</code> (A14B MoE, 시네마틱) · <code>i2v-14b</code> (A14B MoE, 이미지→영상)</li>
+                        <li>"Wan 2.5"는 Alibaba API 전용이며 2026.04 현재 공식 오픈소스 가중치 미공개. Wan 2.2가 현재 SOTA OSS. 2.5 공개 시 즉시 추가 예정</li>
+                        <li>새 사이드바 섹션 <strong>AI 스튜디오 → 🎬 AI 영상 생성 (Wan 2.2)</strong> — 프롬프트, 모델 선택, 프레임/스텝/해상도 조정, 실시간 상태 칩 (GPU·VRAM·로드된 모델), 플레이어 + 활동 로그</li>
+                        <li>Orbitron 프록시 (<code>/api/wan/status|t2v|i2v|video/:filename|healthz</code>) — LAN IP 유출 없이 인증된 브라우저에만 스트리밍</li>
+                        <li>Text-to-Video (JSON)와 Image-to-Video (multipart) 모두 지원. multer 20MB 메모리 스토리지</li>
+                        <li><code>services/wanVideo.js</code> (Node fetch 클라이언트, 10분 타임아웃) + <code>routes/wan.js</code> (프록시) + <code>/ai-video</code> 페이지</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🖥 전용 GPU 서버 아키텍처 (twinverse-ai)</div>
+                    <ul>
+                        <li><strong>Threadripper 3970X (32C/64T) + RTX 3090 24GB + 128GB DDR4</strong> + Dual 10GbE Intel X550 — Ubuntu 24.04.1 LTS</li>
+                        <li>Orbitron 대시보드 호스트와 GPU 서버 분리: 무거운 AI 추론(31B LLM, A14B 비디오)을 전용 머신으로 오프로드. Orbitron 재시작이 영상 생성을 끊지 않음</li>
+                        <li>LAN 전용 접근: UFW가 <code>192.168.219.0/24</code>만 22/11434/8200/8100 포트에 허용. 외부 인터넷 비공개</li>
+                        <li>SSH key-only (password 로그인 비활성), systemd linger 활성화(부팅 자동 시작), nvidia-persistenced + 350W power limit systemd 유닛, CUDA Toolkit 12.0 설치</li>
+                        <li>Orbitron 라우팅 — <code>OLLAMA_HOST=http://192.168.219.117:11434</code> 환경변수로 Gemma 4 호출이 원격 RTX 3090에 자동 전달. 체감 속도 ~46 t/s → ~133 t/s (2.9×), 콜드 warmup 43.5s → 5.2s (8.4×)</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">⚡ 동적 GPU VRAM 공유 — 3중 안전망</div>
+                    <ul>
+                        <li><strong>Ollama <code>OLLAMA_KEEP_ALIVE=30s</code></strong> — 채팅 요청 후 30초 idle 시 자동 언로드. <strong>사용 중일 때만 VRAM 점유</strong> — 비디오 생성과 GPU 공유 시 충돌 없음</li>
+                        <li><strong>Wan 서비스의 <code>_free_ollama_vram()</code> 훅</strong> — A14B 모델 로드 직전에 Ollama에 <code>keep_alive:0</code> 즉시 언로드 요청. 비디오 생성은 Gemma 타이머를 기다리지 않음</li>
+                        <li><strong>diffusers <code>enable_sequential_cpu_offload()</code></strong> — 28GB bfloat16 A14B MoE를 24GB VRAM에 맞추기 위해 레이어 단위 스트리밍. <code>PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True</code>로 단편화 완화</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">🛠 보안 및 운영 정리</div>
+                    <ul>
+                        <li><code>app.set('trust proxy', 1)</code> — <code>ERR_ERL_PERMISSIVE_TRUST_PROXY</code> 수정. X-Forwarded-For 스푸핑 방지</li>
+                        <li>morgan 로그에서 <code>/api/projects*/stats</code> 대시보드 폴링 스킵 → PM2 <code>out.log</code> 158MB (2.5M 라인) → 47 라인</li>
+                        <li><code>pm2-logrotate</code> 설치 + 10MB/7일/compress 설정 (부팅 자동 회전)</li>
+                        <li><code>server.js</code> 부팅 시 Gemma 4 warmup 요청 1회 → 첫 AI 호출 30s 콜드스타트 제거</li>
+                        <li><code>npm audit fix</code> — 6건 취약점 (5 high + 1 moderate) 패치, breaking change 없음 (basic-ftp, brace-expansion, express-rate-limit, multer, path-to-regexp)</li>
+                        <li>Docker <code>builder prune -a</code> + <code>image prune -a --filter until=24h</code> — <strong>278GB 디스크 회수</strong> (시스템 디스크 86% → 22%)</li>
+                        <li>모든 <code>.env</code> 파일 권한 <code>600</code> 변경 (4개 파일) — world-readable 제거</li>
+                        <li>RemoteAGT zombie 컨테이너 3개 정리 + <code>infrastructure/nginx/conf.d/remoteagt.conf</code> upstream을 실제 DB-등록 컨테이너로 교정</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">📚 문서 보강</div>
+                    <ul>
+                        <li>신규 문서: <a href="/docs.html#/ai-video">AI 영상 생성 (Wan 2.2) 가이드</a> — 3모델 비교, 파라미터 레퍼런스, 분산 GPU 아키텍처 다이어그램, 성능 벤치마크, FAQ, 보안 (한/영)</li>
+                        <li>사이드바 섹션 개편: 기존 Observability → "AI &amp; Generative" 그룹 신설, AI 영상 가이드 추가</li>
+                        <li><a href="/docs.html#/ai-analyzer">AI 트러블슈팅 가이드</a>에 원격 GPU 라우팅 설명 추가</li>
+                        <li>Overview · Features · Index · Comparison · Pricing 페이지에 분산 GPU 아키텍처 + AI 영상 생성 항목 추가</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.1 — 2026-04-11 (Local Gemma 4 + Recovery Hardening) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

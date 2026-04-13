@@ -318,6 +318,16 @@
                 <h3 style="color:#50fa7b;">로컬 Gemma 4 (Ollama, 신규)</h3>
                 <p>Google DeepMind <strong>Gemma 4 E4B</strong> 모델을 로컬 GPU(CUDA)에서 직접 실행하여 외부 API 비용 0원, 인터넷 연결 불필요, 데이터가 서버 밖으로 나가지 않는 완전 오프라인 AI 디버깅을 제공합니다. Anthropic/Google 가입 없이도 즉시 사용 가능. 모델 데이터는 별도 데이터 드라이브에 격리되어 시스템 디스크 압박이 없으며, systemd 사용자 유닛으로 영속화되어 부팅 시 자동 가동됩니다. (2026.04 v2.1)</p>
             </div>
+            <div class="card" style="border: 1px solid rgba(255,121,198,0.3); background: rgba(255,121,198,0.03);">
+                <div class="card-icon">🎬</div>
+                <h3 style="color:#ff79c6;">AI 영상 생성 (Wan 2.2, 신규)</h3>
+                <p>Alibaba 공식 오픈소스 <strong>Wan 2.2</strong> 3종 모델(TI2V-5B / T2V-A14B / I2V-A14B)을 전용 RTX 3090 GPU 서버에 호스팅하여 대시보드 내에서 <strong>프롬프트 → MP4</strong> / <strong>정지 이미지 → 애니메이션</strong>을 한 번의 클릭으로 생성합니다. 외부 API 비용 0원, 토큰 과금 없음. 5B 경량 모델은 ~36s, A14B MoE 플래그십 모델도 sequential CPU offload로 24GB 단일 GPU에서 동작. 생성된 영상은 Orbitron 인증 프록시(<code>/api/wan/video/*</code>)를 통해 안전하게 스트리밍됩니다. (2026.04 v2.2)</p>
+            </div>
+            <div class="card" style="border: 1px solid rgba(88,166,255,0.3); background: rgba(88,166,255,0.03);">
+                <div class="card-icon">🖥</div>
+                <h3 style="color:#58a6ff;">분산 GPU 추론 아키텍처 (신규)</h3>
+                <p>대시보드 프로덕션 호스트와 무거운 AI 추론을 담당하는 <strong>전용 GPU 서버 (Threadripper 3970X + RTX 3090 24GB + 128GB RAM)</strong>를 분리 운영. <code>OLLAMA_HOST</code>/<code>WAN_VIDEO_HOST</code> 환경변수만 바꾸면 GPU 서버를 여러 대로 확장 가능. 한 대의 GPU에서 LLM(Gemma 4)과 비디오 생성이 동시 실행되어도 충돌 없도록 3중 VRAM 안전망(Ollama 30s idle 언로드, Wan 로드 훅, diffusers sequential offload) 내장. (2026.04 v2.2)</p>
+            </div>
             <div class="card" style="border: 1px solid rgba(189,147,249,0.3); background: rgba(189,147,249,0.03);">
                 <div class="card-icon">✏️</div>
                 <h3 style="color:#bd93f9;">AI 코드 에디터 (특허 기술)</h3>
