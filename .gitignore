@@ -7,3 +7,17 @@ node_modules/
 WRA/
 devdeploy/deployments/
 RemoteAGT/
+
+# Python virtualenvs (never commit — GitHub 100MB file limit bites hard)
+venv/
+.venv/
+env/
+.env/
+__pycache__/
+*.py[cod]
+*$py.class
+ai-image-service/venv/
+ai-image-service/__pycache__/
+
+# Node
+orbitron/node_modules/
