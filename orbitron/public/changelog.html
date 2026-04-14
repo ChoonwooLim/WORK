@@ -460,6 +460,75 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.4 — 2026-04-14 (Custom Domain Wizard + Multi-domain SAN + Redirect) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#bd93f9; box-shadow: 0 0 14px rgba(189,147,249,0.5);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#bd93f9;">v2.4</span>
+                <span class="version-date">2026년 4월 14일 (오후)</span>
+                <span class="badge badge-feature" style="background:rgba(189,147,249,0.15); color:#bd93f9;">커스텀 도메인 UX 대개편</span>
+                <span class="badge badge-feature">멀티 도메인 SAN</span>
+                <span class="badge badge-feature">Canonical Redirect</span>
+            </div>
+            <div class="version-body">
+                <div class="change-group">
+                    <div class="change-title feature">🌐 전용 "커스텀 도메인 연결" 위저드 페이지</div>
+                    <ul>
+                        <li>왼쪽 사이드바 신규 메뉴 <strong>🌐 커스텀 도메인 연결</strong> — 프로젝트 설정 탭 안에 숨겨져 있던 걸 전용 페이지로 승격</li>
+                        <li>7단계 위저드: (1) 프로젝트 선택 → (2) 도메인 입력(독립 필드, + / ✕로 무한 추가/삭제) → (3) DNS 관리 회사 타일 선택 → (4) 회사별 단계별 가이드 자동 표시 → (5) DNS 검증 → (6) SSL 발급 + 연결 → (7) 검색엔진 등록</li>
+                        <li>6개 회사별 맞춤 가이드 — Squarespace/가비아/Cloudflare/Namecheap/AWS Route 53/기타. 각 회사의 실제 메뉴 이름(예: "DNS Settings", "DNS 관리" 등)과 로그인 경로 명시 + "네임서버는 바꾸지 마세요" 강조</li>
+                        <li>모든 값 옆에 📋 <strong>복사 버튼</strong> — 클립보드 복사 후 "✓ 복사됨" 피드백</li>
+                        <li>기존 프로젝트 설정 탭의 커스텀 도메인 섹션은 위저드 페이지로 유도하는 링크만 남겨 혼선 방지</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🏷️ 멀티 도메인 SAN 인증서 (하나의 SSL로 여러 도메인)</div>
+                    <ul>
+                        <li>한 프로젝트에 apex(<code>example.com</code>) + www(<code>www.example.com</code>) + 추가 서브도메인을 <strong>하나의 Let's Encrypt SAN 인증서</strong>로 묶어 발급</li>
+                        <li>입력 UX: 기본 도메인 필드 1개 + "+ 도메인 추가" 버튼으로 원하는 만큼 확장, 각 추가 필드 옆 ✕로 삭제</li>
+                        <li>certbot <code>--cert-name &lt;primary&gt; --expand</code> 옵션으로 후속 호출 시에도 같은 cert-name 유지하며 SAN 리스트만 교체 가능</li>
+                        <li>nginx <code>server_name</code>은 모든 연결 도메인을 공백으로 나열, HTTPS 서버 블록은 primary 도메인의 <code>/etc/letsencrypt/live/&lt;primary&gt;/fullchain.pem</code> 참조</li>
+                        <li>DNS 검증은 도메인별 개별 결과 표시 (일부만 전파됐을 때 어느 것이 실패했는지 명확)</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🧭 Canonical 도메인 자동 리다이렉트 (SEO 친화)</div>
+                    <ul>
+                        <li>새 DB 컬럼 <code>projects.redirect_to_custom_domain BOOLEAN DEFAULT false</code></li>
+                        <li>체크 시 <code>{subdomain}.twinverse.org</code>로 오는 모든 HTTP 트래픽이 <strong>https://&lt;첫 번째 연결 도메인&gt;</strong>로 <strong>301 영구 리다이렉트</strong>. SEO 중복 콘텐츠 문제 자동 해결</li>
+                        <li>ACME <code>/.well-known/acme-challenge/</code> 경로는 리다이렉트에서 <strong>제외</strong>되어 Let's Encrypt 자동 갱신은 계속 정상 작동</li>
+                        <li>위저드 ②단계 체크박스 + 연결된 상태 카드의 토글로 On/Off. 새 <code>PATCH /api/projects/:id/domain/redirect</code> 엔드포인트로 재발급 없이 즉시 적용</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🔎 7단계 검색엔진 등록 (SEO) 섹션</div>
+                    <ul>
+                        <li>연결 완료 후 자동으로 노출 — <strong>Google Search Console / 네이버 서치어드바이저 / Bing Webmaster Tools / Daum·Kakao 검색 등록</strong> 4개 서비스 각각에 대한 직접 링크 + 단계별 가이드</li>
+                        <li>소유권 검증 방식(DNS TXT / HTML 파일 / 메타태그) 설명 + sitemap URL · 메인 URL을 복사 버튼으로 즉시 제공</li>
+                        <li>접이식 "기본 SEO 체크리스트" — sitemap.xml 준비법, robots.txt 템플릿, 필수 메타태그 세트(title·description·og:*·canonical), 인덱싱 타임라인 기대치</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">📡 공인 IP 리졸버 (services/publicIp.js)</div>
+                    <ul>
+                        <li>4중 방어: (1) <code>.env</code>의 <code>PUBLIC_IP</code> > (2) 어드민 런타임 수동 입력 > (3) 6개 외부 provider 순차 자동 조회(ipify / ipify-v2 / ifconfig.me / icanhazip / seeip / myip) + 1시간 캐시 > (4) 실패 시 진단 힌트 반환</li>
+                        <li>신규 라우터 <code>routes/system.js</code>를 <code>/api/system</code>에 마운트 — <code>routes/projects.js</code>의 <code>GET /:id</code> 패턴이 <code>/api/projects/public-ip</code>를 "id=public-ip 프로젝트 조회"로 가로채던 버그 회피</li>
+                        <li><code>GET /api/system/public-ip</code> · <code>POST</code>(어드민 수동 설정) · <code>POST .../refresh</code>(캐시 무시 재조회) 3종 엔드포인트</li>
+                        <li>현재 운영: <code>.env</code>에 <code>PUBLIC_IP=116.33.16.12</code> 박아두어 외부 호출 0회, 응답 1ms</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🛟 IP 자동 조회 실패 시 어드민용 "IP 찾는 방법" 모달</div>
+                    <ul>
+                        <li>자동 조회 실패 시 DNS 가이드의 A 레코드 값 란에 "⚠️ 자동 조회 실패 [✏️ 수동 입력] [🔄 재시도]" 인라인 표시</li>
+                        <li>수동 입력 클릭 시 풀스크린 모달: <strong>상황별 IP 찾기 방법</strong>(공유기 뒤 서버 · 클라우드 호스팅 · 물리 서버 · SSH 접속) + <strong>외부 조회 사이트 4개 링크</strong>(whatismyipaddress.com · whatismyip.com · api.ipify.org · 네이버 검색 "내 아이피") + IPv4 검증 입력 + 영구 설정 레시피 + 실패 원인 진단</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.3 — 2026-04-14 (Custom Domain + Let's Encrypt Auto SSL) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

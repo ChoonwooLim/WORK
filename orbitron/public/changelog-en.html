@@ -461,6 +461,62 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.4 — 2026-04-14 (Custom Domain Wizard + Multi-domain SAN + Redirect) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#bd93f9; box-shadow: 0 0 14px rgba(189,147,249,0.5);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#bd93f9;">v2.4</span>
+                <span class="version-date">April 14, 2026 (PM)</span>
+            </div>
+            <p class="version-title">🌐 Dedicated Custom-Domain Wizard + Multi-domain SAN + Canonical Redirect</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">UX</span>
+                    <div class="change-content">
+                        <strong>New "Custom Domain Connect" wizard page</strong>
+                        <p>The custom-domain flow is promoted from a buried section inside project settings to a <strong>dedicated sidebar entry</strong>. Seven steps: (1) project selector, (2) domain input as <strong>independent fields</strong> with + / ✕ buttons (no more comma parsing), (3) six DNS-provider tiles (Squarespace, Gabia, Cloudflare, Namecheap, AWS Route 53, Other), (4) provider-specific step-by-step guide with 📋 copy buttons for every value, (5) DNS verify, (6) Let's Encrypt issuance, (7) search-engine registration. The old in-settings block is replaced with a single link nudging users to the new page to avoid two competing entry points.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Certs</span>
+                    <div class="change-content">
+                        <strong>Multi-domain SAN certificates</strong>
+                        <p>A single project can now bind multiple hostnames (apex + www + arbitrary subdomains) to <strong>one Let's Encrypt SAN cert</strong>. <code>services/letsencrypt.js:issueCert</code> accepts <code>string | string[]</code> and passes one <code>-d</code> flag per name, uses <code>--cert-name &lt;primary&gt;</code> so renewals stay under the same directory even if the SAN list changes, and adds <code>--expand</code> so re-runs with new names just extend the cert. <code>services/nginx.js</code> lists every name in <code>server_name</code> and references the primary's cert paths. <code>routes/domains.js</code> normalizes the input, verifies each domain individually, and returns per-domain results.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">SEO</span>
+                    <div class="change-content">
+                        <strong>Canonical-hostname redirect</strong>
+                        <p>New <code>projects.redirect_to_custom_domain</code> BOOLEAN column. When on, the tunnel subdomain (<code>{subdomain}.twinverse.org</code>) 301-redirects to <code>https://&lt;primary_custom_domain&gt;$request_uri</code>. The ACME challenge path is kept in a location block BEFORE the redirect, so certbot renewals continue to pass HTTP-01 validation. Toggle is available in the wizard's step 2 (new connections) and in the connected-state card (post-hoc); toggling uses the new <code>PATCH /api/projects/:id/domain/redirect</code> endpoint and does not reissue the cert.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Step 7</span>
+                    <div class="change-content">
+                        <strong>Search-engine registration (SEO)</strong>
+                        <p>Appears automatically after a successful connection. Direct links + per-service guides for <strong>Google Search Console, Naver Search Advisor (한국), Bing Webmaster Tools, Daum/Kakao 검색 등록</strong>. Verification methods (DNS TXT / HTML file / meta tag), sitemap + main URL pre-filled with 📋 copy buttons, and a collapsible SEO checklist: sitemap.xml, robots.txt template, minimum meta tag set, indexing timelines.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Infrastructure</span>
+                    <div class="change-content">
+                        <strong>Public-IP resolver with 4-layer defense</strong>
+                        <p>New <code>services/publicIp.js</code>: <code>.env PUBLIC_IP</code> > admin runtime override > cached auto-detect across 6 providers (ipify / ipify-v2 / ifconfig.me / icanhazip / seeip / myip, 4 s timeout each, 1 h cache, warm-up on module load) > null + diagnostics. New <code>routes/system.js</code> mounted at <code>/api/system</code> (avoids the <code>routes/projects.js</code> <code>GET /:id</code> pattern that was catching <code>/api/projects/public-ip</code> as a project lookup). Endpoints: <code>GET /api/system/public-ip</code>, admin-only <code>POST</code>, <code>POST /public-ip/refresh</code>. Current deployment pins <code>PUBLIC_IP=116.33.16.12</code> in <code>.env</code>, so the resolver returns it in 1 ms with zero outbound traffic.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">UX</span>
+                    <div class="change-content">
+                        <strong>Admin "how-to-find-your-IP" modal when auto-detect fails</strong>
+                        <p>If IP auto-detection fails, the A-record value row renders "⚠️ 자동 조회 실패 [✏️ 수동 입력] [🔄 재시도]" inline. The manual-input button opens a full-screen modal explaining <strong>how to actually discover the public IP</strong> in each common deployment scenario (home/office behind a router, cloud console, physical server, remote SSH + <code>curl icanhazip.com</code>), with four external checker links (whatismyipaddress.com, whatismyip.com, api.ipify.org, Naver search "내 아이피"), validated IPv4 input, and a collapsible .env permanent-setting recipe + failure-cause diagnostics.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.3 — 2026-04-14 (Custom Domain + Let's Encrypt Auto SSL) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

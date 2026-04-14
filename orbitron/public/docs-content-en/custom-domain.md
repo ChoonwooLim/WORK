@@ -1,5 +1,7 @@
 # 🌐 Custom Domain with Let's Encrypt Auto-SSL
 
+> ✨ **Updated in 2026.04 v2.4**: Connect now happens on a **dedicated wizard page** (sidebar → 🌐 Custom Domain). Adds multi-domain SAN certs, canonical redirect, search-engine registration, and provider-specific DNS guides — all in one flow.
+
 > ✨ **New in 2026.04 v2.3**: Orbitron users can now freely point their own domain (e.g. `myapp.com`) at any project; HTTPS certificates are **issued and renewed automatically** by Let's Encrypt.
 
 When you connect your own domain:
@@ -10,6 +12,52 @@ When you connect your own domain:
 
 ---
 
+## ⚡ Core concepts first
+
+**No nameserver changes.** Keep your domain at whatever registrar/DNS host you use now (Gabia, Squarespace, Cloudflare, Namecheap, Route 53…). Just add or edit 1–2 DNS records.
+
+**One IP for all projects.** The Orbitron server has a single public IP (`116.33.16.12` in this deployment). Routing to the correct project is done by `server_name` (Host header), not by IP. So every custom-domain A record for every project points at the same IP.
+
+## 🚀 7-step wizard (2026.04 v2.4)
+
+Sidebar → **🌐 Custom Domain** opens a dedicated page:
+
+### 1️⃣ Pick project — dropdown, auto-fills subdomain / tunnel URL / current domain.
+
+### 2️⃣ Enter domain(s) — independent fields
+
+- **Primary domain** (required) — becomes the SSL cert-name.
+- **Additional domains** — click `+ 도메인 추가` to add fields, `✕` to remove. All names are bundled into one **SAN certificate**.
+- **🧭 Auto-redirect checkbox** (on by default) — if on, `{subdomain}.twinverse.org` 301-redirects to `https://<primary>$request_uri` (SEO-friendly canonical).
+
+### 3️⃣ Pick your DNS provider — 6 tiles: 🟩 Squarespace · 🇰🇷 Gabia · 🟧 Cloudflare · 🟦 Namecheap · 🟨 Route 53 · ❓ Other.
+
+### 4️⃣ Follow the provider-specific guide
+
+Exact menu paths, login URLs, and which existing records to delete first. Every value has a 📋 copy button.
+
+Standard two records:
+
+| Type | Host | Value | Purpose |
+|------|------|-------|---------|
+| **`A`** | `@` (apex) | `116.33.16.12` | `myapp.com` itself |
+| **`CNAME`** | `www` | `{subdomain}.twinverse.org` | `www.myapp.com` |
+
+> Apex cannot be a CNAME (RFC) — always use A for the bare domain.
+
+### 5️⃣ DNS verify — per-domain ✅/⚠️ breakdown.
+
+### 6️⃣ Issue + connect — Let's Encrypt SAN cert + nginx HTTPS block + reload, ~20–60 s.
+
+### 7️⃣ Search-engine registration (SEO) — auto-opens on success
+
+Direct links + per-service guide for: 🔵 Google Search Console · 🟢 Naver Search Advisor · 🟦 Bing Webmaster Tools · 🟠 Daum/Kakao. Verification methods, sitemap + URL with copy buttons, and a sitemap/robots/meta-tag checklist.
+
+### 🔒 Auto-renewal is automatic
+
+90-day certs, daily `orbitron-cert-renew.timer`, live "days left" shown in the dashboard, force-renew button available.
+
+<!-- Legacy 3-step section (kept for backward-compat anchors) -->
 ## 🚀 Quick Start (3 steps)
 
 ### 1️⃣ Add a DNS record
@@ -84,7 +132,10 @@ Yes. Use option A (A record). CNAME cannot be placed at the apex per RFC; it onl
 Most providers propagate in minutes; some up to 48h. Use **🔍 DNS Verify** anytime.
 
 **Q3. Can I connect both `myapp.com` and `www.myapp.com`?**
-MVP supports one custom domain per project. Alternatives: configure a DNS-level redirect at your provider, or create two projects. Multi-domain support is planned for v2.4.
+**Yes — as of v2.4.** In step 2 of the wizard, put the apex in the primary field and click `+ 도메인 추가` to add the www version. Both end up on one SAN cert.
+
+**Q3-1. How do I force everyone onto one canonical URL?**
+Leave the **🧭 Auto-redirect** checkbox on (default). The tunnel subdomain will 301-redirect to your primary custom domain.
 
 **Q4. Let's Encrypt issuance failed.**
 Most common causes:
@@ -94,7 +145,13 @@ Most common causes:
 - Hit Let's Encrypt's 5/week rate limit → test with `staging=true`
 
 **Q5. How do I force-renew?**
-Dashboard → project settings → 🌐 Custom Domain → **🔄 Renew**. certbot will only actually renew if the cert is close to expiry; for a full reissue, disconnect and reconnect.
+Dashboard → 🌐 Custom Domain → select project → **🔄 SSL 갱신** on the connected-state card. certbot will only actually renew if the cert is close to expiry; for a full reissue, disconnect and reconnect.
+
+**Q5-1. The DNS guide shows "IP 확인 불가" — what now?**
+That means the Orbitron server couldn't reach any external IP-lookup API (outbound firewall, DNS issue, transient hiccup). Fixes, in order:
+- **Permanent (recommended)**: add `PUBLIC_IP=116.33.16.12` (your actual public IP) to the server's `.env`, then `pm2 reload orbitron --update-env` — the resolver returns instantly with zero network calls.
+- **Temporary**: click **✏️ 수동 입력** in the guide. A modal explains how to find the public IP per deployment scenario (router-behind-NAT, cloud console, SSH + `curl icanhazip.com`) and offers four external checker links (whatismyipaddress.com, whatismyip.com, api.ipify.org, Naver search). Enter the IP → saved until next restart.
+- **Diagnose**: run `curl https://api.ipify.org` on the server. If it hangs, outbound 443 is blocked — this will also break Let's Encrypt renewals, so fix the network at the infrastructure level.
 
 **Q6. What happens to the cert when I disconnect?**
 It's revoked immediately, and the local cert directory is deleted. Reconnecting issues a fresh cert.
@@ -161,6 +218,10 @@ volumes:
 | Let's Encrypt HTTP-01 auto-issuance | ✅ v2.3 |
 | Auto-renewal (systemd timer) | ✅ v2.3 |
 | Certificate status UI | ✅ v2.3 |
-| Multiple custom domains per project | 📋 v2.4 |
-| Wildcard SSL (DNS-01 challenge) | 📋 v2.4 |
+| **Multiple custom domains per project (SAN)** | ✅ **v2.4** |
+| **Dedicated wizard page + 6 provider guides** | ✅ **v2.4** |
+| **Canonical redirect (tunnel → primary, 301)** | ✅ **v2.4** |
+| **Search-engine registration hand-off (SEO)** | ✅ **v2.4** |
+| **4-layer public-IP resolver + manual fallback UI** | ✅ **v2.4** |
+| Wildcard SSL (DNS-01 challenge) | 📋 v2.5 |
 | DNS-provider API integration | 📋 v2.5 |
