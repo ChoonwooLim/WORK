@@ -4,7 +4,9 @@ import os
 import glob
 import time
 
-API_KEY = "***REDACTED_ANTHROPIC_KEY_ROTATE_IN_CONSOLE***"
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+if not API_KEY:
+    raise SystemExit("Set ANTHROPIC_API_KEY env var before running this script")
 API_URL = "https://api.anthropic.com/v1/messages"
 MODEL = "claude-3-5-sonnet-20241022"
 
