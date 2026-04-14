@@ -315,6 +315,15 @@ async function start() {
                 for (const project of runningProjects) {
                     // Containers may use exact name (orbitron-<sub>) for DBs
                     // OR Blue-Green name with deploy hash suffix (orbitron-<sub>-<hash>) for web apps.
+                    // OR for Docker Compose projects, container_id is "compose-<hash>" and the
+                    //   real upstream is a differently-named container (e.g. "iiff-nginx") that
+                    //   this recovery loop MUST NOT overwrite — otherwise nginx gets pointed at
+                    //   a sibling project's DB container and 502s.
+                    if (project.container_id && project.container_id.startsWith('compose-')) {
+                        console.log(`↪  ${project.name}: compose project (${project.container_id}) — skip prefix match`);
+                        continue;
+                    }
+
                     // Look up the actually-running container by prefix first to avoid spurious restarts.
                     const namePrefix = `orbitron-${project.subdomain}`;
                     // IMPORTANT: docker --filter "name=^orbitron-twinverse" also matches
@@ -335,6 +344,16 @@ async function start() {
                             || candidates.sort().reverse()[0]
                             || null;
                     } catch (e) { /* ignore */ }
+
+                    // If the DB already points at a living container AND the prefix scan didn't
+                    // find a better match, don't second-guess the DB — just refresh policy.
+                    // This handles cases where the deploy hash in the DB is still valid.
+                    if (!runningName && project.container_id) {
+                        try {
+                            const { stdout } = await execAsync(`docker ps --filter "name=^${project.container_id}$" --format "{{.Names}}"`);
+                            if (stdout.trim() === project.container_id) runningName = project.container_id;
+                        } catch (e) { /* ignore */ }
+                    }
 
                     if (runningName) {
                         // Container is alive — just refresh restart policy and bookkeep its name
