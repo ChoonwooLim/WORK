@@ -506,6 +506,13 @@
                         <p>Added <a href="/docs-en.html#/custom-domain">Custom Domain + Let's Encrypt (KR + EN)</a> — 3-step quick start, ASCII architecture diagram (HTTP-01 challenge flow), FAQ (apex support, multi-domain, Cloudflare proxy interactions, rate limits), operator runbook (manual certbot commands, renewal cron), and roadmap. Sidebar gained a new "🌐 Domains & SSL" group.</p>
                     </div>
                 </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Hotfix</span>
+                    <div class="change-content">
+                        <strong>Recovery loop must not overwrite compose-project container_id (commit <code>a6bcc828</code>)</strong>
+                        <p>Live bug: <code>iiff.twinverse.org</code> started returning 502 because the boot-time recovery loop was "correcting" IIFF's <code>container_id</code> from <code>compose-iiff</code> to <code>orbitron-iiff-db</code> — the PostgreSQL container of a SIBLING project (id=26 iiff_db). nginx then proxied IIFF requests at port 3473 into a Postgres listener and every request dropped. Two guards added to <code>server.js</code>: (1) if <code>container_id</code> starts with <code>compose-</code>, skip the prefix scan entirely (logs <code>↪ IIFF: compose project (compose-iiff) — skip prefix match</code>); (2) if the prefix scan returns nothing, check whether the DB's current <code>container_id</code> is actually alive before deciding to replace it — protects legitimate Blue-Green deploy-hash values. As a side effect, new nginx server blocks for db-type projects (iiff-db / k-contenthub-db / twinverseai-db) were created, so those rows can later grow a custom domain + auto-SSL just like web projects.</p>
+                    </div>
+                </li>
             </ul>
         </div>
 

@@ -515,6 +515,15 @@
                         <li>사이드바 신규 "🌐 Domains & SSL" 섹션</li>
                     </ul>
                 </div>
+                <div class="change-group">
+                    <div class="change-title fix">🛠 Compose 프로젝트 복구 로직 가드 (커밋 <code>a6bcc828</code>)</div>
+                    <ul>
+                        <li><code>iiff.twinverse.org</code>가 502를 반환하던 실증 버그: 부팅 복구 loop이 Docker Compose 프로젝트(IIFF)의 <code>container_id</code>를 <code>compose-iiff</code>에서 형제 프로젝트의 Postgres 컨테이너(<code>orbitron-iiff-db</code>)로 잘못 덮어쓰면서 nginx가 Postgres 포트로 프록시하게 됨</li>
+                        <li><code>server.js</code>에 2중 가드 추가: (1) <code>container_id</code>가 <code>compose-*</code>로 시작하면 prefix 매칭 스킵, (2) prefix 스캔 실패 시 DB의 기존 container_id가 실제 살아있는 컨테이너면 그대로 유지</li>
+                        <li>부팅 로그에 <code>↪ IIFF: compose project (compose-iiff) — skip prefix match</code> 표기로 가드 동작 투명화</li>
+                        <li>덤: DB 타입 프로젝트(iiff-db / k-contenthub-db / twinverseai-db) 용 nginx conf도 자동 생성되어, 향후 필요 시 DB에도 커스텀 도메인 붙일 수 있는 기반 마련</li>
+                    </ul>
+                </div>
             </div>
         </div>
 
