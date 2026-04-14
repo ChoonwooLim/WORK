@@ -317,12 +317,19 @@ async function start() {
                     // OR Blue-Green name with deploy hash suffix (orbitron-<sub>-<hash>) for web apps.
                     // Look up the actually-running container by prefix first to avoid spurious restarts.
                     const namePrefix = `orbitron-${project.subdomain}`;
+                    // IMPORTANT: docker --filter "name=^orbitron-twinverse" also matches
+                    // "orbitron-twinverseai-*", so we must post-filter in JS to only accept
+                    // names that are EITHER exactly orbitron-<sub> OR orbitron-<sub>-<suffix>.
+                    const validNameRe = new RegExp(`^${namePrefix}(-.+)?$`);
                     let runningName = null;
                     try {
                         const { stdout: psOut } = await execAsync(
                             `docker ps --filter "name=^${namePrefix}" --format "{{.Names}}"`
                         );
-                        const candidates = psOut.split('\n').map(s => s.trim()).filter(Boolean);
+                        const candidates = psOut.split('\n')
+                            .map(s => s.trim())
+                            .filter(Boolean)
+                            .filter(n => validNameRe.test(n)); // reject siblings like orbitron-twinverseai-*
                         // Prefer exact match, otherwise the most recent prefix-match (highest deploy hash)
                         runningName = candidates.find(n => n === namePrefix)
                             || candidates.sort().reverse()[0]
