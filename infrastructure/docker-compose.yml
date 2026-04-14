@@ -44,6 +44,10 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # Let's Encrypt cert store (read-only in nginx, owned by stevenlim on the host)
+      - /home/stevenlim/letsencrypt/config:/etc/letsencrypt:ro
+      # ACME HTTP-01 webroot — certbot writes challenge files here, nginx serves them
+      - /home/stevenlim/WORK/orbitron/webroot-acme:/var/www/certbot:ro
     depends_on:
       - postgres
     networks:

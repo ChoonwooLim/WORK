@@ -324,6 +324,11 @@
                 <p>Alibaba 공식 오픈소스 <strong>Wan 2.2</strong> 3종 모델(TI2V-5B / T2V-A14B / I2V-A14B)을 전용 RTX 3090 GPU 서버에 호스팅하여 대시보드 내에서 <strong>프롬프트 → MP4</strong> / <strong>정지 이미지 → 애니메이션</strong>을 한 번의 클릭으로 생성합니다. 외부 API 비용 0원, 토큰 과금 없음. 5B 경량 모델은 ~36s, A14B MoE 플래그십 모델도 sequential CPU offload로 24GB 단일 GPU에서 동작. 생성된 영상은 Orbitron 인증 프록시(<code>/api/wan/video/*</code>)를 통해 안전하게 스트리밍됩니다. (2026.04 v2.2)</p>
             </div>
             <div class="card" style="border: 1px solid rgba(88,166,255,0.3); background: rgba(88,166,255,0.03);">
+                <div class="card-icon">🌐</div>
+                <h3 style="color:#58a6ff;">커스텀 도메인 + Let's Encrypt 자동 SSL (신규)</h3>
+                <p>본인 소유의 도메인(예: <code>myapp.com</code>)을 어떤 프로젝트에도 자유롭게 연결. apex/서브도메인 모두 지원. Orbitron이 <strong>Let's Encrypt로 SSL 인증서를 자동 발급</strong>하고 90일 만료 전에 <strong>자동 갱신</strong>. 별도 CDN/Cloudflare 의존 없이 HTTPS로 바로 서비스. 대시보드 한 번에 DNS 검증 → SSL 발급 → 연결까지 20-60초. (2026.04 v2.3)</p>
+            </div>
+            <div class="card" style="border: 1px solid rgba(88,166,255,0.3); background: rgba(88,166,255,0.03);">
                 <div class="card-icon">🖥</div>
                 <h3 style="color:#58a6ff;">분산 GPU 추론 아키텍처 (신규)</h3>
                 <p>대시보드 프로덕션 호스트와 무거운 AI 추론을 담당하는 <strong>전용 GPU 서버 (Threadripper 3970X + RTX 3090 24GB + 128GB RAM)</strong>를 분리 운영. <code>OLLAMA_HOST</code>/<code>WAN_VIDEO_HOST</code> 환경변수만 바꾸면 GPU 서버를 여러 대로 확장 가능. 한 대의 GPU에서 LLM(Gemma 4)과 비디오 생성이 동시 실행되어도 충돌 없도록 3중 VRAM 안전망(Ollama 30s idle 언로드, Wan 로드 훅, diffusers sequential offload) 내장. (2026.04 v2.2)</p>

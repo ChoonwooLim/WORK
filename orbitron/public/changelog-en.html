@@ -461,6 +461,55 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.3 — 2026-04-14 (Custom Domain + Let's Encrypt Auto SSL) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#58a6ff; box-shadow: 0 0 14px rgba(88,166,255,0.5);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#58a6ff;">v2.3</span>
+                <span class="version-date">April 14, 2026</span>
+            </div>
+            <p class="version-title">🌐 Multi-tenant Custom Domains + Let's Encrypt Auto-SSL</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Feature</span>
+                    <div class="change-content">
+                        <strong>Bring-Your-Own-Domain for every project</strong>
+                        <p>Orbitron users can now point any domain they own — apex or subdomain — at any of their projects. A-record (apex supported) or CNAME both accepted. The dashboard's project settings now includes a redesigned <strong>🌐 Custom Domain</strong> section with auto-filled DNS instructions (shows the Orbitron public IP and the tunnel hostname), a one-click DNS verify button, a connect button, live certificate countdown (warns under 30 days), a renew button, and a disconnect flow. The previous design relied on <code>cloudflared tunnel route dns</code> which only worked for domains inside OUR Cloudflare account — useless for external users' domains. It is replaced with a clean Let's Encrypt path (see below).</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Infrastructure</span>
+                    <div class="change-content">
+                        <strong>Let's Encrypt HTTP-01 automatic SSL</strong>
+                        <p>New <code>services/letsencrypt.js</code> wraps certbot in webroot mode and runs it as the Orbitron user (no sudo) by pointing <code>--config-dir / --work-dir / --logs-dir</code> at <code>/home/stevenlim/letsencrypt/</code>. Exposes <code>issueCert / renewAll / revokeCert / certInfo / listCerts</code>. <code>services/nginx.js</code> gained an <code>_httpsBlock()</code> helper that emits a TLSv1.2/1.3 server block (MozSSL cipher profile) when a custom domain has a live cert on disk. <code>infrastructure/nginx/conf.d/default.conf</code> now serves the ACME challenge from a shared webroot. <code>infrastructure/docker-compose.yml</code> mounts <code>/home/stevenlim/letsencrypt/config → /etc/letsencrypt</code> and the ACME webroot into dev-nginx, both read-only, so the container can read certs and serve challenge files but cannot exfiltrate them. Renewal runs daily via <code>~/.config/systemd/user/orbitron-cert-renew.{service,timer}</code> (daily 00:45 KST + up to 1h random delay), followed by a <code>docker exec dev-nginx nginx -s reload</code>.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">API</span>
+                    <div class="change-content">
+                        <strong>Rewritten <code>routes/domains.js</code></strong>
+                        <p><code>POST /api/projects/:id/domain/verify</code> — accepts either A-record-to-public-IP or CNAME-to-tunnel-hostname. <code>POST /connect</code> — verifies DNS then issues a cert via certbot webroot, updates DB, regenerates nginx config (with HTTPS block because <code>letsencrypt.hasCert(domain)</code> is now true), and reloads. <code>GET /status</code> — returns DNS match + cert expiry + days-left. <code>DELETE /domain</code> — revokes cert and clears binding. <code>POST /renew</code> — operator button to force a renew. Admins may pass <code>skipVerify: true</code> for emergency recovery. The public IP is auto-detected via <code>api.ipify.org</code> on module load and cached.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Fix</span>
+                    <div class="change-content">
+                        <strong>twinverse.org apex migrated off Render + recovery-loop regex hardening</strong>
+                        <p>Migrated the apex <code>twinverse.org</code> from Render to the Orbitron tunnel using <code>cloudflared tunnel route dns --overwrite-dns</code>. Added twinverse.org as a second ingress rule to <code>config-devdeploy-twinverse.yml</code> alongside the existing <code>twinverse.twinverse.org</code>. Related commit <code>37e0befe</code> also hardened the v2.1 recovery regex — previously a project with subdomain <code>twinverse</code> could latch onto <code>orbitron-twinverseai-*</code> containers because <code>docker ps --filter "name=^orbitron-twinverse"</code> is a "starts-with" match. Post-filter now uses <code>^orbitron-{sub}(-.+)?$</code>, so <code>twinverse</code> and <code>twinverseai</code> are cleanly separated.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-feature">Docs</span>
+                    <div class="change-content">
+                        <strong>New guide: Custom Domain + Let's Encrypt</strong>
+                        <p>Added <a href="/docs-en.html#/custom-domain">Custom Domain + Let's Encrypt (KR + EN)</a> — 3-step quick start, ASCII architecture diagram (HTTP-01 challenge flow), FAQ (apex support, multi-domain, Cloudflare proxy interactions, rate limits), operator runbook (manual certbot commands, renewal cron), and roadmap. Sidebar gained a new "🌐 Domains & SSL" group.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.2 — 2026-04-13 (AI Video Gen + Dedicated GPU Server) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

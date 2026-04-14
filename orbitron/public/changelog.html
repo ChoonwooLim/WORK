@@ -460,6 +460,65 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.3 — 2026-04-14 (Custom Domain + Let's Encrypt Auto SSL) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#58a6ff; box-shadow: 0 0 14px rgba(88,166,255,0.5);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#58a6ff;">v2.3</span>
+                <span class="version-date">2026년 4월 14일</span>
+                <span class="badge badge-feature" style="background:rgba(88,166,255,0.15); color:#58a6ff;">커스텀 도메인 (멀티테넌트)</span>
+                <span class="badge badge-feature" style="background:rgba(80,250,123,0.15); color:#50fa7b;">Let's Encrypt 자동 SSL</span>
+                <span class="badge badge-fix">twinverse.org 마이그레이션</span>
+            </div>
+            <div class="version-body">
+                <div class="change-group">
+                    <div class="change-title feature">🌐 멀티테넌트 커스텀 도메인 — BYOD (Bring Your Own Domain)</div>
+                    <ul>
+                        <li>Orbitron 유저가 소유한 도메인(예: <code>myapp.com</code>)을 어떤 프로젝트에도 자유롭게 연결 가능. A 레코드(apex 지원) 또는 CNAME 양방 지원</li>
+                        <li>대시보드의 프로젝트 설정 → 🌐 커스텀 도메인: DNS 가이드 자동 표시 (공인 IP + 터널 호스트네임 힌트), DNS 검증 버튼, 연결 버튼, 인증서 만료 카운트다운, 갱신 버튼, 연결 해제</li>
+                        <li>이전 버전의 <code>tunnelService.addCustomDomainRoute()</code> 의존성 제거 — 그 경로는 "우리 Cloudflare 계정의 zone 내 도메인"만 지원. 유저 소유 외부 도메인은 작동 불가였음. 완전히 재설계</li>
+                        <li>신규 DB 흐름: <code>custom_domain</code> 컬럼 + <code>services/nginx.js</code>의 server_name 자동 포함 + HTTPS 블록 자동 생성</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🔐 Let's Encrypt HTTP-01 자동 SSL</div>
+                    <ul>
+                        <li>신규 <code>services/letsencrypt.js</code> — certbot webroot 모드 래퍼. <code>issueCert / renewAll / revokeCert / certInfo</code> 노출. sudo 없이 <code>stevenlim</code> 계정으로 실행되도록 <code>--config-dir /home/stevenlim/letsencrypt/config</code> 분리</li>
+                        <li>신규 <code>services/nginx.js _httpsBlock()</code> — 연결된 커스텀 도메인의 HTTPS 서버 블록을 자동 생성. TLSv1.2/1.3, MozSSL cipher 프로파일, ACME challenge 패스스루 포함</li>
+                        <li>신규 <code>infrastructure/nginx/conf.d/default.conf</code>에 shared ACME challenge 위치 — 모든 도메인이 <code>/.well-known/acme-challenge/*</code>를 webroot로 서빙</li>
+                        <li><code>infrastructure/docker-compose.yml</code>에 두 볼륨 추가 (read-only): <code>/home/stevenlim/letsencrypt/config → /etc/letsencrypt</code>, <code>webroot-acme → /var/www/certbot</code>. dev-nginx가 인증서 파일을 직접 읽고 challenge 파일을 서빙</li>
+                        <li>인증서 자동 갱신: <code>~/.config/systemd/user/orbitron-cert-renew.{service,timer}</code> — 매일 00:45 + 0-1h 랜덤 지연. 갱신 후 자동 nginx reload</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">🎨 개선된 도메인 연결 UI</div>
+                    <ul>
+                        <li>A 레코드 / CNAME 두 가지 옵션을 시각적으로 분리 표시 + 공인 IP 자동 노출 (<code>/api/projects/:id/domain/status</code>로 동적 로드)</li>
+                        <li>연결된 도메인에 인증서 남은 일수 실시간 표시 (30일 미만 시 경고색)</li>
+                        <li>🔄 갱신 버튼 — 별도 API (<code>POST /api/projects/:id/domain/renew</code>)로 즉시 재발급</li>
+                        <li>DNS 전파 가이드 예시 (가비아, Cloudflare, Namecheap) + apex 도메인 주의사항</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title fix">🛠 twinverse.org apex 도메인 마이그레이션 (Render → Orbitron 터널)</div>
+                    <ul>
+                        <li>기존 Render에 호스팅되던 <code>twinverse.org</code> apex 도메인을 Orbitron 터널로 이전. Cloudflare DNS: <code>cloudflared tunnel route dns --overwrite-dns</code>로 Render 레코드 덮어쓰기</li>
+                        <li>터널 설정 yml에 <code>twinverse.org</code> ingress 추가 + 기존 <code>twinverse.twinverse.org</code> 경로 병행 유지</li>
+                        <li>커밋 <code>37e0befe</code> — 관련하여 v2.1 복구 로직의 prefix-match 버그도 근본 수정(<code>^orbitron-{sub}(-.+)?$</code> regex post-filter) — 이전엔 <code>twinverse</code> 프로젝트가 <code>twinverseai-*</code> 컨테이너를 잘못 매칭했음</li>
+                    </ul>
+                </div>
+                <div class="change-group">
+                    <div class="change-title feature">📚 문서 추가</div>
+                    <ul>
+                        <li>신규 가이드: <a href="/docs.html#/custom-domain">커스텀 도메인 + Let's Encrypt (한/영)</a> — 3단계 빠른 시작, 작동 원리(HTTP-01 challenge 다이어그램), FAQ, 관리자 가이드, rate limit, 보안, 로드맵</li>
+                        <li>사이드바 신규 "🌐 Domains & SSL" 섹션</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.2 — 2026-04-13 (AI Video Gen + Dedicated GPU Server) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

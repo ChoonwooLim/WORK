@@ -1,199 +1,245 @@
+/**
+ * Custom Domain — multi-tenant "bring your own domain" feature.
+ *
+ * Flow:
+ *   1. User enters a domain (e.g. app.example.com) in the dashboard.
+ *   2. UI shows DNS instructions — either A record → <public-ip>, or CNAME → <sub>.twinverse.org.
+ *      Any DNS that actually resolves to this server's public IP is accepted.
+ *   3. POST /api/projects/:id/domain/verify checks that the domain's IP matches ours.
+ *   4. POST /api/projects/:id/domain/connect verifies, then issues a Let's Encrypt cert via
+ *      certbot webroot (HTTP-01), updates the DB, regenerates nginx config (HTTP + HTTPS blocks),
+ *      and reloads nginx.
+ *   5. GET /api/projects/:id/domain/status returns DNS + cert status.
+ *   6. DELETE /api/projects/:id/domain revokes the cert and removes the custom-domain binding.
+ *
+ * The old Cloudflare-tunnel-route path is NOT used here, because that requires the target
+ * domain to be in *our* Cloudflare account — which it won't be for external users' domains.
+ */
+
 const express = require('express');
 const router = express.Router();
-const dns = require('dns');
-const util = require('util');
+const dns = require('dns').promises;
 const db = require('../db/db');
+const { decrypt } = require('../db/crypto');
 const nginxService = require('../services/nginx');
-const tunnelService = require('../services/tunnel');
+const letsencrypt = require('../services/letsencrypt');
 
-const dnsResolveCname = util.promisify(dns.resolveCname);
-const dnsResolve4 = util.promisify(dns.resolve4);
+// Our public IP — resolved once at module load. Fallback to ipify if the env var isn't set.
+let PUBLIC_IP = process.env.PUBLIC_IP || null;
+(async () => {
+    if (PUBLIC_IP) return;
+    try {
+        const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) });
+        const { ip } = await res.json();
+        PUBLIC_IP = ip;
+        console.log(`[domains] resolved public IP: ${PUBLIC_IP}`);
+    } catch (e) {
+        console.warn('[domains] could not resolve public IP automatically:', e.message);
+    }
+})();
 
-// Helper: Get project with admin bypass
 async function getProjectForUser(projectId, user) {
     if (user.role === 'admin' || user.role === 'superadmin') {
-        return await db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
+        return db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
     }
-    return await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.userId]);
+    return db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.userId]);
 }
 
-// Validate domain format
+function decryptEnvIfString(project) {
+    if (project?.env_vars && typeof project.env_vars === 'string') {
+        try { project.env_vars = JSON.parse(decrypt(project.env_vars)) || {}; }
+        catch { project.env_vars = {}; }
+    }
+    return project;
+}
+
 function isValidDomain(domain) {
-    // Allows subdomains like www.example.com, app.example.co.kr
-    return /^(?!-)[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$/.test(domain) && domain.length <= 253;
+    // rfc-ish: labels of [a-z0-9-], at least one dot, TLD ≥2, total ≤253
+    if (!domain || domain.length > 253) return false;
+    return /^(?!-)[a-zA-Z0-9-]{1,63}(\.[a-zA-Z0-9-]{1,63})*\.[a-zA-Z]{2,}$/.test(domain);
 }
 
-// POST /api/projects/:id/domain/verify - Verify DNS records for a custom domain
+/**
+ * Build a list of DNS expectations and attempt to verify them.
+ * Accepts EITHER:
+ *   - A record pointing directly at our public IP
+ *   - CNAME pointing at <sub>.twinverse.org (which itself resolves via our Cloudflare tunnel)
+ *
+ * Returns { verified: bool, details: {...} } — details always include what we found.
+ */
+async function verifyDomainDns(domain, project) {
+    const expectedIp = PUBLIC_IP;
+    const expectedCname = `${project.subdomain}.twinverse.org`;
+    const details = { domain, expectedIp, expectedCname, a: [], cname: [], reason: null };
+
+    try { details.cname = await dns.resolveCname(domain).catch(() => []); } catch { /* */ }
+    try { details.a = await dns.resolve4(domain).catch(() => []); } catch { /* */ }
+
+    // Acceptance rule 1: CNAME points at <sub>.twinverse.org
+    if (details.cname.some(r => r.toLowerCase() === expectedCname.toLowerCase())) {
+        return { verified: true, details: { ...details, matched: 'cname-to-tunnel' } };
+    }
+    // Acceptance rule 2: A record matches our public IP
+    if (expectedIp && details.a.includes(expectedIp)) {
+        return { verified: true, details: { ...details, matched: 'a-to-public-ip' } };
+    }
+    // Fall-through: we know Cloudflare flattens apex CNAMEs. If A records match known CF edge
+    // addresses AND the user explicitly said "I've pointed this at the tunnel", we accept — but
+    // we can't tell that from DNS alone, so we require explicit A to *our* IP instead. Reason:
+    details.reason = details.a.length
+        ? `A records ${details.a.join(', ')} do not match our public IP ${expectedIp}`
+        : details.cname.length
+            ? `CNAME ${details.cname.join(', ')} does not point at ${expectedCname}`
+            : `No A or CNAME records found for ${domain}`;
+    return { verified: false, details };
+}
+
+// POST /api/projects/:id/domain/verify  — dry-run DNS check
 router.post('/:id/domain/verify', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
-        const { domain } = req.body;
-        if (!domain) return res.status(400).json({ error: '도메인을 입력해주세요.' });
+        const { domain } = req.body || {};
+        if (!domain)             return res.status(400).json({ error: '도메인을 입력해주세요.' });
         if (!isValidDomain(domain)) return res.status(400).json({ error: '올바른 도메인 형식이 아닙니다.' });
 
-        const expectedTarget = `${project.subdomain}.twinverse.org`;
-        const results = { domain, expectedTarget, cnameRecords: [], aRecords: [], verified: false, message: '' };
-
-        // Check CNAME records
-        try {
-            const cnameRecords = await dnsResolveCname(domain);
-            results.cnameRecords = cnameRecords;
-
-            const isCorrectCname = cnameRecords.some(record =>
-                record.toLowerCase() === expectedTarget.toLowerCase()
-            );
-
-            if (isCorrectCname) {
-                results.verified = true;
-                results.message = `✅ DNS 검증 성공! CNAME이 올바르게 ${expectedTarget}를 가리키고 있습니다.`;
-            } else {
-                results.message = `⚠️ CNAME 레코드가 발견되었지만 잘못된 대상을 가리키고 있습니다. 현재: ${cnameRecords.join(', ')} → 필요: ${expectedTarget}`;
-            }
-        } catch (cnameErr) {
-            // No CNAME, check A records as fallback info
-            try {
-                const aRecords = await dnsResolve4(domain);
-                results.aRecords = aRecords;
-                results.message = `⚠️ CNAME 레코드가 없습니다. A 레코드(${aRecords.join(', ')})가 발견되었습니다. CNAME 레코드를 ${expectedTarget}로 설정해주세요.`;
-            } catch (aErr) {
-                results.message = `❌ DNS 레코드를 찾을 수 없습니다. 도메인 등록기관에서 CNAME 레코드를 ${expectedTarget}로 설정한 후 다시 시도해주세요. (DNS 전파에 최대 48시간 소요될 수 있습니다)`;
-            }
-        }
-
-        res.json(results);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        const result = await verifyDomainDns(domain, project);
+        res.json({
+            domain,
+            publicIp: PUBLIC_IP,
+            ...result,
+            message: result.verified
+                ? `✅ DNS 검증 성공 (${result.details.matched})`
+                : `⚠️ ${result.details.reason}`,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/projects/:id/domain/connect - Connect a verified custom domain
+// POST /api/projects/:id/domain/connect  — verify + issue cert + wire nginx
 router.post('/:id/domain/connect', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
-        const { domain } = req.body;
-        if (!domain) return res.status(400).json({ error: '도메인을 입력해주세요.' });
-        if (!isValidDomain(domain)) return res.status(400).json({ error: '올바른 도메인 형식이 아닙니다.' });
+        const { domain, skipVerify, staging } = req.body || {};
+        if (!domain)                 return res.status(400).json({ error: '도메인을 입력해주세요.' });
+        if (!isValidDomain(domain))  return res.status(400).json({ error: '올바른 도메인 형식이 아닙니다.' });
 
-        // Step 1: Verify DNS before connecting
-        const expectedTarget = `${project.subdomain}.twinverse.org`;
-        let dnsVerified = false;
-
-        try {
-            const cnameRecords = await dnsResolveCname(domain);
-            dnsVerified = cnameRecords.some(r => r.toLowerCase() === expectedTarget.toLowerCase());
-        } catch (e) {
-            // CNAME not found
+        // Step 1: verify DNS (unless admin explicitly overrides)
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+        if (!(isAdmin && skipVerify)) {
+            const v = await verifyDomainDns(domain, project);
+            if (!v.verified) {
+                return res.status(400).json({
+                    error: `DNS 검증 실패: ${v.details.reason}`,
+                    details: v.details,
+                });
+            }
         }
 
-        if (!dnsVerified) {
-            return res.status(400).json({
-                error: `DNS 검증 실패: CNAME 레코드가 ${expectedTarget}를 가리키고 있지 않습니다. 먼저 DNS 설정을 완료해주세요.`
+        // Step 2: issue Let's Encrypt cert (HTTP-01 via webroot). DNS must already be in place.
+        let cert = null;
+        try {
+            const out = await letsencrypt.issueCert(domain, { staging: !!staging });
+            cert = out.cert;
+        } catch (certErr) {
+            return res.status(502).json({
+                error: `Let's Encrypt 발급 실패: ${certErr.message}`,
+                hint: 'DNS가 방금 바뀌었다면 몇 분 후 다시 시도하세요. staging=true 로 테스트 모드 발급도 가능합니다.',
             });
         }
 
-        // Step 2: Add Cloudflare tunnel DNS route for custom domain
-        try {
-            await tunnelService.addCustomDomainRoute(domain, project);
-            console.log(`✅ Cloudflare DNS route added for custom domain: ${domain}`);
-        } catch (tunnelErr) {
-            console.error(`⚠️ Cloudflare DNS route failed for ${domain}:`, tunnelErr.message);
-            // Continue anyway — Nginx routing will still work if user's DNS directly points to server
-        }
-
-        // Step 3: Update DB
-        const updatedProject = await db.queryOne(
+        // Step 3: update DB
+        const updated = await db.queryOne(
             'UPDATE projects SET custom_domain = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
             [domain, project.id]
         );
+        decryptEnvIfString(updated);
 
-        // Step 4: Update Nginx config with custom domain
-        await nginxService.addProject(updatedProject);
+        // Step 4: regenerate nginx config — generateConfig() now automatically emits an HTTPS
+        // server block for updated.custom_domain because letsencrypt.hasCert(domain) is now true.
+        // We pass the actual running container as targetContainer so the HTTPS block's proxy_pass
+        // points at the real Blue-Green container, not the bare fallback name.
+        const targetContainer = project.container_id || null;
+        await nginxService.addProject(updated, targetContainer);
 
         res.json({
             success: true,
-            message: `✅ 도메인 ${domain}이(가) 성공적으로 연결되었습니다!`,
+            message: `✅ ${domain} 연결 완료 — https://${domain}`,
             domain,
             url: `https://${domain}`,
-            status: 'connected'
+            cert,
         });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/projects/:id/domain/status - Get domain connection status
+// GET /api/projects/:id/domain/status  — DNS + cert summary
 router.get('/:id/domain/status', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        if (!project.custom_domain) return res.json({ status: 'none', message: '커스텀 도메인 미설정' });
 
-        if (!project.custom_domain) {
-            return res.json({
-                status: 'none',
-                domain: null,
-                message: '커스텀 도메인이 설정되지 않았습니다.'
-            });
-        }
-
-        // Check if DNS is still valid
-        const expectedTarget = `${project.subdomain}.twinverse.org`;
-        let dnsValid = false;
-
-        try {
-            const cnameRecords = await dnsResolveCname(project.custom_domain);
-            dnsValid = cnameRecords.some(r => r.toLowerCase() === expectedTarget.toLowerCase());
-        } catch (e) {
-            // CNAME lookup failed
-        }
+        const dnsCheck = await verifyDomainDns(project.custom_domain, project);
+        const cert = await letsencrypt.certInfo(project.custom_domain);
 
         res.json({
-            status: dnsValid ? 'connected' : 'dns_error',
+            status: dnsCheck.verified && cert.exists ? 'connected' : (cert.exists ? 'dns_drift' : 'cert_missing'),
             domain: project.custom_domain,
-            expectedTarget,
-            dnsValid,
+            publicIp: PUBLIC_IP,
+            dns: dnsCheck.details,
+            dnsValid: dnsCheck.verified,
+            cert,
             url: `https://${project.custom_domain}`,
-            message: dnsValid
-                ? `✅ ${project.custom_domain} 정상 연결 중`
-                : `⚠️ DNS 레코드가 변경되었습니다. CNAME을 ${expectedTarget}로 재설정해주세요.`
         });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/projects/:id/domain - Disconnect custom domain
+// DELETE /api/projects/:id/domain  — revoke cert, remove from nginx, clear DB
 router.delete('/:id/domain', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
-
-        if (!project.custom_domain) {
-            return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
-        }
+        if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
 
         const oldDomain = project.custom_domain;
 
-        // Remove domain from DB
-        const updatedProject = await db.queryOne(
+        // Revoke cert (best-effort — keep going even if this fails)
+        try { await letsencrypt.revokeCert(oldDomain); }
+        catch (e) { console.warn(`[domains] revokeCert(${oldDomain}) failed:`, e.message); }
+
+        // Clear DB binding
+        const updated = await db.queryOne(
             'UPDATE projects SET custom_domain = NULL, updated_at = NOW() WHERE id = $1 RETURNING *',
             [project.id]
         );
+        decryptEnvIfString(updated);
 
-        // Regenerate Nginx config (without custom domain)
-        await nginxService.addProject(updatedProject);
+        // Regenerate nginx config without the custom domain / HTTPS block
+        const targetContainer = project.container_id || null;
+        await nginxService.addProject(updated, targetContainer);
 
-        res.json({
-            success: true,
-            message: `도메인 ${oldDomain} 연결이 해제되었습니다.`,
-            status: 'none'
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        res.json({ success: true, message: `도메인 ${oldDomain} 연결 해제 완료`, status: 'none' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/projects/:id/domain/renew  — re-run certbot renew for this domain specifically.
+// Mostly useful for operators — the daily cron handles normal renewals.
+router.post('/:id/domain/renew', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
+
+        const result = await letsencrypt.issueCert(project.custom_domain); // keep-until-expiring
+        const targetContainer = project.container_id || null;
+        const fresh = await db.queryOne('SELECT * FROM projects WHERE id = $1', [project.id]);
+        decryptEnvIfString(fresh);
+        await nginxService.addProject(fresh, targetContainer);
+
+        res.json({ success: true, cert: result.cert });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

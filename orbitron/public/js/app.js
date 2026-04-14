@@ -839,53 +839,49 @@ function renderSettings() {
     <div class="form-group"><label>빌드 명령어</label><input type="text" id="set-build" value="${escapeHtml(p.build_command || '')}"></div>
     <div class="form-group"><label>시작 명령어</label><input type="text" id="set-start" value="${escapeHtml(p.start_command || '')}"></div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-      <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인</label>
+      <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인 <span style="font-size:11px;color:var(--success);font-weight:500;">Let's Encrypt 자동 SSL</span></label>
       <div id="domain-status-area" style="margin-bottom:12px;"></div>
       ${p.custom_domain ? `
-      <div style="background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:16px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div>
+      <div style="background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;">
             <div style="font-weight:600;color:var(--success);margin-bottom:4px;">🟢 연결됨</div>
-            <a href="https://${escapeHtml(p.custom_domain)}" target="_blank" style="color:var(--accent);font-size:16px;font-weight:600;text-decoration:none;">${escapeHtml(p.custom_domain)}</a>
+            <a href="https://${escapeHtml(p.custom_domain)}" target="_blank" style="color:var(--accent);font-size:16px;font-weight:600;text-decoration:none;">https://${escapeHtml(p.custom_domain)}</a>
+            <div id="domain-cert-status-${p.id}" style="font-size:12px;color:var(--text-muted);margin-top:6px;">SSL 인증서 상태 확인 중…</div>
           </div>
-          <button class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);" onclick="disconnectDomain(${p.id})">🔌 연결 해제</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-ghost" onclick="renewDomain(${p.id})" title="Let's Encrypt 인증서 재발급/갱신">🔄 갱신</button>
+            <button class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);" onclick="disconnectDomain(${p.id})">🔌 연결 해제</button>
+          </div>
         </div>
       </div>
       ` : `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;">
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">도메인 등록기관(가비아, Namecheap 등)에서 CNAME 레코드를 <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;">${p.subdomain}.twinverse.org</code>로 설정한 후 연결하세요.</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="text" id="set-custom-domain" value="" placeholder="예: www.myapp.com" style="flex:1;">
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+          본인 소유의 도메인을 이 프로젝트에 연결하면 Orbitron이 <strong>Let's Encrypt로 SSL 인증서를 자동 발급</strong>하여 <code>https://</code>로 서비스합니다.
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <input type="text" id="set-custom-domain" value="" placeholder="예: myapp.com 또는 www.myapp.com" style="flex:1;min-width:220px;">
           <button class="btn btn-sm btn-ghost" onclick="verifyDomain(${p.id})" id="btn-verify-domain">🔍 DNS 검증</button>
           <button class="btn btn-sm btn-primary" onclick="connectDomain(${p.id})" id="btn-connect-domain" disabled>🔗 연결</button>
         </div>
         <div id="domain-verify-result" style="display:none;font-size:13px;padding:10px 12px;border-radius:6px;margin-bottom:12px;"></div>
-        <details style="cursor:pointer;">
-          <summary style="font-size:13px;color:var(--accent);font-weight:600;">📖 도메인 DNS 설정 가이드</summary>
-          <div style="margin-top:12px;font-size:13px;color:var(--text-muted);">
-            <div style="margin-bottom:12px;">
-              <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">가비아(Gabia)</div>
-              <ol style="padding-left:20px;line-height:1.8;">
-                <li>관리 콘솔 → 도메인 관리 → DNS 설정</li>
-                <li>레코드 추가: 타입 <code>CNAME</code>, 호스트 <code>www</code>, 값 <code>${p.subdomain}.twinverse.org</code></li>
-                <li>저장 후 여기서 "DNS 검증" 클릭</li>
-              </ol>
+        <details style="cursor:pointer;" open>
+          <summary style="font-size:13px;color:var(--accent);font-weight:600;">📖 DNS 설정 가이드 (필수)</summary>
+          <div style="margin-top:12px;font-size:13px;color:var(--text-muted);line-height:1.7;">
+            <p style="margin-bottom:10px;">도메인 등록기관 또는 DNS 관리 서비스에서 <strong>다음 중 하나</strong>의 레코드를 추가하세요:</p>
+            <div style="background:rgba(88,166,255,0.06);border-left:3px solid var(--accent);padding:10px 14px;border-radius:4px;margin-bottom:10px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">옵션 A — A 레코드 (권장, apex 및 www 모두 가능)</div>
+              <div>타입 <code>A</code> · 호스트 <code>@</code> (apex) 또는 <code>www</code> · 값 <code id="orbitron-public-ip-hint">공인 IP 확인 중…</code></div>
             </div>
-            <div style="margin-bottom:12px;">
-              <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">Namecheap</div>
-              <ol style="padding-left:20px;line-height:1.8;">
-                <li>Dashboard → Domain List → Manage → Advanced DNS</li>
-                <li>Add Record: Type <code>CNAME</code>, Host <code>www</code>, Value <code>${p.subdomain}.twinverse.org</code></li>
-                <li>저장 후 여기서 "DNS 검증" 클릭</li>
-              </ol>
+            <div style="background:rgba(189,147,249,0.06);border-left:3px solid #bd93f9;padding:10px 14px;border-radius:4px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">옵션 B — CNAME 레코드 (www/서브도메인에만 가능, apex 불가)</div>
+              <div>타입 <code>CNAME</code> · 호스트 <code>www</code> 또는 임의 서브도메인 · 값 <code>${p.subdomain}.twinverse.org</code></div>
             </div>
-            <div>
-              <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">Cloudflare</div>
-              <ol style="padding-left:20px;line-height:1.8;">
-                <li>Dashboard → DNS → Records → Add Record</li>
-                <li>Type <code>CNAME</code>, Name <code>www</code>, Target <code>${p.subdomain}.twinverse.org</code>, Proxy Off</li>
-                <li>저장 후 여기서 "DNS 검증" 클릭</li>
-              </ol>
+            <div style="margin-top:12px;">
+              <p style="margin-bottom:6px;"><strong>예시 — 가비아(Gabia):</strong> 관리 콘솔 → 도메인 → DNS 설정 → 레코드 추가</p>
+              <p style="margin-bottom:6px;"><strong>예시 — Cloudflare:</strong> DNS → Add Record (Proxy는 Off 권장)</p>
+              <p style="margin-bottom:0;color:var(--warning);">⚠️ DNS 전파에 1~48시간 소요될 수 있습니다. "DNS 검증" 버튼으로 반영 상태를 확인하세요.</p>
             </div>
           </div>
         </details>
@@ -951,6 +947,13 @@ function renderSettings() {
     <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:24px;">
       <button class="btn btn-danger" onclick="openDeleteModal(${p.id}, '${escapeHtml(p.name)}')">🗑 프로젝트 삭제</button>
     </div>`;
+
+    // Async: populate cert status (if connected) or public-IP hint (if not)
+    if (p.custom_domain && typeof loadDomainCertStatus === 'function') {
+        loadDomainCertStatus(p.id);
+    } else if (typeof loadPublicIpHint === 'function') {
+        loadPublicIpHint(p.id);
+    }
 }
 
 window.toggleAiKeyFields = function () {
@@ -1478,7 +1481,7 @@ async function connectDomain(projectId) {
 
     const btn = document.getElementById('btn-connect-domain');
     btn.disabled = true;
-    btn.textContent = '연결 중...';
+    btn.textContent = 'SSL 인증서 발급 중… (최대 60초)';
 
     try {
         const res = await fetch(`${API}/projects/${projectId}/domain/connect`, {
@@ -1489,12 +1492,13 @@ async function connectDomain(projectId) {
         const data = await res.json();
 
         if (res.ok && data.success) {
-            toast(`✅ ${domain} 도메인이 연결되었습니다!`, 'success');
+            toast(`✅ ${domain} 연결 + Let's Encrypt SSL 발급 완료!`, 'success');
             currentProject.custom_domain = domain;
             renderSettings();
             loadProjects();
         } else {
             toast(data.error || '도메인 연결 실패', 'error');
+            if (data.hint) console.info('hint:', data.hint);
         }
     } catch (e) {
         toast('도메인 연결 실패: ' + e.message, 'error');
@@ -1505,16 +1509,14 @@ async function connectDomain(projectId) {
 }
 
 async function disconnectDomain(projectId) {
-    if (!confirm('도메인 연결을 해제하시겠습니까? 기존 서브도메인(.twinverse.org)으로 되돌아갑니다.')) return;
+    if (!confirm('도메인 연결을 해제하시겠습니까? Let\'s Encrypt 인증서도 함께 폐기됩니다.')) return;
 
     try {
-        const res = await fetch(`${API}/projects/${projectId}/domain`, {
-            method: 'DELETE'
-        });
+        const res = await fetch(`${API}/projects/${projectId}/domain`, { method: 'DELETE' });
         const data = await res.json();
 
         if (res.ok && data.success) {
-            toast('도메인 연결이 해제되었습니다.', 'success');
+            toast('도메인 연결 + SSL 인증서가 해제되었습니다.', 'success');
             currentProject.custom_domain = null;
             renderSettings();
             loadProjects();
@@ -1525,6 +1527,49 @@ async function disconnectDomain(projectId) {
         toast('도메인 해제 실패: ' + e.message, 'error');
     }
 }
+
+// Re-issue / renew the Let's Encrypt certificate for the currently-connected custom domain.
+window.renewDomain = async function (projectId) {
+    if (!confirm('Let\'s Encrypt 인증서를 즉시 재발급/갱신하시겠습니까?')) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain/renew`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            toast('SSL 인증서 갱신 완료', 'success');
+            loadDomainCertStatus(projectId);
+        } else {
+            toast(data.error || '갱신 실패', 'error');
+        }
+    } catch (e) { toast('갱신 실패: ' + e.message, 'error'); }
+};
+
+// Fetch and display the SSL cert expiry + DNS match status for a connected custom domain.
+window.loadDomainCertStatus = async function (projectId) {
+    const el = document.getElementById(`domain-cert-status-${projectId}`);
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain/status`);
+        const d = await res.json();
+        if (d.status === 'none' || !d.domain) { el.textContent = ''; return; }
+        const certTxt = d.cert?.exists
+            ? `🔐 인증서 만료 ${d.cert.daysLeft}일 남음 (${d.cert.expiresAt?.split('T')[0]})`
+            : '⚠️ 인증서 없음';
+        const dnsTxt = d.dnsValid ? '🌐 DNS 일치' : '⚠️ DNS 불일치';
+        el.innerHTML = `${certTxt} · ${dnsTxt}`;
+        el.style.color = d.cert?.needsRenewal ? 'var(--warning)' : 'var(--text-muted)';
+    } catch (e) { el.textContent = '상태 조회 실패'; }
+};
+
+// Fetch our public IP hint and display it in the DNS guide box.
+window.loadPublicIpHint = async function (projectId) {
+    const el = document.getElementById('orbitron-public-ip-hint');
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain/status`);
+        const d = await res.json();
+        el.textContent = d.publicIp || '(IP 확인 불가 — 관리자에게 문의)';
+    } catch { el.textContent = '(조회 실패)'; }
+};
 
 async function toggleAutoDeploy(id, enable) {
     try {
