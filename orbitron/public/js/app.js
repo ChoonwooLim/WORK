@@ -5978,54 +5978,59 @@ window.dcCopyText = async function (btn, text) {
     }
 };
 
-// Generate the two standard records (A apex + CNAME www) as a shared HTML block
+// Generate the two standard records (A apex + CNAME www) as a shared HTML block.
+// v2.5 redesign — gradient-bordered cards, record-type pill, monospace value chip,
+// one-click copy, and a subtle hover highlight. All styles inlined so the block is
+// drop-in and can't collide with page CSS.
 function dcRecordsBlock(ip, sub) {
-    return `
-      <div class="dc-record">
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">타입</div>
-          <div><code>A</code></div>
-          <div></div>
+    const cardStyle = `
+      position:relative; margin:14px 0; padding:18px 20px 16px;
+      background:linear-gradient(135deg, rgba(20,24,34,0.65) 0%, rgba(14,18,28,0.85) 100%);
+      border:1px solid rgba(139,233,253,0.12);
+      border-radius:14px;
+      box-shadow: 0 6px 22px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+      backdrop-filter: blur(4px);
+    `.replace(/\s+/g, ' ');
+    const rowStyle = `
+      display:grid; grid-template-columns: 110px 1fr auto;
+      gap:14px; align-items:center; padding:8px 0;
+      border-top:1px dashed rgba(139,233,253,0.08);
+    `.replace(/\s+/g, ' ');
+    const firstRowStyle = rowStyle.replace('border-top:1px dashed rgba(139,233,253,0.08);', '');
+    const labelStyle = `font-size:11px; letter-spacing:.5px; text-transform:uppercase; color:var(--text-muted); font-weight:600;`;
+    const valueStyle = `font-size:13.5px; color:var(--text-primary); line-height:1.55; word-break:break-all;`;
+    const chip = v => `<span style="display:inline-block;font-family:'JetBrains Mono',Consolas,monospace;background:rgba(139,233,253,0.08);color:#8be9fd;padding:3px 10px;border-radius:6px;font-size:12.5px;border:1px solid rgba(139,233,253,0.18);">${v}</span>`;
+    const copyBtn = v => `<button class="dc-copy-btn" data-copy="${v}" style="background:rgba(139,233,253,0.08);border:1px solid rgba(139,233,253,0.25);color:#8be9fd;padding:5px 11px;border-radius:7px;font-size:11.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .15s ease;">📋 복사</button>`;
+    const pill = (label, color) => `
+      <div style="position:absolute;top:-11px;left:18px;display:inline-flex;align-items:center;gap:6px;background:${color};color:#0b0e14;font-weight:800;font-size:11px;letter-spacing:1px;padding:4px 12px;border-radius:999px;box-shadow:0 4px 12px ${color}55;">
+        ${label}
+      </div>`;
+
+    const recordCard = (type, typeColor, hostLabel, hostValue, valueLabel, valueVal, hint) => `
+      <div style="${cardStyle}">
+        ${pill(type, typeColor)}
+        <div style="${firstRowStyle}">
+          <div style="${labelStyle}">호스트</div>
+          <div style="${valueStyle}">${chip(hostValue)} <span style="color:var(--text-muted);font-size:11.5px;margin-left:6px;">${hostLabel}</span></div>
+          <div>${copyBtn(hostValue)}</div>
         </div>
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">호스트 (Host)</div>
-          <div><code>@</code> 또는 비어두기 <span style="color:var(--text-muted);font-size:11px;">(apex = iiffnextwave.org 같은 메인 도메인)</span></div>
-          <div><button class="dc-copy-btn" data-copy="@">📋 @</button></div>
+        <div style="${rowStyle}">
+          <div style="${labelStyle}">${valueLabel}</div>
+          <div style="${valueStyle}">${chip(valueVal)} ${hint ? `<span style="color:var(--text-muted);font-size:11.5px;margin-left:6px;">${hint}</span>` : ''}</div>
+          <div>${copyBtn(valueVal)}</div>
         </div>
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">값 (Value)</div>
-          <div><code>${ip}</code> <span style="color:var(--text-muted);font-size:11px;">(Orbitron 공인 IP)</span></div>
-          <div><button class="dc-copy-btn" data-copy="${ip}">📋 ${ip}</button></div>
-        </div>
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">TTL</div>
-          <div>기본값 (300초 이하 권장)</div>
-          <div></div>
-        </div>
-      </div>
-      <div class="dc-record">
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">타입</div>
-          <div><code>CNAME</code></div>
-          <div></div>
-        </div>
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">호스트 (Host)</div>
-          <div><code>www</code></div>
-          <div><button class="dc-copy-btn" data-copy="www">📋 www</button></div>
-        </div>
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">값 (Target)</div>
-          <div><code>${sub}.twinverse.org</code></div>
-          <div><button class="dc-copy-btn" data-copy="${sub}.twinverse.org">📋 ${sub}.twinverse.org</button></div>
-        </div>
-        <div class="dc-record-row">
-          <div style="color:var(--text-muted);">TTL</div>
-          <div>기본값</div>
+        <div style="${rowStyle}">
+          <div style="${labelStyle}">TTL</div>
+          <div style="${valueStyle}">기본값 <span style="color:var(--text-muted);font-size:11.5px;">(300초 이하 권장)</span></div>
           <div></div>
         </div>
       </div>
     `;
+
+    return (
+      recordCard('A RECORD', '#50fa7b', '(apex — 메인 도메인)', '@', '값 (IP)',      ip,                     '(Orbitron 공인 IP)') +
+      recordCard('CNAME',    '#8be9fd', '(www 서브도메인)',      'www', '값 (Target)', sub + '.twinverse.org', '')
+    );
 }
 
 function dcCommonWarning() {
@@ -6039,32 +6044,140 @@ function dcCommonWarning() {
     `;
 }
 
+// v2.5 — Redesigned Squarespace provider guide. Modern card layout, numbered
+// step timeline, and a prominent "ISP blocks inbound 80/443" fallback banner that
+// points users whose home ISP silently drops inbound traffic (LG U+, KT, SKB
+// 가정용) to the Cloudflare-tunnel workaround. Everything is scoped to inline
+// styles so it won't conflict with the rest of the dashboard CSS.
+function dcSquarespaceGuide(records, warn, ip, sub) {
+    const hero = `
+      <div style="
+        position:relative; overflow:hidden; margin:4px 0 18px;
+        padding:22px 24px 20px;
+        background:linear-gradient(135deg, rgba(80,250,123,0.10) 0%, rgba(139,233,253,0.04) 55%, rgba(80,250,123,0.10) 100%);
+        border:1px solid rgba(80,250,123,0.22);
+        border-radius:16px;
+        box-shadow:0 10px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+      ">
+        <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(80,250,123,0.28) 0%,transparent 70%);pointer-events:none;"></div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px;">
+          <div style="font-size:32px;line-height:1;">🟩</div>
+          <div>
+            <div style="font-size:17px;font-weight:800;color:var(--text-primary);letter-spacing:.2px;">Squarespace Domains</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">2023년 말 Google Domains 에서 이관 · <code style="font-size:11px;">ns-cloud-*.googledomains.com</code> 유지</div>
+          </div>
+        </div>
+        <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);margin-top:8px;">
+          네임서버는 <strong style="color:#50fa7b;">변경 없음</strong>. 아래 두 DNS 레코드만 추가하시면 됩니다.
+          Let's Encrypt HTTP-01 으로 SSL 자동 발급까지 평균 <strong>5~15 분</strong>.
+        </div>
+      </div>
+    `;
+
+    // Prominent fallback banner for Korean residential ISPs that block inbound 80/443.
+    // If the user hits this case, the whole Squarespace→LE path structurally can't work
+    // and they need the CF-tunnel workaround instead.
+    const ispFallback = `
+      <div style="
+        position:relative; overflow:hidden; margin:10px 0 20px;
+        padding:16px 20px 16px 60px;
+        background:linear-gradient(135deg, rgba(255,121,198,0.08) 0%, rgba(189,147,249,0.10) 100%);
+        border:1px solid rgba(189,147,249,0.28);
+        border-left:4px solid #bd93f9;
+        border-radius:12px;
+      ">
+        <div style="position:absolute;left:18px;top:16px;font-size:24px;line-height:1;">🚧</div>
+        <div style="font-size:12.5px;font-weight:800;color:#bd93f9;letter-spacing:.6px;margin-bottom:4px;">NEW in v2.5 · ISP 인바운드 차단 대응</div>
+        <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);">
+          <strong style="color:var(--text-primary);">LG U+ / KT / SKB 가정용 인터넷</strong>은 외부에서 들어오는 80/443 포트를 ISP 레벨에서 막습니다 —
+          공유기 포트포워딩을 해도 패킷이 도달 못 해 Let's Encrypt 발급이 <code>Timeout during connect</code>
+          으로 실패합니다. 이 경우 <strong style="color:var(--text-primary);">네임서버를 Cloudflare 로 이전</strong>하고
+          기존 <code>cloudflared</code> 터널을 origin 으로 써서 TLS 는 CF 엣지에서 종단시키는
+          방식으로 우회합니다. 자세한 절차는
+          <a href="docs.html#custom-domain" target="_blank" style="color:#8be9fd;text-decoration:underline;">문서의 "ISP blocks inbound 80/443" 섹션</a>
+          을 참고하세요.
+        </div>
+      </div>
+    `;
+
+    const recordsHeader = `
+      <div style="display:flex;align-items:center;gap:10px;margin:22px 0 4px;">
+        <span style="display:inline-block;width:6px;height:22px;border-radius:3px;background:linear-gradient(180deg,#50fa7b,#8be9fd);"></span>
+        <span style="font-size:15px;font-weight:700;color:var(--text-primary);">추가할 DNS 레코드 2개</span>
+        <span style="font-size:11.5px;color:var(--text-muted);margin-left:4px;">(각 값 옆 📋 버튼으로 복사)</span>
+      </div>
+    `;
+
+    const stepsTitle = `
+      <div style="display:flex;align-items:center;gap:10px;margin:24px 0 10px;">
+        <span style="display:inline-block;width:6px;height:22px;border-radius:3px;background:linear-gradient(180deg,#bd93f9,#ff79c6);"></span>
+        <span style="font-size:15px;font-weight:700;color:var(--text-primary);">Squarespace 대시보드 단계별 안내</span>
+      </div>
+    `;
+
+    const step = (n, title, body, color = '#8be9fd') => `
+      <div style="
+        position:relative; display:grid; grid-template-columns:40px 1fr; gap:14px;
+        padding:12px 14px 12px 10px; margin:8px 0;
+        background:rgba(20,24,34,0.45);
+        border:1px solid rgba(139,233,253,0.08);
+        border-radius:10px;
+        transition:border-color .15s ease, background .15s ease;
+      "
+      onmouseover="this.style.borderColor='rgba(139,233,253,0.25)';this.style.background='rgba(20,24,34,0.7)';"
+      onmouseout="this.style.borderColor='rgba(139,233,253,0.08)';this.style.background='rgba(20,24,34,0.45)';">
+        <div style="
+          width:34px; height:34px; border-radius:50%;
+          display:flex; align-items:center; justify-content:center;
+          background:linear-gradient(135deg, ${color}, ${color}aa);
+          color:#0b0e14; font-weight:900; font-size:14px;
+          box-shadow: 0 4px 14px ${color}55;
+          margin-top:2px;
+        ">${n}</div>
+        <div style="padding-top:4px;">
+          <div style="font-size:13.5px;font-weight:700;color:var(--text-primary);margin-bottom:3px;">${title}</div>
+          <div style="font-size:12.5px;line-height:1.65;color:var(--text-secondary);">${body}</div>
+        </div>
+      </div>
+    `;
+
+    const steps = `
+      ${step(1, '접속 + 로그인',
+        `<a href="https://account.squarespace.com/domains" target="_blank" style="color:#8be9fd;text-decoration:underline;">account.squarespace.com/domains</a> 로 이동 후 Squarespace 계정으로 로그인.`)}
+      ${step(2, '도메인 선택',
+        `목록에서 대상 도메인을 클릭하여 상세 화면 진입.`)}
+      ${step(3, 'DNS 메뉴 진입',
+        `좌측 메뉴에서 <code>DNS</code> 또는 <code>DNS Settings</code> 선택.`)}
+      ${step(4, '기존 Squarespace 레코드 정리',
+        `혹시 다음이 있으면 <span style="color:#ff5555;font-weight:600;">모두 휴지통으로 삭제</span>:<br>
+         • <code>A</code> 타입 4개 → <code>198.185.159.144/145</code>, <code>198.49.23.144/145</code><br>
+         • <code>CNAME www</code> → <code>ext-sq.squarespace.com</code>`, '#ff79c6')}
+      ${step(5, 'A 레코드 추가',
+        `Custom Records 섹션에서 <code>+ Add Record</code> → 위 <strong>A 레코드</strong> 값 그대로 입력 (호스트 <code>@</code>, 값 <code>${ip}</code>) → <strong>Save</strong>.`, '#50fa7b')}
+      ${step(6, 'CNAME 레코드 추가',
+        `다시 <code>+ Add Record</code> → <strong>CNAME 레코드</strong> 입력 (호스트 <code>www</code>, 값 <code>${sub}.twinverse.org</code>) → <strong>Save</strong>.`, '#50fa7b')}
+      ${step(7, 'DNS 전파 대기 + 검증',
+        `저장 후 <strong>5~10 분</strong> 대기 후, 아래 <strong>5단계 DNS 검증</strong> 버튼 클릭. ✅ 나오면 6단계 SSL 발급으로 진행.`, '#bd93f9')}
+    `;
+
+    return `
+      ${hero}
+      ${ispFallback}
+      ${recordsHeader}
+      ${records}
+      ${stepsTitle}
+      ${steps}
+      ${warn}
+    `;
+}
+
 // Provider-specific guide HTML. Each returns the inner HTML for #dc-guide-body.
 function dcBuildGuide(provider, ip, sub) {
     const records = dcRecordsBlock(ip, sub);
     const warn = dcCommonWarning();
 
     const guides = {
-        squarespace: `
-          <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
-            <strong>🟩 Squarespace Domains</strong> — 2023년 말 Google Domains에서 이관된 서비스입니다.<br>
-            네임서버는 그대로(<code>ns-cloud-*.googledomains.com</code>) 두시고 DNS 레코드만 수정합니다.
-          </div>
-          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
-          ${records}
-
-          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 Squarespace 대시보드 단계별 안내</strong>
-          <ol class="dc-steps">
-            <li class="dc-step"><strong>접속:</strong> <a href="https://account.squarespace.com/domains" target="_blank" style="color:var(--accent);">https://account.squarespace.com/domains</a> 로그인</li>
-            <li class="dc-step"><strong>도메인 선택:</strong> 목록에서 대상 도메인 클릭</li>
-            <li class="dc-step"><strong>DNS 메뉴:</strong> 왼쪽 메뉴에서 <code>DNS</code> 또는 <code>DNS Settings</code> 선택</li>
-            <li class="dc-step"><strong>기존 Squarespace 레코드 삭제</strong> (있다면): <code>A</code> 타입 4개 (198.185.159.144/145, 198.49.23.144/145), <code>CNAME www → ext-sq.squarespace.com</code> — 모두 휴지통 아이콘으로 삭제</li>
-            <li class="dc-step"><strong>Custom Records</strong> 섹션에서 <code>+ Add Record</code> 버튼 → 위의 <strong>A 레코드</strong> 먼저 입력 → Save</li>
-            <li class="dc-step">다시 <code>+ Add Record</code> → 위의 <strong>CNAME 레코드</strong> 입력 → Save</li>
-            <li class="dc-step">저장 후 5-10분 기다렸다가 아래 <strong>5단계 DNS 검증</strong> 버튼 클릭</li>
-          </ol>
-          ${warn}
-        `,
+        squarespace: dcSquarespaceGuide(records, warn, ip, sub),
 
         gabia: `
           <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">

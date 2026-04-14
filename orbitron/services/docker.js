@@ -1,6 +1,7 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 const path = require('path');
 const fs = require('fs');
 
@@ -110,13 +111,15 @@ class DockerService {
         }
 
         detailLogs += `  이미지 이름: ${imageName}\n`;
-        const noCache = project.env_vars?.DOCKER_NO_CACHE === 'true' ? ' --no-cache' : '';
-        const buildCmd = `docker build${noCache} -t ${imageName} ${projectDir}`;
-        detailLogs += `  실행 명령: ${buildCmd}\n`;
+        const buildArgs = ['build'];
+        if (project.env_vars?.DOCKER_NO_CACHE === 'true') buildArgs.push('--no-cache');
+        buildArgs.push('-t', imageName, projectDir);
+        
+        detailLogs += `  실행 명령: docker ${buildArgs.join(' ')}\n`;
         detailLogs += `${'─'.repeat(60)}\n`;
 
         return new Promise((resolve, reject) => {
-            exec(buildCmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+            execFile('docker', buildArgs, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 const elapsed = ((Date.now() - buildStart) / 1000).toFixed(1);
                 if (error) {
                     detailLogs += stdout + stderr;
@@ -126,10 +129,10 @@ class DockerService {
                 } else {
                     detailLogs += stdout + stderr;
                     // Log image size
-                    exec(`docker images ${imageName} --format '{{.Size}}'`, (e, sizeOut) => {
+                    execFile('docker', ['images', imageName, '--format', '{{.Size}}'], (e, sizeOut) => {
                         if (!e && sizeOut.trim()) detailLogs += `\n📦 이미지 크기: ${sizeOut.trim()}`;
                         detailLogs += `\n✅ 빌드 완료 (${elapsed}초 소요)\n`;
-                        detailLogs += `${'═'.repeat(60)}\n`;
+                        detailLogs += `${'─'.repeat(60)}\n`;
                         resolve({ imageName, logs: detailLogs });
                     });
                 }
@@ -733,37 +736,34 @@ EXPOSE ${port}
             envVars = {};
         }
         const envKeys = Object.keys(envVars).filter(k => !k.startsWith('_ORBITRON_'));
-        const envFlags = envKeys
-            .map(k => {
-                const escapedVal = String(envVars[k]).replace(/'/g, "'\\''");
-                return `-e ${k}='${escapedVal}'`;
-            })
-            .join(' ');
+        
+        const runArgs = ['run', '-d', '--name', containerName, '--restart', 'unless-stopped', '--network', 'orbitron_internal', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3'];
+        
+        envKeys.forEach(k => {
+            runArgs.push('-e', `${k}=${String(envVars[k])}`);
+        });
         startLogs += `  환경변수: ${envKeys.length}개 (${envKeys.join(', ') || '없음'})\n`;
 
         // ── Feature 1: Auto-mount persistent volumes ──
         const hostBaseDir = path.join(PROJECTS_DIR, project.subdomain || project.id, '_volumes');
-        let volumeFlags = '';
         const mountList = [];
 
         if (envVars.UPLOAD_DIR) {
             // Explicit UPLOAD_DIR from env
             const uploadPath = envVars.UPLOAD_DIR;
             try { await fs.promises.mkdir(uploadPath, { recursive: true }); } catch { }
-            volumeFlags = `-v ${uploadPath}:${uploadPath}`;
+            runArgs.push('-v', `${uploadPath}:${uploadPath}`);
             mountList.push(`${uploadPath} → ${uploadPath}`);
         } else {
             // Auto-mount common upload/media/data directories
             const PERSIST_DIRS = ['/app/uploads', '/app/media', '/app/data', '/app/public/uploads'];
-            const mounts = [];
             for (const dir of PERSIST_DIRS) {
                 const dirName = dir.replace('/app/', '').replace(/\//g, '_');
                 const hostDir = path.join(hostBaseDir, dirName);
                 try { await fs.promises.mkdir(hostDir, { recursive: true }); } catch { }
-                mounts.push(`-v ${hostDir}:${dir}`);
+                runArgs.push('-v', `${hostDir}:${dir}`);
                 mountList.push(`${hostDir} → ${dir}`);
             }
-            volumeFlags = mounts.join(' ');
         }
         startLogs += `  볼륨 마운트: ${mountList.length}개\n`;
         mountList.forEach(m => { startLogs += `    📁 ${m}\n`; });
@@ -787,24 +787,22 @@ EXPOSE ${port}
             } else {
                 startLogs += `  포트: ${port}\n`;
             }
+            runArgs.push('-p', `${port}:${port}`);
         } else {
             startLogs += `  포트: 없음 (백그라운드 워커)\n`;
         }
-        const portFlags = isWorker ? '' : `-p ${port}:${port}`;
 
-        // ── Feature 3: Log rotation (prevent disk fill) ──
-        const logFlags = '--log-opt max-size=10m --log-opt max-file=3';
+        runArgs.push(imageName);
 
-        const cmd = `docker run -d --name ${containerName} --restart unless-stopped --network orbitron_internal ${logFlags} ${volumeFlags} ${envFlags} ${portFlags} ${imageName}`;
         startLogs += `  네트워크: orbitron_internal\n`;
         startLogs += `  재시작 정책: unless-stopped\n`;
         startLogs += `  로그 로테이션: max-size=10m, max-file=3\n`;
         startLogs += `${'─'.repeat(60)}\n`;
-        startLogs += `  실행 명령:\n  ${cmd}\n`;
+        startLogs += `  실행 명령:\n  docker ${runArgs.map(a => a.includes(' ') ? "'" + a + "'" : a).join(' ')}\n`;
         startLogs += `${'─'.repeat(60)}\n`;
 
         return new Promise((resolve, reject) => {
-            exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+            execFile('docker', runArgs, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) {
                     startLogs += `\n❌ 컨테이너 시작 실패\n  오류: ${stderr}\n`;
                     startLogs += `${'═'.repeat(60)}\n`;

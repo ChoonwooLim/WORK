@@ -1,12 +1,30 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execFileSync } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 
-const NGINX_CONF_DIR = path.join(__dirname, '..', '..', 'infrastructure', 'nginx', 'conf.d');
+const NGINX_CONF_DIR = path.resolve(path.join(__dirname, '..', '..', 'infrastructure', 'nginx', 'conf.d'));
 const TUNNEL_DOMAIN = process.env.TUNNEL_DOMAIN || 'twinverse.org';
+
+// Subdomain must be DNS-label-safe: used as filename + Docker name + shell cwd.
+// Anything outside [a-z0-9-] could enable path traversal or shell metachars.
+const SAFE_SUBDOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+function assertSafeSubdomain(sub) {
+    if (typeof sub !== 'string' || !SAFE_SUBDOMAIN.test(sub)) {
+        throw new Error(`Unsafe subdomain: ${JSON.stringify(sub)}`);
+    }
+}
+function confPathFor(subdomain) {
+    assertSafeSubdomain(subdomain);
+    const p = path.resolve(path.join(NGINX_CONF_DIR, `${subdomain}.conf`));
+    // Escape check: resolved path must remain under NGINX_CONF_DIR
+    if (p !== path.join(NGINX_CONF_DIR, `${subdomain}.conf`)) {
+        throw new Error(`Path traversal blocked: ${subdomain}`);
+    }
+    return p;
+}
 
 class NginxService {
     // Build the proxy_pass block shared by both HTTP and HTTPS server blocks
@@ -89,16 +107,27 @@ ${this._proxyPassBlock(upstreamHost, upstreamPort)}
         // route to that container's internal port (80) instead of the host-mapped port
         if (project.container_id && project.container_id.startsWith('compose-')) {
             try {
+                assertSafeSubdomain(project.subdomain);
                 const projectDir = path.join(__dirname, '..', 'deployments', project.subdomain);
-                const { execSync } = require('child_process');
-                const services = execSync(`cd ${projectDir} && docker compose ps --services 2>/dev/null`, { encoding: 'utf-8' }).trim().split('\n');
+                // execFileSync w/ array args + cwd: no shell, no interpolation, no injection surface.
+                const services = execFileSync('docker', ['compose', 'ps', '--services'], {
+                    cwd: projectDir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+                }).trim().split('\n');
                 const nginxSvc = services.find(s => s === 'nginx' || s === 'proxy' || s === 'gateway' || s === 'traefik');
                 if (nginxSvc) {
-                    const containerName = execSync(`cd ${projectDir} && docker compose ps -q ${nginxSvc} | xargs docker inspect -f '{{.Name}}' | sed 's|^/||'`, { encoding: 'utf-8' }).trim();
-                    if (containerName) {
-                        upstreamHost = containerName;
-                        upstreamPort = 80; // Compose nginx listens on 80 internally
-                        console.log(`📡 Compose nginx detected: routing to ${upstreamHost}:${upstreamPort}`);
+                    const containerId = execFileSync('docker', ['compose', 'ps', '-q', nginxSvc], {
+                        cwd: projectDir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+                    }).trim();
+                    if (containerId) {
+                        const raw = execFileSync('docker', ['inspect', '-f', '{{.Name}}', containerId], {
+                            encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+                        }).trim();
+                        const containerName = raw.replace(/^\//, '');
+                        if (containerName) {
+                            upstreamHost = containerName;
+                            upstreamPort = 80; // Compose nginx listens on 80 internally
+                            console.log(`📡 Compose nginx detected: routing to ${upstreamHost}:${upstreamPort}`);
+                        }
                     }
                 }
             } catch (e) { /* Not a compose project or no nginx service — use default */ }
@@ -187,7 +216,7 @@ ${httpsBlock}`;
 
     // Add nginx config for a project
     async addProject(project, targetContainer) {
-        const configPath = path.join(NGINX_CONF_DIR, `${project.subdomain}.conf`);
+        const configPath = confPathFor(project.subdomain);
         const config = this.generateConfig(project, targetContainer);
         await fsp.writeFile(configPath, config);
         await this.reload(project.subdomain);
@@ -195,7 +224,7 @@ ${httpsBlock}`;
 
     // Remove nginx config for a project
     async removeProject(subdomain) {
-        const configPath = path.join(NGINX_CONF_DIR, `${subdomain}.conf`);
+        const configPath = confPathFor(subdomain);
         try {
             await fsp.unlink(configPath);
             await this.reload(subdomain);

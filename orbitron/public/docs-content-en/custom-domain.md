@@ -1,5 +1,7 @@
 # 🌐 Custom Domain with Let's Encrypt Auto-SSL
 
+> 🔒 **Security updates in 2026.04 v2.5**: Shell-injection and path-traversal fixes in nginx config generation, IPv6/AAAA DNS verification, and IDN/Punycode support. Also documents the **Cloudflare-tunnel workaround** (§ "ISP blocks inbound 80/443") for home networks — LG U+, KT, SKB residential plans silently drop inbound traffic, so HTTP-01 is structurally unusable and the zone must be moved to Cloudflare.
+
 > ✨ **Updated in 2026.04 v2.4**: Connect now happens on a **dedicated wizard page** (sidebar → 🌐 Custom Domain). Adds multi-domain SAN certs, canonical redirect, search-engine registration, and provider-specific DNS guides — all in one flow.
 
 > ✨ **New in 2026.04 v2.3**: Orbitron users can now freely point their own domain (e.g. `myapp.com`) at any project; HTTPS certificates are **issued and renewed automatically** by Let's Encrypt.
@@ -207,6 +209,72 @@ volumes:
 - Webroot contains only transient ACME challenge files, nothing sensitive
 - Only project owners can call their project's domain API (`authMiddleware + viewerGuard`)
 - Admins can pass `skipVerify: true` for emergency recovery
+
+---
+
+## 🚧 ISP blocks inbound 80/443 — Cloudflare tunnel workaround (v2.5)
+
+**Symptom**: DNS verification passes, but Let's Encrypt issuance fails with `Timeout during connect (likely firewall problem)`. External port-check services (check-host.net, canyouseeme.org) show ports 80 / 443 / even 22 as *Connection timed out* from every geography.
+
+**Root cause**: Korean residential ISPs (LG U+, KT, SKB) silently drop inbound TCP to customer gateway ports at the ISP layer. Port-forwarding on the home router doesn't help — the packets never reach it. HTTP-01 challenge requires Let's Encrypt to connect *inbound* to your server on port 80, so it is structurally unusable in this topology.
+
+**Diagnostic (to confirm it's your case)**:
+```bash
+# From the Orbitron host:
+curl -s https://api.ipify.org    # your real public IP, e.g. 112.156.177.187
+
+# Then, from a different network (phone on LTE, not WiFi):
+curl -v http://<your-public-ip>/
+# "Connection timed out" on all ports including 22 → ISP drops inbound
+```
+
+**Workaround — migrate DNS to Cloudflare, keep cloudflared tunnel as origin**. All traffic becomes outbound from your server, so inbound ISP filtering no longer matters.
+
+### Architecture
+```
+[Browser] https://www.myapp.com
+    ↓
+[Cloudflare edge]                           ← terminates TLS (Universal SSL, free)
+    ↓ Page/Redirect Rule: apex → 301 → www
+    ↓ for www: follow CNAME → <sub>.twinverse.org
+[cloudflared tunnel] (outbound from host)   ← no inbound port needed
+    ↓
+[Orbitron dev-nginx] server_name www.myapp.com
+    ↓ proxy_pass
+[Project container] ✅
+```
+
+### Setup steps
+1. **Add the zone to Cloudflare (Free plan)**: `dash.cloudflare.com → Add a Site → <myapp.com>`. CF auto-imports existing DNS records from your current host.
+2. **Change nameservers at your registrar** (Squarespace, Gabia, Namecheap, etc.) to the two NS that Cloudflare assigns (`<name1>.ns.cloudflare.com`, `<name2>.ns.cloudflare.com`). NS propagation takes 30 min – 24 h; Cloudflare emails you when status flips to **Active**.
+3. **CF DNS records** (`Websites → <myapp.com> → DNS`):
+   - `A` `@` `<your-public-ip>` — **🟧 Proxied** (origin unreachable, but the redirect rule below fires at CF edge before origin is contacted)
+   - `CNAME` `www` `<sub>.twinverse.org` — **🟧 Proxied**
+4. **CF Redirect Rule** (`Rules → Redirect Rules → Create rule`):
+   - When: `Hostname equals myapp.com`
+   - Then: Static redirect, 301, URL `https://www.myapp.com${http.request.uri.path}`, preserve query string ✅
+5. **CF SSL/TLS**:
+   - Encryption mode: **Full**
+   - Edge Certificates → **Always Use HTTPS**: ON
+6. **Orbitron nginx — add the new hostname to the existing tunnel project**: operator-side. `server_name` now includes `www.myapp.com`; Cloudflare Universal SSL handles the cert automatically — **no Let's Encrypt involvement**.
+
+### Tradeoffs vs. native LE
+| Aspect | Native LE (HTTP-01) | CF-tunnel workaround |
+|---|---|---|
+| Works behind ISPs that block inbound 80/443 | ❌ | ✅ |
+| Cert issuance time | 20–60 s | Instant (CF universal) |
+| TLS terminator | Our nginx | Cloudflare edge |
+| Cert source | Let's Encrypt (on-host) | Cloudflare (managed) |
+| DDoS / WAF in front of origin | None | Included (free plan) |
+| DNS control | Anywhere | Cloudflare only (NS must live there) |
+
+**When to prefer this path**: (1) home servers on Korean residential ISPs, (2) CGNAT environments, (3) sites that want CF's edge + WAF benefits anyway. For colocated / datacenter hosting with open inbound 80/443, stick with the default LE flow.
+
+### Operator walk-through for `iiffnextwave.org` (reference example)
+- Public IP was initially pinned to the wrong value in `.env`; corrected to the value from `curl https://api.ipify.org`.
+- LE HTTP-01 failed with `Timeout during connect 116.33.16.12:80` for the apex and CF edge `409` for `www` (because `www.iiffnextwave.org` CNAMEd through an existing tunnel but Cloudflare had no zone registered for `iiffnextwave.org`).
+- Zone added to Cloudflare, NS migrated at Squarespace (Google Cloud DNS → Cloudflare). CF-side DNS / redirect / SSL settings applied via the Cloudflare API using a short-TTL scoped token (`Zone:DNS:Edit`, `Zone:Zone Settings:Edit`, `Zone:Page Rules:Edit`, zone-scoped to `iiffnextwave.org`).
+- Orbitron nginx updated to accept `www.iiffnextwave.org` on the existing iiff project.
 
 ---
 

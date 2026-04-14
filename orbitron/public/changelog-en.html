@@ -461,6 +461,70 @@
     <div class="timeline-container">
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!-- v2.5 — 2026-04-14 (Security Hardening + ISP-inbound-blocked workaround) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div class="version-block">
+            <div class="version-dot" style="background:#ff5555; box-shadow: 0 0 14px rgba(255,85,85,0.5);"></div>
+            <div class="version-header">
+                <span class="version-tag" style="color:#ff5555;">v2.5</span>
+                <span class="version-date">April 14, 2026 (EVE)</span>
+            </div>
+            <p class="version-title">🔒 Security Hardening + ISP-Inbound-Blocked Workaround</p>
+            <ul class="change-list">
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Sec · RCE</span>
+                    <div class="change-content">
+                        <strong>[A] Shell-injection fix in nginx compose detection</strong>
+                        <p><code>services/nginx.js</code> previously built Docker-compose-detection commands with <code>execSync(`cd ${projectDir} &amp;&amp; docker compose …`)</code>. A maliciously-crafted <code>project.subdomain</code> could inject shell metachars and achieve RCE inside the Orbitron host process. Replaced with <code>execFileSync('docker', [...args], { cwd: projectDir })</code> — no shell, no interpolation. The original piped <code>xargs docker inspect | sed</code> is split into three JS-controlled steps.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Sec · Path</span>
+                    <div class="change-content">
+                        <strong>[B] Path-traversal defense on nginx config writes</strong>
+                        <p>Added <code>SAFE_SUBDOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/</code> validator plus <code>confPathFor()</code> that <code>path.resolve</code>'s the target and re-checks it stays inside <code>NGINX_CONF_DIR</code>. Applied in <code>addProject()</code> and <code>removeProject()</code>. Prevents a subdomain like <code>../../etc/malicious</code> from escaping the conf.d directory.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Sec · Net</span>
+                    <div class="change-content">
+                        <strong>[C] IPv6 / AAAA acceptance in DNS verification</strong>
+                        <p><code>routes/domains.js:verifyDomainDns()</code> previously only queried <code>dns.resolve4</code>. Added <code>dns.resolve6</code>, a third acceptance rule (<code>aaaa-to-public-ip6</code>), and <code>normalizeIp6()</code> for canonical comparison (so <code>::1</code> and <code>0:0:0:0:0:0:0:1</code> compare equal). Server IPv6 is opt-in via <code>publicIp.get6()</code> and the caller uses optional chaining so current deployments keep working.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Sec · I18n</span>
+                    <div class="change-content">
+                        <strong>[D] IDN / Punycode normalization</strong>
+                        <p><code>isValidDomain()</code> previously rejected any Internationalized Domain Name (e.g. <code>한글.com</code>). New <code>toAscii()</code> wraps WHATWG <code>url.domainToASCII</code>, converts inputs to Punycode form, and validates the ASCII variant. <code>parseDomainList()</code> stores the normalized form so nginx <code>server_name</code>, Let's Encrypt cert CN, and DNS lookups all agree on the same string.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-fix">Sec · RCE</span>
+                    <div class="change-content">
+                        <strong>Bonus — docker.js build/run commands converted to <code>execFile</code></strong>
+                        <p>Image builds and container <code>docker run</code> invocations moved from <code>exec</code> (shell-interpolated string) to <code>execFile</code> (argv array), eliminating the same injection class in the Docker-service path — env values, volume paths, and image names are no longer concatenated into a shell command.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-infrastructure">ISP</span>
+                    <div class="change-content">
+                        <strong>Real-world finding: Korean residential ISPs silently drop inbound 80/443</strong>
+                        <p>During an <code>iiffnextwave.org</code> connection we discovered that LG U+ (and by extension KT / SKB equivalents) drop inbound packets to gateway ports 80/443 at the ISP layer even when the home router has port-forwarding rules set. Port 22 saw the same behaviour, confirming the drop happens upstream of the user's router. Let's Encrypt HTTP-01 is structurally unusable in this topology.</p>
+                        <p><strong>Documented workaround</strong> (added to <code>docs-content/custom-domain.md</code>): migrate the zone's nameservers to Cloudflare, keep Orbitron's existing cloudflared tunnel as the origin, and terminate TLS at the Cloudflare edge. All traffic becomes outbound from the home server, so ISP inbound filtering stops mattering. Apex → www redirect is handled by a CF Redirect Rule instead of nginx's canonical block.</p>
+                    </div>
+                </li>
+                <li class="change-item">
+                    <span class="change-badge badge-infrastructure">Ops</span>
+                    <div class="change-content">
+                        <strong>PUBLIC_IP correction — <code>116.33.16.12</code> → <code>112.156.177.187</code></strong>
+                        <p>The value baked into <code>.env</code> was incorrect (belonged to a different network path). Verified against four independent resolvers (ipify, ifconfig.me, icanhazip, ipinfo.io) — all agree on <code>112.156.177.187</code>. This had cascaded into every "DNS verify" call: Orbitron was comparing <code>(wrong) == (wrong)</code> and passing verification while Let's Encrypt was actually trying to reach a stranger's IP. Fixed in <code>.env</code> + <code>pm2 reload --update-env</code>.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!-- v2.4 — 2026-04-14 (Custom Domain Wizard + Multi-domain SAN + Redirect) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">

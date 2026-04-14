@@ -1,5 +1,7 @@
 # 🌐 커스텀 도메인 연결 (Let's Encrypt 자동 SSL)
 
+> 🔒 **2026.04 v2.5 보안/안정성 업데이트**: nginx 설정 생성 경로의 쉘 인젝션·경로 탈주 방어, DNS 검증 IPv6(AAAA) 지원, 국제화 도메인(한글.com 등) Punycode 정규화. 추가로 **LG U+ / KT / SKB 가정용 인터넷처럼 인바운드 80/443 이 차단되는 환경** 에서 쓰는 Cloudflare 터널 우회 방법을 공식 문서화했습니다 ("ISP 인바운드 차단 우회" 섹션 참고).
+
 > ✨ **2026.04 v2.4 업데이트**: 이제 **전용 위저드 페이지**(사이드바 → 🌐 커스텀 도메인 연결)에서 진행합니다. 멀티 도메인 SAN, canonical 리다이렉트, 검색엔진 등록 안내, DNS 공급자별 단계별 가이드까지 한 화면에서.
 
 > ✨ **2026.04 v2.3 신규**: 이제 Orbitron 유저는 자신의 도메인(예: `myapp.com`)을 프로젝트에 자유롭게 연결할 수 있으며, HTTPS 인증서는 Let's Encrypt로 **자동 발급·자동 갱신**됩니다.
@@ -197,6 +199,72 @@ volumes:
 - webroot는 ACME 챌린지 파일만 잠깐 있을 뿐, 민감 데이터 없음
 - 프로젝트 오너만 자기 프로젝트의 도메인 API에 접근 가능 (`authMiddleware + viewerGuard`)
 - 어드민은 `skipVerify: true` 옵션으로 DNS 검증을 우회할 수 있음 (긴급 복구용)
+
+---
+
+## 🚧 ISP 인바운드 차단 우회 — Cloudflare 터널 방식 (v2.5)
+
+**증상**: DNS 검증은 통과하지만 Let's Encrypt 발급이 `Timeout during connect (likely firewall problem)` 으로 실패. 외부 포트 체크 (check-host.net, canyouseeme.org 등) 에서 포트 80 · 443 · 심지어 22 까지 전 세계 어느 노드에서도 **Connection timed out**.
+
+**원인**: 한국 가정용 인터넷 (LG U+, KT, SKB) 은 **ISP 레벨에서 인바운드 TCP 패킷 자체를 drop** 합니다. 공유기 포트포워딩을 아무리 잘 해도 패킷이 공유기 앞에서 사라지므로 소용없음. HTTP-01 challenge 는 Let's Encrypt 서버가 우리 쪽으로 **들어와야** 하는 구조라서 이 환경에서는 원천적으로 사용 불가.
+
+**진단 방법**:
+```bash
+# Orbitron 서버에서
+curl -s https://api.ipify.org    # 실제 공인 IP (예: 112.156.177.187)
+
+# 다른 네트워크 (스마트폰 LTE 등, 집 WiFi 아님) 에서
+curl -v http://<위 공인 IP>/
+# 모든 포트 (22 포함) 가 "Connection timed out" → ISP 차단 확정
+```
+
+**해결 — DNS 를 Cloudflare 로 이전 + 기존 cloudflared 터널을 origin 으로 사용**. 모든 트래픽이 서버에서 **밖으로 나가는(outbound) 연결** 안에서만 흐르므로 ISP 인바운드 차단이 의미 없어짐.
+
+### 아키텍처
+```
+[방문자] https://www.myapp.com
+    ↓
+[Cloudflare 엣지]                       ← 여기서 TLS 종단 (Universal SSL, 무료)
+    ↓ Redirect Rule: apex → 301 → www
+    ↓ www 는 CNAME 따라 → <sub>.twinverse.org
+[cloudflared 터널] (서버 outbound 연결)  ← 인바운드 포트 불필요
+    ↓
+[Orbitron dev-nginx] server_name www.myapp.com
+    ↓ proxy_pass
+[프로젝트 컨테이너] ✅
+```
+
+### 절차
+1. **CF 에 zone 추가 (무료 플랜)**: `dash.cloudflare.com → Add a Site → myapp.com`. CF 가 기존 DNS 레코드를 자동 import.
+2. **등록업체에서 네임서버 변경**: Squarespace / 가비아 / Namecheap 등에서 CF 가 배정한 두 NS (`<name1>.ns.cloudflare.com`, `<name2>.ns.cloudflare.com`) 로 교체. 전파 보통 30분~2시간, 최대 24시간. 완료되면 CF 대시보드 상태가 **Active** 로 바뀌고 이메일이 옴.
+3. **CF 대시보드 DNS 레코드** (`Websites → 도메인 → DNS`):
+   - `A` `@` `<우리 공인 IP>` — **🟧 Proxied** (origin 에는 패킷이 못 들어오지만, 아래 Redirect Rule 이 CF 엣지에서 먼저 발동하므로 문제 없음)
+   - `CNAME` `www` `<sub>.twinverse.org` — **🟧 Proxied**
+4. **CF Redirect Rule** (`Rules → Redirect Rules → Create rule`):
+   - 조건: `Hostname equals myapp.com`
+   - 동작: Static redirect, 301, URL `https://www.myapp.com${http.request.uri.path}`, preserve query string ✅
+5. **CF SSL/TLS**:
+   - Encryption mode: **Full**
+   - Edge Certificates → **Always Use HTTPS**: ON
+6. **Orbitron nginx 에 새 호스트네임 추가** — 운영자 작업. 기존 iiff 프로젝트의 `server_name` 에 `www.myapp.com` 추가. Cloudflare Universal SSL 이 인증서를 자동 발급 — **Let's Encrypt 불필요**.
+
+### HTTP-01 기본 경로와 비교
+| 항목 | 네이티브 LE (HTTP-01) | CF-터널 우회 방식 |
+|---|---|---|
+| ISP 가 인바운드 80/443 막는 환경에서 작동 | ❌ | ✅ |
+| 인증서 발급 시간 | 20~60초 | 즉시 (CF Universal) |
+| TLS 종단 위치 | 우리 nginx | Cloudflare 엣지 |
+| 인증서 출처 | Let's Encrypt (서버에 저장) | Cloudflare (관리형) |
+| origin 앞 DDoS / WAF | 없음 | 무료 포함 |
+| DNS 관리 위치 | 아무 업체나 가능 | Cloudflare 로 이전 필수 |
+
+**언제 이 방식을 쓰나**: (1) 한국 가정용 ISP 환경, (2) CGNAT 환경, (3) 어차피 CF 엣지 + WAF 혜택이 필요한 경우. **데이터센터/콜로케이션처럼 인바운드 80/443 이 열려 있는 환경에서는 기본 LE 방식을 쓰세요.**
+
+### 실사례 — `iiffnextwave.org` 운영 메모
+- `.env` 의 `PUBLIC_IP` 가 잘못된 값으로 고정되어 있어서, `curl https://api.ipify.org` 결과 (`112.156.177.187`) 로 교체.
+- HTTP-01 이 apex 에서는 `Timeout during connect`, www 에서는 CF 엣지 `409` 로 실패 (www 가 CNAME 으로 기존 터널 주소를 가리키는데 Cloudflare 계정에 `iiffnextwave.org` zone 이 없어서 CF 엣지가 이 호스트를 모른다고 응답).
+- CF 에 zone 추가 + Squarespace (구 Google Cloud DNS) 에서 NS 를 Cloudflare 로 이전. DNS / Redirect / SSL 설정은 짧은 TTL 의 zone-scoped API 토큰 (`Zone:DNS:Edit`, `Zone:Zone Settings:Edit`, `Zone:Page Rules:Edit`) 으로 CF API 자동 호출.
+- Orbitron nginx 에서 기존 iiff 프로젝트의 `server_name` 에 `www.iiffnextwave.org` 추가.
 
 ---
 

@@ -19,6 +19,7 @@
 const express = require('express');
 const router = express.Router();
 const dns = require('dns').promises;
+const { domainToASCII } = require('url');
 const db = require('../db/db');
 const { decrypt } = require('../db/crypto');
 const nginxService = require('../services/nginx');
@@ -44,21 +45,31 @@ function decryptEnvIfString(project) {
     return project;
 }
 
+// Normalize a hostname to ASCII-compatible Punycode form. Accepts IDNs like
+// "한글.com" → "xn--bj0bj06e.com". Returns '' if the input is unparseable (WHATWG
+// domainToASCII returns empty string on failure).
+function toAscii(domain) {
+    if (!domain) return '';
+    try { return domainToASCII(String(domain).trim().toLowerCase()); }
+    catch { return ''; }
+}
+
 function isValidDomain(domain) {
-    // rfc-ish: labels of [a-z0-9-], at least one dot, TLD ≥2, total ≤253
-    if (!domain || domain.length > 253) return false;
-    return /^(?!-)[a-zA-Z0-9-]{1,63}(\.[a-zA-Z0-9-]{1,63})*\.[a-zA-Z]{2,}$/.test(domain);
+    // Validate AFTER Punycode normalization so IDNs like "한글.com" pass.
+    const ascii = toAscii(domain);
+    if (!ascii || ascii.length > 253) return false;
+    return /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.[a-z]{2,}$/.test(ascii);
 }
 
 // Normalize a user-supplied string that may be one domain OR a comma/space/newline-
-// separated list into a lowercase, deduped array. "Example.COM, www.example.com"
-// → ["example.com", "www.example.com"].
+// separated list into a Punycode-ASCII, deduped array. IDN input like "한글.com" is
+// converted so nginx server_name, cert CN, and DNS lookups all see the ASCII form.
 function parseDomainList(input) {
     if (!input) return [];
     const seen = new Set();
     const out = [];
     for (const raw of String(input).split(/[\s,]+/)) {
-        const d = raw.trim().toLowerCase();
+        const d = toAscii(raw);
         if (d && !seen.has(d)) { seen.add(d); out.push(d); }
     }
     return out;
@@ -72,30 +83,50 @@ function parseDomainList(input) {
  *
  * Returns { verified: bool, details: {...} } — details always include what we found.
  */
+// Normalize an IPv6 string so "::1" and "0:0:0:0:0:0:0:1" compare equal. Best-effort:
+// falls back to lowercase-raw on parse failure (still better than string compare).
+function normalizeIp6(s) {
+    if (!s) return '';
+    try {
+        const { isIPv6 } = require('net');
+        if (!isIPv6(s)) return String(s).toLowerCase();
+        // Expand via URL trick: new URL returns bracketed canonical form
+        return new URL(`http://[${s}]`).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    } catch { return String(s).toLowerCase(); }
+}
+
 async function verifyDomainDns(domain, project) {
-    const expectedIp = await publicIp.get(); // retries across providers if cache was empty
+    const expectedIp = await publicIp.get();          // IPv4
+    const expectedIp6 = await publicIp.get6?.() || null; // optional IPv6 (resolver may not expose)
     const expectedCname = `${project.subdomain}.twinverse.org`;
-    const details = { domain, expectedIp, expectedCname, a: [], cname: [], reason: null };
+    const details = { domain, expectedIp, expectedIp6, expectedCname, a: [], aaaa: [], cname: [], reason: null };
 
     try { details.cname = await dns.resolveCname(domain).catch(() => []); } catch { /* */ }
-    try { details.a = await dns.resolve4(domain).catch(() => []); } catch { /* */ }
+    try { details.a    = await dns.resolve4(domain).catch(() => []); } catch { /* */ }
+    try { details.aaaa = await dns.resolve6(domain).catch(() => []); } catch { /* */ }
 
     // Acceptance rule 1: CNAME points at <sub>.twinverse.org
     if (details.cname.some(r => r.toLowerCase() === expectedCname.toLowerCase())) {
         return { verified: true, details: { ...details, matched: 'cname-to-tunnel' } };
     }
-    // Acceptance rule 2: A record matches our public IP
+    // Acceptance rule 2: A record matches our public IPv4
     if (expectedIp && details.a.includes(expectedIp)) {
         return { verified: true, details: { ...details, matched: 'a-to-public-ip' } };
     }
-    // Fall-through: we know Cloudflare flattens apex CNAMEs. If A records match known CF edge
-    // addresses AND the user explicitly said "I've pointed this at the tunnel", we accept — but
-    // we can't tell that from DNS alone, so we require explicit A to *our* IP instead. Reason:
+    // Acceptance rule 3: AAAA record matches our public IPv6 (if we know it)
+    if (expectedIp6) {
+        const want = normalizeIp6(expectedIp6);
+        if (details.aaaa.some(r => normalizeIp6(r) === want)) {
+            return { verified: true, details: { ...details, matched: 'aaaa-to-public-ip6' } };
+        }
+    }
     details.reason = details.a.length
         ? `A records ${details.a.join(', ')} do not match our public IP ${expectedIp}`
-        : details.cname.length
-            ? `CNAME ${details.cname.join(', ')} does not point at ${expectedCname}`
-            : `No A or CNAME records found for ${domain}`;
+        : details.aaaa.length
+            ? `AAAA records ${details.aaaa.join(', ')} do not match our public IPv6${expectedIp6 ? ` ${expectedIp6}` : ' (not configured)'}`
+            : details.cname.length
+                ? `CNAME ${details.cname.join(', ')} does not point at ${expectedCname}`
+                : `No A/AAAA/CNAME records found for ${domain}`;
     return { verified: false, details };
 }
 
