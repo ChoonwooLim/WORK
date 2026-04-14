@@ -72,19 +72,35 @@ async function certInfo(domain) {
     }
 }
 
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
 /**
- * Issue (or renew-if-exists) a certificate for a domain. Uses webroot HTTP-01 challenge.
- * IMPORTANT: DNS for `domain` must already point at this server's public IP and nginx must
- * be serving the ACME challenge path on port 80. Caller is responsible for verifying that.
+ * Issue (or renew-if-exists) a single certificate that covers one or more hostnames
+ * as Subject Alternative Names (SAN). Uses webroot HTTP-01 challenge — DNS for EACH
+ * hostname must already point at this server and /.well-known/acme-challenge/ must be
+ * served over HTTP.
  *
- * @param {string} domain — single hostname, e.g. "app.example.com"
+ * Usage:
+ *   issueCert("example.com")                                // single domain
+ *   issueCert(["example.com", "www.example.com"])           // apex + www on one cert
+ *
+ * The first hostname becomes the certificate's "cert-name" (i.e. the directory under
+ * /etc/letsencrypt/live/<cert-name>/). Pass the same list in subsequent calls and
+ * certbot will treat it as a renewal; change the list and it'll re-issue.
+ *
+ * @param {string|string[]} domains
  * @param {{email?: string, staging?: boolean}} [opts]
- * @returns {Promise<{domain, issued:boolean, cert:object, stdout, stderr}>}
+ * @returns {Promise<{domain:string, domains:string[], issued:boolean, cert:object, stdout, stderr}>}
  */
-async function issueCert(domain, opts = {}) {
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
-        throw new Error(`invalid domain: ${domain}`);
+async function issueCert(domains, opts = {}) {
+    const list = Array.isArray(domains) ? domains : [domains];
+    if (list.length === 0) throw new Error('at least one domain is required');
+    for (const d of list) {
+        if (typeof d !== 'string' || !DOMAIN_RE.test(d)) {
+            throw new Error(`invalid domain: ${d}`);
+        }
     }
+    const primary = list[0]; // cert-name / directory under live/
     // Ensure dirs exist (safe if they already do)
     for (const d of [WEBROOT, CONFIG_DIR, WORK_DIR, LOGS_DIR]) {
         fs.mkdirSync(d, { recursive: true });
@@ -99,26 +115,30 @@ async function issueCert(domain, opts = {}) {
         '--config-dir', CONFIG_DIR,
         '--work-dir', WORK_DIR,
         '--logs-dir', LOGS_DIR,
-        '-d', domain,
+        '--cert-name', primary, // explicit dir name even if SAN list changes
+    ];
+    for (const d of list) { args.push('-d', d); }
+    args.push(
         '--email', email,
         '--agree-tos',
         '--non-interactive',
         '--no-eff-email',
-        '--keep-until-expiring', // if cert already exists and is not near expiry, do nothing
-    ];
+        '--keep-until-expiring',
+        '--expand', // allow adding new SANs to an existing cert-name on re-run
+    );
     if (staging) args.push('--staging');
 
     const cmd = `${CERTBOT_BIN} ${args.map(a => JSON.stringify(a)).join(' ')}`;
-    console.log(`[letsencrypt] issuing cert for ${domain} (staging=${staging})`);
+    console.log(`[letsencrypt] issuing cert for [${list.join(', ')}] (staging=${staging})`);
     try {
-        const { stdout, stderr } = await execAsync(cmd, { timeout: 120000, maxBuffer: 4 * 1024 * 1024 });
-        const info = await certInfo(domain);
-        console.log(`[letsencrypt] ✅ ${domain} — expires ${info.expiresAt}`);
-        return { domain, issued: true, cert: info, stdout, stderr };
+        const { stdout, stderr } = await execAsync(cmd, { timeout: 180000, maxBuffer: 4 * 1024 * 1024 });
+        const info = await certInfo(primary);
+        console.log(`[letsencrypt] ✅ [${list.join(', ')}] — expires ${info.expiresAt}`);
+        return { domain: primary, domains: list, issued: true, cert: info, stdout, stderr };
     } catch (e) {
         const out = (e.stdout || '') + '\n' + (e.stderr || '');
-        console.error(`[letsencrypt] ❌ ${domain}:`, out.slice(0, 800));
-        throw new Error(`certbot failed for ${domain}: ${out.slice(0, 500)}`);
+        console.error(`[letsencrypt] ❌ [${list.join(', ')}]:`, out.slice(0, 800));
+        throw new Error(`certbot failed for [${list.join(', ')}]: ${out.slice(0, 500)}`);
     }
 }
 

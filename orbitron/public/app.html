@@ -131,6 +131,12 @@
         <span style="color:#50fa7b;">AI 영상 생성 (Wan 2.2)</span>
       </a>
 
+      <div class="nav-section-label">도메인 & SSL</div>
+      <a class="nav-item" onclick="navigateTo('domain-connect')" id="nav-domain-connect">
+        <span class="nav-icon">🌐</span>
+        <span style="color:#58a6ff;">커스텀 도메인 연결</span>
+      </a>
+
       <div class="nav-section-label">전용 배포</div>
       <a class="nav-item" onclick="navigateTo('deploy-unreal')" id="nav-deploy-unreal">
         <span class="nav-icon">🎮</span>
@@ -538,6 +544,139 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Custom Domain Connection Wizard -->
+      <div class="page" id="page-domain-connect">
+        <div style="max-width:880px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="margin:0; display:flex; align-items:center; gap:8px;">🌐 커스텀 도메인 연결</h3>
+            <div style="font-size:12px;color:var(--text-secondary);">Let's Encrypt 자동 SSL · 멀티 도메인 지원</div>
+          </div>
+          <p style="color:var(--text-secondary);font-size:14px;line-height:1.6;margin:8px 0 24px;">
+            본인 소유 도메인(예: <code>myapp.com</code>)을 Orbitron 프로젝트에 연결합니다. Orbitron이 <strong>Let's Encrypt SSL 인증서를 자동 발급 + 자동 갱신</strong>하여 HTTPS로 서비스합니다.
+            <strong>네임서버(NS)는 바꾸지 않아도 됩니다</strong> — 지금 쓰는 도메인 관리 회사 그대로 두고 DNS 레코드 1~2개만 추가하면 됩니다.
+          </p>
+
+          <!-- Step 1: Project selector -->
+          <div class="card" style="padding:20px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">1</span>
+              <strong style="font-size:15px;">연결할 프로젝트 선택</strong>
+            </div>
+            <select id="dc-project" onchange="dcOnProjectChange()" style="width:100%;padding:10px;"><option value="">(프로젝트 로딩 중…)</option></select>
+            <div id="dc-project-info" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none;"></div>
+          </div>
+
+          <!-- Step 2: Domain input (independent fields, add/remove) -->
+          <div class="card" style="padding:20px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">2</span>
+              <strong style="font-size:15px;">연결할 도메인 입력</strong>
+            </div>
+
+            <!-- Primary domain — required, always present, not removable -->
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">기본 도메인 <span style="color:var(--warning);">*필수</span> <span style="color:var(--text-muted);font-weight:normal;">(SSL 인증서 주 이름이 됩니다)</span></label>
+            <input type="text" class="dc-domain-field" data-dc-primary="1" placeholder="예) iiffnextwave.org" style="width:100%;padding:10px;font-family:inherit;">
+
+            <!-- Additional domains — dynamic, removable -->
+            <div style="margin-top:14px;">
+              <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">추가 도메인 <span style="color:var(--text-muted);font-weight:normal;">(선택 · 같은 SSL 인증서에 SAN으로 포함)</span></label>
+              <div id="dc-extra-domains"></div>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="dcAddDomainField()" style="margin-top:8px;">+ 도메인 추가</button>
+              <div class="form-hint" style="font-size:11px;margin-top:6px;color:var(--text-muted);">apex(<code>myapp.com</code>)와 www(<code>www.myapp.com</code>)를 둘 다 서비스하려면 "기본 도메인"에 apex를 넣고 "추가 도메인"에 www 버전을 추가하세요.</div>
+            </div>
+
+            <label style="display:flex;align-items:center;gap:8px;margin-top:18px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="dc-redirect" checked style="width:16px;height:16px;cursor:pointer;">
+              <span>🧭 <strong id="dc-redirect-label">기본 서브도메인 → 공식 도메인으로 자동 리다이렉트</strong></span>
+            </label>
+            <div class="form-hint" style="font-size:11px;margin-top:4px;margin-left:24px;color:var(--text-muted);line-height:1.5;">
+              체크 시 <code id="dc-redirect-from">서브도메인.twinverse.org</code>로 오는 방문자는 <strong>"기본 도메인"</strong>으로 301 자동 이동 (SEO·마케팅 관점 권장)
+            </div>
+          </div>
+
+          <!-- Step 3: DNS provider selector -->
+          <div class="card" style="padding:20px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">3</span>
+              <strong style="font-size:15px;">도메인/DNS 관리 회사 선택</strong>
+            </div>
+            <div id="dc-provider-tiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
+              <button type="button" class="dc-provider" data-provider="squarespace" onclick="dcSelectProvider('squarespace')">🟩 Squarespace Domains<br><span style="font-size:11px;opacity:0.7;">(구 Google Domains)</span></button>
+              <button type="button" class="dc-provider" data-provider="gabia" onclick="dcSelectProvider('gabia')">🇰🇷 가비아 Gabia</button>
+              <button type="button" class="dc-provider" data-provider="cloudflare" onclick="dcSelectProvider('cloudflare')">🟧 Cloudflare</button>
+              <button type="button" class="dc-provider" data-provider="namecheap" onclick="dcSelectProvider('namecheap')">🟦 Namecheap</button>
+              <button type="button" class="dc-provider" data-provider="route53" onclick="dcSelectProvider('route53')">🟨 AWS Route 53</button>
+              <button type="button" class="dc-provider" data-provider="other" onclick="dcSelectProvider('other')">❓ 기타 / 모르겠음</button>
+            </div>
+          </div>
+
+          <!-- Step 4: DNS guide (provider-specific, dynamically injected) -->
+          <div id="dc-guide-wrap" class="card" style="padding:20px;margin-bottom:14px;display:none;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">4</span>
+              <strong style="font-size:15px;">DNS 레코드 설정 가이드</strong>
+            </div>
+            <div id="dc-guide-body"></div>
+          </div>
+
+          <!-- Step 5: DNS verify -->
+          <div id="dc-verify-wrap" class="card" style="padding:20px;margin-bottom:14px;display:none;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">5</span>
+              <strong style="font-size:15px;">DNS 반영 확인</strong>
+            </div>
+            <button class="btn btn-ghost" onclick="dcVerify()" id="dc-verify-btn">🔍 DNS 검증</button>
+            <div id="dc-verify-result" style="margin-top:12px;display:none;padding:12px;border-radius:6px;font-size:13px;white-space:pre-wrap;"></div>
+          </div>
+
+          <!-- Step 6: Connect -->
+          <div id="dc-connect-wrap" class="card" style="padding:20px;margin-bottom:14px;display:none;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">6</span>
+              <strong style="font-size:15px;">SSL 발급 + 연결</strong>
+            </div>
+            <button class="btn btn-primary" onclick="dcConnect()" id="dc-connect-btn" disabled style="width:100%;">🔗 Let's Encrypt SSL 발급 + 연결</button>
+            <div class="form-hint" style="margin-top:8px;font-size:11px;">DNS 검증 성공 후 활성화 · 발급 소요 약 20-60초</div>
+            <div id="dc-connect-result" style="margin-top:12px;display:none;padding:12px;border-radius:6px;font-size:13px;"></div>
+          </div>
+
+          <!-- Connected state: shown only if project already has a custom_domain -->
+          <div id="dc-connected-wrap" style="display:none;">
+            <!-- Populated by dcRenderConnectedState() -->
+          </div>
+
+          <!-- Step 7: Search engine registration / SEO -->
+          <div id="dc-seo-wrap" class="card" style="padding:20px;margin-bottom:14px;display:none;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">7</span>
+              <strong style="font-size:15px;">검색엔진에 사이트 등록 (SEO)</strong>
+              <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">선택 · 권장</span>
+            </div>
+            <p style="color:var(--text-secondary);font-size:13px;line-height:1.6;margin:0 0 14px;">
+              도메인 연결은 끝났지만, 구글·네이버 같은 검색엔진은 <strong>주인이 등록해줘야</strong> 해당 사이트를 발견하고 검색 결과에 노출합니다. 아래 각 서비스에 한 번씩 등록해두세요 (보통 5-10분).
+              <br>등록 시 각 서비스가 <strong>"이 도메인의 주인이 맞는지"</strong> 확인하는데(소유권 검증), 대부분 <strong>DNS TXT 레코드 추가</strong> 또는 <strong>HTML 메타태그 삽입</strong> 중 택1입니다.
+            </p>
+            <div id="dc-seo-body"></div>
+          </div>
+
+        </div>
+        <style>
+          .dc-provider { padding:14px 12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text-primary); cursor:pointer; font-size:13px; text-align:center; line-height:1.4; transition:all 0.15s; }
+          .dc-provider:hover { border-color:var(--accent); background:rgba(88,166,255,0.05); }
+          .dc-provider.active { border-color:var(--accent); background:rgba(88,166,255,0.1); box-shadow:0 0 0 2px rgba(88,166,255,0.2); }
+          .dc-record { background:#0b0d12; border:1px solid var(--border); border-radius:8px; padding:14px; margin:10px 0; font-family:ui-monospace,monospace; font-size:13px; }
+          .dc-record-row { display:grid; grid-template-columns: 80px 1fr auto; gap:10px; align-items:center; padding:4px 0; }
+          .dc-record-row + .dc-record-row { border-top:1px dashed rgba(255,255,255,0.05); margin-top:4px; padding-top:8px; }
+          .dc-record code { background:rgba(88,166,255,0.1); padding:2px 8px; border-radius:4px; color:var(--accent); }
+          .dc-copy-btn { background:transparent; border:1px solid var(--border); color:var(--text-secondary); padding:3px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-family:inherit; }
+          .dc-copy-btn:hover { background:var(--surface); color:var(--accent); border-color:var(--accent); }
+          .dc-copy-btn.copied { background:var(--success); color:#fff; border-color:var(--success); }
+          .dc-step { counter-increment:step; padding-left:34px; position:relative; margin:10px 0; }
+          .dc-step::before { content:counter(step); position:absolute; left:0; top:0; width:24px; height:24px; border-radius:50%; background:rgba(88,166,255,0.15); color:var(--accent); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+          .dc-steps { counter-reset:step; padding-left:0; list-style:none; }
+        </style>
       </div>
 
       <!-- AI Video (Wan 2.2) Page -->

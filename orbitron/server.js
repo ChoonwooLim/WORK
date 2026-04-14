@@ -82,6 +82,7 @@ app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 app.use('/api/admin', authMiddleware, require('./middleware/adminAuth'), require('./routes/admin'));
 app.use('/api/issues', authMiddleware, viewerGuard, require('./routes/issues'));
 app.use('/api/projects', authMiddleware, viewerGuard, require('./routes/domains'));
+app.use('/api/system', authMiddleware, viewerGuard, require('./routes/system'));
 app.use('/api/wan', authMiddleware, viewerGuard, require('./routes/wan'));
 
 // Health check

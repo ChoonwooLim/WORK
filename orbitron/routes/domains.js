@@ -23,20 +23,11 @@ const db = require('../db/db');
 const { decrypt } = require('../db/crypto');
 const nginxService = require('../services/nginx');
 const letsencrypt = require('../services/letsencrypt');
+const publicIp = require('../services/publicIp');
 
-// Our public IP — resolved once at module load. Fallback to ipify if the env var isn't set.
-let PUBLIC_IP = process.env.PUBLIC_IP || null;
-(async () => {
-    if (PUBLIC_IP) return;
-    try {
-        const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) });
-        const { ip } = await res.json();
-        PUBLIC_IP = ip;
-        console.log(`[domains] resolved public IP: ${PUBLIC_IP}`);
-    } catch (e) {
-        console.warn('[domains] could not resolve public IP automatically:', e.message);
-    }
-})();
+// All reads go through publicIp:
+//   - publicIp.get()     → async, will retry fresh if cache is empty
+//   - publicIp.getSync() → sync, returns cached-or-null immediately (fine for responses)
 
 async function getProjectForUser(projectId, user) {
     if (user.role === 'admin' || user.role === 'superadmin') {
@@ -59,6 +50,20 @@ function isValidDomain(domain) {
     return /^(?!-)[a-zA-Z0-9-]{1,63}(\.[a-zA-Z0-9-]{1,63})*\.[a-zA-Z]{2,}$/.test(domain);
 }
 
+// Normalize a user-supplied string that may be one domain OR a comma/space/newline-
+// separated list into a lowercase, deduped array. "Example.COM, www.example.com"
+// → ["example.com", "www.example.com"].
+function parseDomainList(input) {
+    if (!input) return [];
+    const seen = new Set();
+    const out = [];
+    for (const raw of String(input).split(/[\s,]+/)) {
+        const d = raw.trim().toLowerCase();
+        if (d && !seen.has(d)) { seen.add(d); out.push(d); }
+    }
+    return out;
+}
+
 /**
  * Build a list of DNS expectations and attempt to verify them.
  * Accepts EITHER:
@@ -68,7 +73,7 @@ function isValidDomain(domain) {
  * Returns { verified: bool, details: {...} } — details always include what we found.
  */
 async function verifyDomainDns(domain, project) {
-    const expectedIp = PUBLIC_IP;
+    const expectedIp = await publicIp.get(); // retries across providers if cache was empty
     const expectedCname = `${project.subdomain}.twinverse.org`;
     const details = { domain, expectedIp, expectedCname, a: [], cname: [], reason: null };
 
@@ -94,54 +99,80 @@ async function verifyDomainDns(domain, project) {
     return { verified: false, details };
 }
 
-// POST /api/projects/:id/domain/verify  — dry-run DNS check
+// POST /api/projects/:id/domain/verify  — dry-run DNS check for one OR many domains
+// Body: { domain: "example.com" }                   // single
+//    or { domain: "example.com, www.example.com" }  // comma/space/newline separated
 router.post('/:id/domain/verify', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         const { domain } = req.body || {};
-        if (!domain)             return res.status(400).json({ error: '도메인을 입력해주세요.' });
-        if (!isValidDomain(domain)) return res.status(400).json({ error: '올바른 도메인 형식이 아닙니다.' });
+        const list = parseDomainList(domain);
+        if (list.length === 0)                    return res.status(400).json({ error: '도메인을 입력해주세요.' });
+        for (const d of list) {
+            if (!isValidDomain(d))                return res.status(400).json({ error: `올바른 도메인 형식이 아닙니다: ${d}` });
+        }
 
-        const result = await verifyDomainDns(domain, project);
+        const perDomain = [];
+        for (const d of list) {
+            const r = await verifyDomainDns(d, project);
+            perDomain.push({ domain: d, ...r });
+        }
+        const allVerified = perDomain.every(d => d.verified);
+        const messages = perDomain.map(d =>
+            d.verified
+                ? `✅ ${d.domain} (${d.details.matched})`
+                : `⚠️ ${d.domain}: ${d.details.reason}`
+        );
+
         res.json({
-            domain,
-            publicIp: PUBLIC_IP,
-            ...result,
-            message: result.verified
-                ? `✅ DNS 검증 성공 (${result.details.matched})`
-                : `⚠️ ${result.details.reason}`,
+            domains: list,
+            publicIp: publicIp.getSync(),
+            verified: allVerified,
+            perDomain,
+            message: messages.join('\n'),
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/projects/:id/domain/connect  — verify + issue cert + wire nginx
+// POST /api/projects/:id/domain/connect  — verify + issue SAN cert + wire nginx
+// Body: { domain: "a.com" }                       // single
+//    or { domain: "a.com, www.a.com" }            // apex + www on one cert
 router.post('/:id/domain/connect', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
-        const { domain, skipVerify, staging } = req.body || {};
-        if (!domain)                 return res.status(400).json({ error: '도메인을 입력해주세요.' });
-        if (!isValidDomain(domain))  return res.status(400).json({ error: '올바른 도메인 형식이 아닙니다.' });
+        const { domain, skipVerify, staging, redirect } = req.body || {};
+        const list = parseDomainList(domain);
+        if (list.length === 0)     return res.status(400).json({ error: '도메인을 입력해주세요.' });
+        for (const d of list) {
+            if (!isValidDomain(d)) return res.status(400).json({ error: `올바른 도메인 형식이 아닙니다: ${d}` });
+        }
 
-        // Step 1: verify DNS (unless admin explicitly overrides)
+        // Step 1: verify DNS for each domain (admin may skip)
         const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
         if (!(isAdmin && skipVerify)) {
-            const v = await verifyDomainDns(domain, project);
-            if (!v.verified) {
+            const failures = [];
+            for (const d of list) {
+                const v = await verifyDomainDns(d, project);
+                if (!v.verified) failures.push({ domain: d, reason: v.details.reason });
+            }
+            if (failures.length) {
                 return res.status(400).json({
-                    error: `DNS 검증 실패: ${v.details.reason}`,
-                    details: v.details,
+                    error: 'DNS 검증 실패',
+                    failures,
+                    message: failures.map(f => `${f.domain}: ${f.reason}`).join('\n'),
                 });
             }
         }
 
-        // Step 2: issue Let's Encrypt cert (HTTP-01 via webroot). DNS must already be in place.
+        // Step 2: issue a single Let's Encrypt cert that covers every hostname as SAN.
+        // First hostname is the primary (cert-name / directory under live/).
         let cert = null;
         try {
-            const out = await letsencrypt.issueCert(domain, { staging: !!staging });
+            const out = await letsencrypt.issueCert(list, { staging: !!staging });
             cert = out.cert;
         } catch (certErr) {
             return res.status(502).json({
@@ -150,48 +181,61 @@ router.post('/:id/domain/connect', async (req, res) => {
             });
         }
 
-        // Step 3: update DB
+        // Step 3: store the normalized list in custom_domain + canonical redirect flag.
+        const storedValue = list.join(',');
+        const redirectFlag = !!redirect;
         const updated = await db.queryOne(
-            'UPDATE projects SET custom_domain = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
-            [domain, project.id]
+            'UPDATE projects SET custom_domain = $1, redirect_to_custom_domain = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+            [storedValue, redirectFlag, project.id]
         );
         decryptEnvIfString(updated);
 
-        // Step 4: regenerate nginx config — generateConfig() now automatically emits an HTTPS
-        // server block for updated.custom_domain because letsencrypt.hasCert(domain) is now true.
-        // We pass the actual running container as targetContainer so the HTTPS block's proxy_pass
-        // points at the real Blue-Green container, not the bare fallback name.
+        // Step 4: regenerate nginx — generateConfig() splits custom_domain by comma and adds
+        // all of them to both the HTTP server_name and the single HTTPS SAN block.
         const targetContainer = project.container_id || null;
         await nginxService.addProject(updated, targetContainer);
 
         res.json({
             success: true,
-            message: `✅ ${domain} 연결 완료 — https://${domain}`,
-            domain,
-            url: `https://${domain}`,
+            message: `✅ ${list.length === 1 ? list[0] : list.length + '개 도메인'} 연결 완료`,
+            domain: list[0],
+            domains: list,
+            url: `https://${list[0]}`,
+            urls: list.map(d => `https://${d}`),
             cert,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/projects/:id/domain/status  — DNS + cert summary
+// GET /api/projects/:id/domain/status  — DNS + cert summary (supports multi-domain)
 router.get('/:id/domain/status', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (!project.custom_domain) return res.json({ status: 'none', message: '커스텀 도메인 미설정' });
 
-        const dnsCheck = await verifyDomainDns(project.custom_domain, project);
-        const cert = await letsencrypt.certInfo(project.custom_domain);
+        const list = parseDomainList(project.custom_domain);
+        const primary = list[0];
+        const cert = await letsencrypt.certInfo(primary);
+
+        const perDomain = [];
+        for (const d of list) {
+            const v = await verifyDomainDns(d, project);
+            perDomain.push({ domain: d, dnsValid: v.verified, details: v.details });
+        }
+        const allDnsValid = perDomain.every(d => d.dnsValid);
 
         res.json({
-            status: dnsCheck.verified && cert.exists ? 'connected' : (cert.exists ? 'dns_drift' : 'cert_missing'),
-            domain: project.custom_domain,
-            publicIp: PUBLIC_IP,
-            dns: dnsCheck.details,
-            dnsValid: dnsCheck.verified,
+            status: allDnsValid && cert.exists ? 'connected' : (cert.exists ? 'dns_drift' : 'cert_missing'),
+            domain: primary,                 // backwards-compat (UI may still read this)
+            domains: list,                   // new: full list
+            publicIp: publicIp.getSync(),
+            dns: perDomain[0]?.details,       // backwards-compat
+            dnsValid: allDnsValid,
+            perDomain,
             cert,
-            url: `https://${project.custom_domain}`,
+            url: `https://${primary}`,
+            urls: list.map(d => `https://${d}`),
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -203,11 +247,12 @@ router.delete('/:id/domain', async (req, res) => {
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
 
-        const oldDomain = project.custom_domain;
+        const list = parseDomainList(project.custom_domain);
+        const primary = list[0];
 
-        // Revoke cert (best-effort — keep going even if this fails)
-        try { await letsencrypt.revokeCert(oldDomain); }
-        catch (e) { console.warn(`[domains] revokeCert(${oldDomain}) failed:`, e.message); }
+        // Revoke the single SAN cert (cert-name = primary). Best-effort.
+        try { await letsencrypt.revokeCert(primary); }
+        catch (e) { console.warn(`[domains] revokeCert(${primary}) failed:`, e.message); }
 
         // Clear DB binding
         const updated = await db.queryOne(
@@ -220,26 +265,57 @@ router.delete('/:id/domain', async (req, res) => {
         const targetContainer = project.container_id || null;
         await nginxService.addProject(updated, targetContainer);
 
-        res.json({ success: true, message: `도메인 ${oldDomain} 연결 해제 완료`, status: 'none' });
+        res.json({ success: true, message: `연결 해제 완료 (${list.join(', ')})`, status: 'none' });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/projects/:id/domain/renew  — re-run certbot renew for this domain specifically.
-// Mostly useful for operators — the daily cron handles normal renewals.
+// PATCH /api/projects/:id/domain/redirect  — toggle canonical-hostname redirect without
+// reissuing the cert. Body: { enabled: boolean }
+router.patch('/:id/domain/redirect', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
+
+        const enabled = !!(req.body && req.body.enabled);
+        const updated = await db.queryOne(
+            'UPDATE projects SET redirect_to_custom_domain = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+            [enabled, project.id]
+        );
+        decryptEnvIfString(updated);
+        const targetContainer = project.container_id || null;
+        await nginxService.addProject(updated, targetContainer);
+
+        res.json({
+            success: true,
+            enabled,
+            message: enabled
+                ? `✅ 공식 도메인 리다이렉트 활성 — ${project.subdomain}.twinverse.org 방문 시 https://${parseDomainList(project.custom_domain)[0]}로 자동 이동`
+                : '공식 도메인 리다이렉트 비활성 — 두 주소 독립 동작',
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/projects/:id/domain/renew  — re-issue the SAN cert for all current domains.
+// Daily cron handles normal renewals; this is a manual kick for operators.
 router.post('/:id/domain/renew', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
 
-        const result = await letsencrypt.issueCert(project.custom_domain); // keep-until-expiring
+        const list = parseDomainList(project.custom_domain);
+        const result = await letsencrypt.issueCert(list); // keep-until-expiring
         const targetContainer = project.container_id || null;
         const fresh = await db.queryOne('SELECT * FROM projects WHERE id = $1', [project.id]);
         decryptEnvIfString(fresh);
         await nginxService.addProject(fresh, targetContainer);
 
-        res.json({ success: true, cert: result.cert });
+        res.json({ success: true, domains: list, cert: result.cert });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// NOTE: /public-ip endpoints moved to routes/system.js (mounted at /api/system) because
+// /api/projects/:id pattern in routes/projects.js was catching "public-ip" as a project ID.
 
 module.exports = router;

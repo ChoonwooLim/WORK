@@ -241,12 +241,18 @@ function navigateTo(page) {
         'deploy-vps': '🖥 VPS 호스팅',
         'business-plan': '🚀 Orbitron 상용 서비스 계획서',
         'ai-video': '🎬 AI 영상 생성 — Wan 2.2',
+        'domain-connect': '🌐 커스텀 도메인 연결',
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
 
     // Refresh Wan status when entering the AI Video page
     if (page === 'ai-video' && typeof wanRefresh === 'function') {
         wanRefresh();
+    }
+
+    // Initialize the Domain Connect wizard
+    if (page === 'domain-connect' && typeof dcInit === 'function') {
+        dcInit();
     }
 
     // Update topbar actions
@@ -839,49 +845,121 @@ function renderSettings() {
     <div class="form-group"><label>빌드 명령어</label><input type="text" id="set-build" value="${escapeHtml(p.build_command || '')}"></div>
     <div class="form-group"><label>시작 명령어</label><input type="text" id="set-start" value="${escapeHtml(p.start_command || '')}"></div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-      <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인 <span style="font-size:11px;color:var(--success);font-weight:500;">Let's Encrypt 자동 SSL</span></label>
+      <label style="font-size:15px;font-weight:600;">🌐 커스텀 도메인 <span style="font-size:11px;color:var(--success);font-weight:500;">Let's Encrypt 자동 SSL · 멀티 도메인 지원</span></label>
+      <div style="background:rgba(88,166,255,0.06);border:1px solid rgba(88,166,255,0.25);border-radius:8px;padding:14px 16px;margin:10px 0 12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;font-size:13px;line-height:1.6;color:var(--text-secondary);">
+            커스텀 도메인 연결/관리는 <strong>전용 위저드 페이지</strong>로 이동되었습니다. 왼쪽 사이드바 <strong>🌐 커스텀 도메인 연결</strong>에서 DNS 회사별 단계별 안내 + Let's Encrypt 발급까지 한 번에 진행할 수 있습니다.
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="navigateTo('domain-connect')" style="white-space:nowrap;">🌐 도메인 연결 페이지 →</button>
+        </div>
+      </div>
       <div id="domain-status-area" style="margin-bottom:12px;"></div>
       ${p.custom_domain ? `
       <div style="background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:16px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:220px;">
-            <div style="font-weight:600;color:var(--success);margin-bottom:4px;">🟢 연결됨</div>
-            <a href="https://${escapeHtml(p.custom_domain)}" target="_blank" style="color:var(--accent);font-size:16px;font-weight:600;text-decoration:none;">https://${escapeHtml(p.custom_domain)}</a>
-            <div id="domain-cert-status-${p.id}" style="font-size:12px;color:var(--text-muted);margin-top:6px;">SSL 인증서 상태 확인 중…</div>
+        <div style="display:flex;align-items:start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:240px;">
+            <div style="font-weight:600;color:var(--success);margin-bottom:6px;">🟢 연결됨</div>
+            ${p.custom_domain.split(/[\\s,]+/).filter(Boolean).map(d => `<a href="https://${escapeHtml(d)}" target="_blank" style="display:block;color:var(--accent);font-size:15px;font-weight:600;text-decoration:none;margin-bottom:3px;">https://${escapeHtml(d)}</a>`).join('')}
+            <div id="domain-cert-status-${p.id}" style="font-size:12px;color:var(--text-muted);margin-top:8px;">SSL 인증서 상태 확인 중…</div>
           </div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-shrink:0;">
             <button class="btn btn-sm btn-ghost" onclick="renewDomain(${p.id})" title="Let's Encrypt 인증서 재발급/갱신">🔄 갱신</button>
-            <button class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);" onclick="disconnectDomain(${p.id})">🔌 연결 해제</button>
+            <button class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);" onclick="disconnectDomain(${p.id})">🔌 해제</button>
+          </div>
+        </div>
+        <div style="border-top:1px solid rgba(63,185,80,0.2);margin-top:12px;padding-top:12px;">
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);cursor:pointer;">
+            <input type="checkbox" id="toggle-domain-redirect-${p.id}" ${p.redirect_to_custom_domain ? 'checked' : ''} onchange="toggleDomainRedirect(${p.id}, this.checked)" style="width:16px;height:16px;cursor:pointer;">
+            <span>🧭 <strong>${escapeHtml(p.subdomain)}.twinverse.org → 공식 도메인으로 자동 리다이렉트</strong></span>
+          </label>
+          <div class="form-hint" style="font-size:11px;margin-top:4px;margin-left:26px;line-height:1.5;">
+            ${p.redirect_to_custom_domain
+              ? `<span style="color:var(--success);">✅ 활성화됨</span> — <code>${escapeHtml(p.subdomain)}.twinverse.org</code> 방문자는 모두 <code>https://${escapeHtml(p.custom_domain.split(/[\\s,]+/).filter(Boolean)[0])}</code>로 301 리다이렉트됩니다.`
+              : `비활성 — 두 주소 모두 독립적으로 같은 사이트에 연결 (기본값).`}
           </div>
         </div>
       </div>
       ` : `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;">
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
-          본인 소유의 도메인을 이 프로젝트에 연결하면 Orbitron이 <strong>Let's Encrypt로 SSL 인증서를 자동 발급</strong>하여 <code>https://</code>로 서비스합니다.
+        <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;color:var(--text-secondary);">
+          <strong style="color:var(--text-primary);">✅ 이것만 알아두시면 됩니다:</strong><br>
+          <span style="margin-top:6px;display:inline-block;">• 네임서버(NS)는 <strong>바꾸지 않습니다.</strong> 도메인 관리는 지금 사용 중인 회사(Squarespace / 가비아 / Cloudflare / Namecheap 등) 그대로 유지.<br>
+          • 그 회사의 DNS 설정 페이지에서 <strong>DNS 레코드 1~2개만</strong> 추가/수정하면 됩니다.<br>
+          • SSL(HTTPS) 인증서는 Orbitron이 <strong>자동 발급 + 자동 갱신</strong>합니다. 따로 구매/설정 불필요.</span>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <input type="text" id="set-custom-domain" value="" placeholder="예: myapp.com 또는 www.myapp.com" style="flex:1;min-width:220px;">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">연결할 도메인(들)</label>
+        <textarea id="set-custom-domain" rows="2" placeholder="예 1) myapp.com\n예 2) myapp.com, www.myapp.com  ← apex + www 한 번에 연결" style="width:100%;font-family:inherit;resize:vertical;"></textarea>
+        <div class="form-hint" style="font-size:11px;margin-top:4px;">여러 도메인은 쉼표나 줄바꿈으로 구분. 첫 번째 도메인이 SSL 인증서의 기본 이름이 됩니다.</div>
+
+        <label style="display:flex;align-items:center;gap:8px;margin:12px 0 8px;font-size:13px;color:var(--text-primary);cursor:pointer;">
+          <input type="checkbox" id="set-domain-redirect" style="width:16px;height:16px;cursor:pointer;">
+          <span>🧭 <strong>기본 서브도메인을 공식 도메인으로 자동 리다이렉트</strong></span>
+        </label>
+        <div class="form-hint" style="font-size:11px;margin-top:-4px;margin-bottom:6px;line-height:1.5;">
+          체크하면 <code>${p.subdomain}.twinverse.org</code>로 오는 방문자는 <strong>첫 번째 연결 도메인(https://)</strong>으로 301 리다이렉트됩니다.
+          마케팅·SEO상 "정본 주소 하나"로 유저를 모으고 싶을 때 추천. 나중에 언제든 껐다 켤 수 있음.
+        </div>
+
+        <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;">
           <button class="btn btn-sm btn-ghost" onclick="verifyDomain(${p.id})" id="btn-verify-domain">🔍 DNS 검증</button>
-          <button class="btn btn-sm btn-primary" onclick="connectDomain(${p.id})" id="btn-connect-domain" disabled>🔗 연결</button>
+          <button class="btn btn-sm btn-primary" onclick="connectDomain(${p.id})" id="btn-connect-domain" disabled style="flex:1;">🔗 SSL 발급 + 연결</button>
         </div>
-        <div id="domain-verify-result" style="display:none;font-size:13px;padding:10px 12px;border-radius:6px;margin-bottom:12px;"></div>
+        <div id="domain-verify-result" style="display:none;font-size:13px;padding:10px 12px;border-radius:6px;margin-bottom:12px;white-space:pre-wrap;"></div>
+
         <details style="cursor:pointer;" open>
-          <summary style="font-size:13px;color:var(--accent);font-weight:600;">📖 DNS 설정 가이드 (필수)</summary>
-          <div style="margin-top:12px;font-size:13px;color:var(--text-muted);line-height:1.7;">
-            <p style="margin-bottom:10px;">도메인 등록기관 또는 DNS 관리 서비스에서 <strong>다음 중 하나</strong>의 레코드를 추가하세요:</p>
-            <div style="background:rgba(88,166,255,0.06);border-left:3px solid var(--accent);padding:10px 14px;border-radius:4px;margin-bottom:10px;">
-              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">옵션 A — A 레코드 (권장, apex 및 www 모두 가능)</div>
-              <div>타입 <code>A</code> · 호스트 <code>@</code> (apex) 또는 <code>www</code> · 값 <code id="orbitron-public-ip-hint">공인 IP 확인 중…</code></div>
+          <summary style="font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">📖 DNS 레코드 설정 가이드 (필수 · 열어서 확인)</summary>
+          <div style="margin-top:8px;font-size:13px;color:var(--text-muted);line-height:1.7;">
+
+            <div style="background:rgba(88,166,255,0.06);border-left:3px solid var(--accent);padding:12px 14px;border-radius:4px;margin-bottom:14px;">
+              <div style="font-weight:700;color:var(--text-primary);margin-bottom:8px;">🎯 상황별 추천 레코드</div>
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                <tr><th style="text-align:left;padding:4px 8px 8px 0;color:var(--text-secondary);">연결 범위</th><th style="text-align:left;padding:4px 8px 8px 0;color:var(--text-secondary);">추가할 DNS 레코드</th></tr>
+                <tr style="border-top:1px solid var(--border);"><td style="padding:8px 8px 8px 0;vertical-align:top;"><code>www.myapp.com</code>만</td><td style="padding:8px 0;"><code>CNAME</code> · Host=<code>www</code> · Target=<code>${p.subdomain}.twinverse.org</code></td></tr>
+                <tr style="border-top:1px solid var(--border);"><td style="padding:8px 8px 8px 0;vertical-align:top;"><code>myapp.com</code>만 (apex)</td><td style="padding:8px 0;"><code>A</code> · Host=<code>@</code> 또는 비어두기 · Value=<code id="orbitron-public-ip-hint">공인 IP 확인 중…</code></td></tr>
+                <tr style="border-top:1px solid var(--border);"><td style="padding:8px 8px 8px 0;vertical-align:top;"><strong>둘 다 (추천)</strong></td><td style="padding:8px 0;"><code>A</code> <code>@</code> → <span id="orbitron-public-ip-hint2">공인 IP</span> <em>그리고</em> <code>CNAME</code> <code>www</code> → <code>${p.subdomain}.twinverse.org</code></td></tr>
+              </table>
             </div>
-            <div style="background:rgba(189,147,249,0.06);border-left:3px solid #bd93f9;padding:10px 14px;border-radius:4px;">
-              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">옵션 B — CNAME 레코드 (www/서브도메인에만 가능, apex 불가)</div>
-              <div>타입 <code>CNAME</code> · 호스트 <code>www</code> 또는 임의 서브도메인 · 값 <code>${p.subdomain}.twinverse.org</code></div>
+
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">🇰🇷 가비아 (Gabia)</div>
+              <ol style="padding-left:20px;margin:0;">
+                <li>My가비아 로그인 → 도메인 → 관리 → 해당 도메인 선택</li>
+                <li>DNS 정보 → DNS 관리</li>
+                <li>레코드 추가 클릭 → 위 표의 "타입/호스트/값" 입력 후 저장</li>
+              </ol>
             </div>
-            <div style="margin-top:12px;">
-              <p style="margin-bottom:6px;"><strong>예시 — 가비아(Gabia):</strong> 관리 콘솔 → 도메인 → DNS 설정 → 레코드 추가</p>
-              <p style="margin-bottom:6px;"><strong>예시 — Cloudflare:</strong> DNS → Add Record (Proxy는 Off 권장)</p>
-              <p style="margin-bottom:0;color:var(--warning);">⚠️ DNS 전파에 1~48시간 소요될 수 있습니다. "DNS 검증" 버튼으로 반영 상태를 확인하세요.</p>
+
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">🟩 Squarespace Domains (구 Google Domains)</div>
+              <ol style="padding-left:20px;margin:0;">
+                <li>account.squarespace.com/domains → 해당 도메인</li>
+                <li>DNS Settings (또는 DNS)</li>
+                <li><strong>Custom Records</strong> 섹션에서 기존 레코드 삭제(필요 시) → 위 표의 값 추가</li>
+              </ol>
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">🟧 Cloudflare</div>
+              <ol style="padding-left:20px;margin:0;">
+                <li>Cloudflare 대시보드 → 해당 도메인 선택 → DNS → Records</li>
+                <li>Add Record (Proxy 상태는 초기 발급 시 <strong>DNS only (회색 구름)</strong> 권장 — 발급 성공 후 오렌지로 바꿔도 됨)</li>
+              </ol>
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;">🟦 Namecheap / AWS Route53 / 그 외</div>
+              <ol style="padding-left:20px;margin:0;">
+                <li>각 서비스의 "DNS 관리" 또는 "Hosted Zone" 메뉴 진입</li>
+                <li>Type / Host(Name) / Value 입력하여 레코드 추가</li>
+              </ol>
+            </div>
+
+            <div style="background:rgba(210,153,34,0.08);border-left:3px solid var(--warning);padding:10px 14px;border-radius:4px;margin-top:10px;">
+              <strong style="color:var(--warning);">⚠️ 주의</strong><br>
+              • 같은 Host에 여러 레코드가 있으면 충돌합니다. <strong>기존 레코드를 먼저 확인/삭제</strong> 후 새로 추가하세요.<br>
+              • DNS 전파: 대부분 1~5분, 드물게 48시간까지. "DNS 검증" 버튼으로 확인 가능.<br>
+              • Cloudflare Orange-Cloud(Proxied)는 <strong>초기 발급 시 Off</strong>하세요. 인증서 발급 후 다시 켜도 됩니다.
             </div>
           </div>
         </details>
@@ -1457,13 +1535,17 @@ async function verifyDomain(projectId) {
             resultDiv.style.background = 'rgba(63,185,80,0.1)';
             resultDiv.style.border = '1px solid rgba(63,185,80,0.3)';
             resultDiv.style.color = 'var(--success)';
-            resultDiv.innerHTML = `${data.message}<br><span style="font-size:12px;color:var(--text-muted);margin-top:4px;display:inline-block;">이제 "연결" 버튼을 클릭하여 도메인을 연결하세요.</span>`;
+            const detailLines = (data.perDomain || []).map(d => `  ✅ ${d.domain} — ${d.details?.matched || 'ok'}`).join('\n');
+            resultDiv.innerHTML = `<strong>DNS 검증 성공</strong>\n${detailLines}\n\n<span style="font-size:12px;color:var(--text-muted);">이제 "SSL 발급 + 연결" 버튼을 눌러 Let's Encrypt 인증서를 발급받고 연결을 마무리하세요.</span>`;
             document.getElementById('btn-connect-domain').disabled = false;
         } else {
             resultDiv.style.background = 'rgba(210,153,34,0.1)';
             resultDiv.style.border = '1px solid rgba(210,153,34,0.3)';
             resultDiv.style.color = 'var(--warning)';
-            resultDiv.textContent = data.message || data.error;
+            const perDomain = (data.perDomain || []).map(d =>
+                d.verified ? `  ✅ ${d.domain}` : `  ⚠️ ${d.domain} — ${d.details?.reason || '확인 불가'}`
+            ).join('\n');
+            resultDiv.textContent = perDomain || data.message || data.error || 'DNS 검증 실패';
             document.getElementById('btn-connect-domain').disabled = true;
         }
     } catch (e) {
@@ -1478,6 +1560,7 @@ async function connectDomain(projectId) {
     const domainInput = document.getElementById('set-custom-domain');
     const domain = domainInput?.value?.trim();
     if (!domain) return;
+    const redirect = !!document.getElementById('set-domain-redirect')?.checked;
 
     const btn = document.getElementById('btn-connect-domain');
     btn.disabled = true;
@@ -1487,7 +1570,7 @@ async function connectDomain(projectId) {
         const res = await fetch(`${API}/projects/${projectId}/domain/connect`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ domain })
+            body: JSON.stringify({ domain, redirect })
         });
         const data = await res.json();
 
@@ -1528,6 +1611,30 @@ async function disconnectDomain(projectId) {
     }
 }
 
+// Toggle the canonical-hostname redirect (tunnel subdomain → https://custom_domain).
+window.toggleDomainRedirect = async function (projectId, enabled) {
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/domain/redirect`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        const d = await res.json();
+        if (res.ok && d.success) {
+            toast(d.message, 'success');
+            currentProject.redirect_to_custom_domain = enabled;
+            renderSettings();
+        } else {
+            toast(d.error || '리다이렉트 설정 실패', 'error');
+            // Revert checkbox on failure
+            const cb = document.getElementById(`toggle-domain-redirect-${projectId}`);
+            if (cb) cb.checked = !enabled;
+        }
+    } catch (e) {
+        toast('리다이렉트 설정 실패: ' + e.message, 'error');
+    }
+};
+
 // Re-issue / renew the Let's Encrypt certificate for the currently-connected custom domain.
 window.renewDomain = async function (projectId) {
     if (!confirm('Let\'s Encrypt 인증서를 즉시 재발급/갱신하시겠습니까?')) return;
@@ -1543,32 +1650,42 @@ window.renewDomain = async function (projectId) {
     } catch (e) { toast('갱신 실패: ' + e.message, 'error'); }
 };
 
-// Fetch and display the SSL cert expiry + DNS match status for a connected custom domain.
+// Fetch and display the SSL cert expiry + per-domain DNS match status.
 window.loadDomainCertStatus = async function (projectId) {
     const el = document.getElementById(`domain-cert-status-${projectId}`);
     if (!el) return;
     try {
         const res = await fetch(`${API}/projects/${projectId}/domain/status`);
         const d = await res.json();
-        if (d.status === 'none' || !d.domain) { el.textContent = ''; return; }
+        if (d.status === 'none') { el.textContent = ''; return; }
         const certTxt = d.cert?.exists
-            ? `🔐 인증서 만료 ${d.cert.daysLeft}일 남음 (${d.cert.expiresAt?.split('T')[0]})`
+            ? `🔐 SSL ${d.cert.daysLeft}일 남음 (${d.cert.expiresAt?.split('T')[0]})`
             : '⚠️ 인증서 없음';
-        const dnsTxt = d.dnsValid ? '🌐 DNS 일치' : '⚠️ DNS 불일치';
-        el.innerHTML = `${certTxt} · ${dnsTxt}`;
-        el.style.color = d.cert?.needsRenewal ? 'var(--warning)' : 'var(--text-muted)';
+        const count = (d.domains || [d.domain]).length;
+        const dnsSummary = d.dnsValid
+            ? (count > 1 ? `🌐 ${count}개 도메인 DNS 일치` : '🌐 DNS 일치')
+            : `⚠️ DNS 불일치 (${(d.perDomain || []).filter(x => !x.dnsValid).map(x => x.domain).join(', ')})`;
+        el.innerHTML = `${certTxt} · ${dnsSummary}`;
+        el.style.color = d.cert?.needsRenewal || !d.dnsValid ? 'var(--warning)' : 'var(--text-muted)';
     } catch (e) { el.textContent = '상태 조회 실패'; }
 };
 
-// Fetch our public IP hint and display it in the DNS guide box.
+// Fetch our public IP hint and display it in the DNS guide box (both places).
 window.loadPublicIpHint = async function (projectId) {
-    const el = document.getElementById('orbitron-public-ip-hint');
-    if (!el) return;
     try {
         const res = await fetch(`${API}/projects/${projectId}/domain/status`);
         const d = await res.json();
-        el.textContent = d.publicIp || '(IP 확인 불가 — 관리자에게 문의)';
-    } catch { el.textContent = '(조회 실패)'; }
+        const ip = d.publicIp || '(IP 확인 불가 — 관리자에게 문의)';
+        ['orbitron-public-ip-hint', 'orbitron-public-ip-hint2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = ip;
+        });
+    } catch {
+        ['orbitron-public-ip-hint', 'orbitron-public-ip-hint2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '(조회 실패)';
+        });
+    }
 };
 
 async function toggleAutoDeploy(id, enable) {
@@ -5547,4 +5664,766 @@ window.wanGenerate = async function () {
         wanLog('error: ' + e.message, 'err');
     }
     btn.disabled = false; btn.textContent = '🎬 영상 생성';
+};
+
+// ============ DOMAIN CONNECT WIZARD (dedicated page) ============
+
+// Cache of our server's public IP (fetched from /domain/status of any project)
+let _dcPublicIp = null;
+// Currently-selected project ID in the wizard
+let _dcProjectId = null;
+// Currently-selected DNS provider key
+let _dcProvider = null;
+// Full project record for the selected id (for rendering project-info block)
+let _dcProject = null;
+
+async function dcFetchPublicIp() {
+    if (_dcPublicIp) return _dcPublicIp;
+    // Try the dedicated diagnostics endpoint first (it auto-retries providers if the cache is empty)
+    try {
+        const res = await fetch(`${API}/system/public-ip`);
+        const d = await res.json();
+        _dcPublicIp = d.current || null;
+        return _dcPublicIp || dcIpFallbackHtml(d);
+    } catch {
+        // Fall back to a project-scoped status call
+        const anyProjectId = (allProjectsCache && allProjectsCache[0]?.id) || _dcProjectId;
+        if (anyProjectId) {
+            try {
+                const res = await fetch(`${API}/projects/${anyProjectId}/domain/status`);
+                const d = await res.json();
+                _dcPublicIp = d.publicIp || null;
+                return _dcPublicIp || dcIpFallbackHtml({});
+            } catch { /* fall through */ }
+        }
+        return dcIpFallbackHtml({});
+    }
+}
+
+// When auto-detection fails, the guide embeds this inline element — admins see a one-click
+// "manual input" button, regular users see a polite troubleshooting note.
+function dcIpFallbackHtml(diag) {
+    const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
+    const hint = diag && diag.howToFix && diag.howToFix.length ? diag.howToFix[0] : null;
+    if (isAdmin) {
+        return `<span style="color:var(--warning);">⚠️ 자동 조회 실패</span>
+          <button class="btn btn-sm btn-ghost" style="padding:2px 10px;font-size:11px;margin-left:4px;" onclick="dcPromptManualIp()">✏️ 수동 입력</button>
+          <button class="btn btn-sm btn-ghost" style="padding:2px 10px;font-size:11px;" onclick="dcRefreshPublicIp()">🔄 재시도</button>`;
+    }
+    return `<span style="color:var(--warning);">⚠️ 공인 IP 자동 조회 실패 — 서버 관리자에게 문의하세요.${hint ? '<br><span style="font-size:11px;color:var(--text-muted);">힌트: ' + hint + '</span>' : ''}</span>`;
+}
+
+// Admin opens a proper modal explaining HOW to find the server's public IP,
+// with links to external checker sites + a validated input. Setting the value
+// saves runtime override and re-renders all DNS guide cards.
+window.dcPromptManualIp = async function () {
+    // Remove any prior modal first
+    document.getElementById('dc-ip-modal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'dc-ip-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:620px;width:100%;max-height:88vh;overflow:auto;padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:17px;">📡 서버의 공인 IP 찾기 & 입력</h3>
+          <button onclick="document.getElementById('dc-ip-modal').remove()" style="background:transparent;border:0;color:var(--text-secondary);font-size:22px;cursor:pointer;line-height:1;">✕</button>
+        </div>
+
+        <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin:0 0 16px;">
+          서버 자동 조회가 실패했습니다 (대개 아웃바운드 방화벽 또는 일시적 네트워크 문제). <strong>아래 방법으로 서버의 공인 IPv4 주소를 찾아 입력하세요.</strong>
+        </p>
+
+        <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:12px 14px;border-radius:4px;margin-bottom:14px;">
+          <strong style="font-size:13px;color:var(--success);">💡 가장 빠른 방법 (상황별)</strong>
+          <ol style="margin:8px 0 0;padding-left:22px;font-size:12.5px;line-height:1.85;color:var(--text-secondary);">
+            <li><strong>서버가 집/사무실 공유기 뒤에 있다면</strong> — 지금 이 브라우저에서 아래 링크 클릭. 같은 공유기를 쓰면 <u>내 브라우저 IP = 서버 공인 IP</u> 입니다.</li>
+            <li><strong>클라우드 호스팅(AWS/GCP/DO/Vultr 등)이라면</strong> — 해당 콘솔의 인스턴스/VM 페이지에 <strong>Public IPv4</strong> 또는 <strong>Elastic IP</strong> 항목이 있습니다.</li>
+            <li><strong>물리 서버/전용선이라면</strong> — 공유기 관리자 페이지(192.168.0.1 또는 192.168.1.1)의 <strong>WAN 상태</strong>에서 "외부 IP" 확인.</li>
+            <li><strong>다른 장비에서 SSH 접속 가능하면</strong> — <code>ssh server</code> 후 <code>curl -s icanhazip.com</code> 실행.</li>
+          </ol>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px;">
+          <a href="https://whatismyipaddress.com" target="_blank" class="btn btn-sm btn-ghost" style="text-decoration:none;text-align:center;">🌐 whatismyipaddress.com</a>
+          <a href="https://www.whatismyip.com" target="_blank" class="btn btn-sm btn-ghost" style="text-decoration:none;text-align:center;">🌐 whatismyip.com</a>
+          <a href="https://api.ipify.org" target="_blank" class="btn btn-sm btn-ghost" style="text-decoration:none;text-align:center;">🌐 api.ipify.org</a>
+          <a href="https://search.naver.com/search.naver?query=내+아이피" target="_blank" class="btn btn-sm btn-ghost" style="text-decoration:none;text-align:center;">🟢 네이버 "내 아이피"</a>
+        </div>
+        <div class="form-hint" style="font-size:11px;color:var(--text-muted);margin:-4px 0 14px;line-height:1.5;">
+          ↑ 같은 네트워크에서 열면 나오는 IP 주소가 서버 공인 IP입니다 (NAT 공유). 다른 네트워크에서 보면 본인 위치 IP가 나오니 서버와 같은 네트워크에서 확인하세요.
+        </div>
+
+        <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px;">찾은 IP 입력 <span style="color:var(--warning);">*IPv4 형식</span></label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="dc-ip-modal-input" placeholder="예: 116.33.16.12" style="flex:1;padding:10px;font-family:ui-monospace,monospace;font-size:14px;">
+          <button class="btn btn-primary" onclick="dcSaveManualIp()">저장</button>
+        </div>
+        <div id="dc-ip-modal-error" style="font-size:12px;color:var(--danger);margin-top:6px;display:none;"></div>
+
+        <details style="margin-top:16px;">
+          <summary style="cursor:pointer;font-size:12.5px;color:var(--accent);font-weight:600;">🔒 영구 설정 (재부팅해도 유지)</summary>
+          <div style="margin-top:8px;background:#0b0d12;padding:10px 14px;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.7;color:var(--text-secondary);">
+            <div>server 터미널에서:</div>
+            <div>  echo "PUBLIC_IP=116.33.16.12" >> /home/stevenlim/WORK/orbitron/.env</div>
+            <div>  pm2 reload orbitron --update-env</div>
+            <div style="color:var(--text-muted);margin-top:6px;">(아래 입력은 재시작 전까지만 유지되는 임시 설정)</div>
+          </div>
+        </details>
+
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer;font-size:12.5px;color:var(--accent);font-weight:600;">⚠️ 자동 조회가 실패한 진짜 이유 가능성</summary>
+          <ul style="margin:8px 0 0;padding-left:22px;font-size:12px;line-height:1.7;color:var(--text-secondary);">
+            <li><strong>아웃바운드 443 방화벽</strong> — 서버가 외부로 HTTPS를 못 나감. <u>같은 문제가 Let's Encrypt 갱신에도 영향을 줍니다.</u> 네트워크 관리자에게 ipify.org + acme-v02.api.letsencrypt.org 아웃바운드 허용 요청.</li>
+            <li><strong>DNS 실패</strong> — 서버의 <code>/etc/resolv.conf</code>가 이상할 때. <code>nslookup api.ipify.org</code>로 테스트.</li>
+            <li><strong>기업망 TLS intercept</strong> — 프록시가 HTTPS를 가로채면 payload 검증 실패.</li>
+            <li><strong>일시적 네트워크 hiccup</strong> — "🔄 재시도" 버튼으로 한 번 더 시도 가능.</li>
+          </ul>
+        </details>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    setTimeout(() => document.getElementById('dc-ip-modal-input')?.focus(), 50);
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    // Enter key = save
+    document.getElementById('dc-ip-modal-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') dcSaveManualIp();
+        if (e.key === 'Escape') modal.remove();
+    });
+};
+
+// Handler for the modal's "저장" button
+window.dcSaveManualIp = async function () {
+    const input = document.getElementById('dc-ip-modal-input');
+    const err = document.getElementById('dc-ip-modal-error');
+    const ip = (input?.value || '').trim();
+    err.style.display = 'none';
+    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) {
+        err.textContent = '⚠️ IPv4 형식이 아닙니다 (예: 116.33.16.12)';
+        err.style.display = 'block';
+        input?.focus();
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/system/public-ip`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip }),
+        });
+        const d = await res.json();
+        if (!res.ok || !d.success) throw new Error(d.error || '설정 실패');
+        toast(`✅ 공인 IP ${d.current}로 설정 (재시작 전까지 유효)`, 'success');
+        _dcPublicIp = d.current;
+        document.getElementById('dc-ip-modal')?.remove();
+        if (_dcProvider) dcSelectProvider(_dcProvider);
+    } catch (e) {
+        err.textContent = '⚠️ ' + e.message;
+        err.style.display = 'block';
+    }
+};
+
+// Force the server to re-run its provider chain (bypasses the 1h cache).
+window.dcRefreshPublicIp = async function () {
+    try {
+        const res = await fetch(`${API}/system/public-ip/refresh`, { method: 'POST' });
+        const d = await res.json();
+        if (d.success && d.current) {
+            _dcPublicIp = d.current;
+            toast(`공인 IP 조회 성공: ${d.current}`, 'success');
+            if (_dcProvider) dcSelectProvider(_dcProvider);
+        } else {
+            toast('재시도도 실패 — "수동 입력" 버튼 또는 .env 설정을 써보세요', 'error');
+        }
+    } catch (e) { toast('재시도 실패: ' + e.message, 'error'); }
+};
+
+window.dcInit = async function () {
+    // Populate project dropdown
+    const sel = document.getElementById('dc-project');
+    if (!sel) return;
+    // Ensure we have the project list
+    if (!allProjectsCache || !allProjectsCache.length) {
+        try { await loadProjects(); } catch { /* ignore */ }
+    }
+    const list = allProjectsCache || [];
+    if (!list.length) {
+        sel.innerHTML = '<option value="">(등록된 프로젝트가 없습니다)</option>';
+        return;
+    }
+    sel.innerHTML = '<option value="">— 프로젝트 선택 —</option>' +
+        list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${escapeHtml(p.subdomain)})</option>`).join('');
+
+    // Pre-select currentProject if present, otherwise stay empty
+    if (currentProject && currentProject.id) {
+        sel.value = String(currentProject.id);
+        dcOnProjectChange();
+    }
+
+    // Pre-fetch public IP so the guide placeholders are ready
+    dcFetchPublicIp();
+
+    // Reset domain fields (primary only, no extras)
+    const primary = document.querySelector('.dc-domain-field[data-dc-primary="1"]');
+    if (primary) primary.value = '';
+    document.getElementById('dc-extra-domains').innerHTML = '';
+
+    // Reset provider / guide / action cards
+    _dcProvider = null;
+    document.querySelectorAll('.dc-provider').forEach(b => b.classList.remove('active'));
+    document.getElementById('dc-guide-wrap').style.display = 'none';
+    document.getElementById('dc-verify-wrap').style.display = 'none';
+    document.getElementById('dc-connect-wrap').style.display = 'none';
+    document.getElementById('dc-connect-btn').disabled = true;
+    document.getElementById('dc-verify-result').style.display = 'none';
+    document.getElementById('dc-connect-result').style.display = 'none';
+    document.getElementById('dc-connected-wrap').style.display = 'none';
+};
+
+// Add a new additional-domain row to the container.
+window.dcAddDomainField = function () {
+    const wrap = document.getElementById('dc-extra-domains');
+    if (!wrap) return;
+    const row = document.createElement('div');
+    row.className = 'dc-extra-row';
+    row.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+    row.innerHTML = `
+      <input type="text" class="dc-domain-field" placeholder="예) www.${(_dcProject?.subdomain ? _dcProject.subdomain : 'myapp')}.com" style="flex:1;padding:10px;font-family:inherit;">
+      <button type="button" class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);padding:0 12px;" onclick="this.parentElement.remove()" title="이 도메인 제거">✕</button>
+    `;
+    wrap.appendChild(row);
+    const inp = row.querySelector('input');
+    if (inp) inp.focus();
+};
+
+// Collect all non-empty domain values, primary first.
+function dcGetDomainList() {
+    const primaryEl = document.querySelector('.dc-domain-field[data-dc-primary="1"]');
+    const primary = (primaryEl?.value || '').trim();
+    const extras = Array.from(document.querySelectorAll('#dc-extra-domains .dc-domain-field'))
+        .map(el => (el.value || '').trim())
+        .filter(Boolean);
+    // Primary first (may be empty); dedupe, lowercase
+    const out = [];
+    const seen = new Set();
+    for (const d of [primary, ...extras]) {
+        const lc = d.toLowerCase();
+        if (lc && !seen.has(lc)) { seen.add(lc); out.push(lc); }
+    }
+    return out;
+}
+
+window.dcOnProjectChange = function () {
+    const sel = document.getElementById('dc-project');
+    const info = document.getElementById('dc-project-info');
+    _dcProjectId = sel.value ? Number(sel.value) : null;
+    _dcProject = (allProjectsCache || []).find(p => p.id === _dcProjectId) || null;
+    if (!_dcProject) { info.style.display = 'none'; return; }
+    const p = _dcProject;
+    const tunnelHost = `${p.subdomain}.twinverse.org`;
+    info.style.display = 'block';
+    info.innerHTML = `
+      <div style="display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:13px;">
+        <div style="color:var(--text-muted);">서브도메인</div>        <div><code>${escapeHtml(p.subdomain)}</code></div>
+        <div style="color:var(--text-muted);">현재 터널 URL</div>    <div><a href="https://${escapeHtml(tunnelHost)}" target="_blank" style="color:var(--accent);text-decoration:none;">https://${escapeHtml(tunnelHost)}</a></div>
+        <div style="color:var(--text-muted);">포트</div>              <div><code>${p.port || 'N/A'}</code></div>
+        <div style="color:var(--text-muted);">연결된 커스텀 도메인</div> <div>${p.custom_domain ? `<span style="color:var(--success);font-weight:600;">${escapeHtml(p.custom_domain)}</span>` : '<span style="color:var(--text-muted);">없음</span>'}</div>
+      </div>
+    `;
+    // Redirect label updates with subdomain
+    const lab = document.getElementById('dc-redirect-from');
+    if (lab) lab.textContent = `${p.subdomain}.twinverse.org`;
+
+    // If already connected, show the management UI instead of the input flow
+    if (p.custom_domain) {
+        dcRenderConnectedState(p);
+    } else {
+        document.getElementById('dc-connected-wrap').style.display = 'none';
+    }
+};
+
+window.dcSelectProvider = async function (provider) {
+    _dcProvider = provider;
+    document.querySelectorAll('.dc-provider').forEach(b => b.classList.toggle('active', b.dataset.provider === provider));
+    const ip = await dcFetchPublicIp();
+    const sub = _dcProject?.subdomain || '{서브도메인}';
+    const wrap = document.getElementById('dc-guide-wrap');
+    const body = document.getElementById('dc-guide-body');
+    body.innerHTML = dcBuildGuide(provider, ip, sub);
+    wrap.style.display = 'block';
+
+    // Once a provider is picked, unveil the verify + connect steps
+    document.getElementById('dc-verify-wrap').style.display = 'block';
+    document.getElementById('dc-connect-wrap').style.display = 'block';
+    // Wire up the copy buttons in the freshly-injected guide
+    body.querySelectorAll('.dc-copy-btn[data-copy]').forEach(b => {
+        b.onclick = () => dcCopyText(b, b.dataset.copy);
+    });
+};
+
+window.dcCopyText = async function (btn, text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        const orig = btn.textContent;
+        btn.classList.add('copied');
+        btn.textContent = '✓ 복사됨';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = orig; }, 1500);
+    } catch {
+        // Fallback: select and hope
+        const range = document.createRange();
+        const tmp = document.createElement('span'); tmp.textContent = text; document.body.appendChild(tmp);
+        range.selectNodeContents(tmp); window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+        document.execCommand('copy'); tmp.remove();
+        btn.textContent = '✓ 복사됨';
+    }
+};
+
+// Generate the two standard records (A apex + CNAME www) as a shared HTML block
+function dcRecordsBlock(ip, sub) {
+    return `
+      <div class="dc-record">
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">타입</div>
+          <div><code>A</code></div>
+          <div></div>
+        </div>
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">호스트 (Host)</div>
+          <div><code>@</code> 또는 비어두기 <span style="color:var(--text-muted);font-size:11px;">(apex = iiffnextwave.org 같은 메인 도메인)</span></div>
+          <div><button class="dc-copy-btn" data-copy="@">📋 @</button></div>
+        </div>
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">값 (Value)</div>
+          <div><code>${ip}</code> <span style="color:var(--text-muted);font-size:11px;">(Orbitron 공인 IP)</span></div>
+          <div><button class="dc-copy-btn" data-copy="${ip}">📋 ${ip}</button></div>
+        </div>
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">TTL</div>
+          <div>기본값 (300초 이하 권장)</div>
+          <div></div>
+        </div>
+      </div>
+      <div class="dc-record">
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">타입</div>
+          <div><code>CNAME</code></div>
+          <div></div>
+        </div>
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">호스트 (Host)</div>
+          <div><code>www</code></div>
+          <div><button class="dc-copy-btn" data-copy="www">📋 www</button></div>
+        </div>
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">값 (Target)</div>
+          <div><code>${sub}.twinverse.org</code></div>
+          <div><button class="dc-copy-btn" data-copy="${sub}.twinverse.org">📋 ${sub}.twinverse.org</button></div>
+        </div>
+        <div class="dc-record-row">
+          <div style="color:var(--text-muted);">TTL</div>
+          <div>기본값</div>
+          <div></div>
+        </div>
+      </div>
+    `;
+}
+
+function dcCommonWarning() {
+    return `
+      <div style="background:rgba(210,153,34,0.08);border-left:3px solid var(--warning);padding:10px 14px;border-radius:4px;margin-top:14px;font-size:12.5px;color:var(--text-secondary);line-height:1.6;">
+        <strong style="color:var(--warning);">⚠️ 공통 주의사항</strong><br>
+        • 같은 Host(<code>@</code> 또는 <code>www</code>)에 이미 다른 레코드가 있으면 <strong>먼저 삭제</strong>한 뒤 새로 추가하세요. 충돌하면 DNS가 의도치 않게 동작합니다.<br>
+        • 네임서버(Name Servers)는 <strong>절대 바꾸지 마세요</strong>. DNS 레코드만 수정하는 겁니다.<br>
+        • 저장 후 DNS 전파: 대부분 1-5분, 최악 48시간. 아래 "DNS 검증" 버튼으로 반영 상태를 확인할 수 있습니다.
+      </div>
+    `;
+}
+
+// Provider-specific guide HTML. Each returns the inner HTML for #dc-guide-body.
+function dcBuildGuide(provider, ip, sub) {
+    const records = dcRecordsBlock(ip, sub);
+    const warn = dcCommonWarning();
+
+    const guides = {
+        squarespace: `
+          <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
+            <strong>🟩 Squarespace Domains</strong> — 2023년 말 Google Domains에서 이관된 서비스입니다.<br>
+            네임서버는 그대로(<code>ns-cloud-*.googledomains.com</code>) 두시고 DNS 레코드만 수정합니다.
+          </div>
+          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
+          ${records}
+
+          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 Squarespace 대시보드 단계별 안내</strong>
+          <ol class="dc-steps">
+            <li class="dc-step"><strong>접속:</strong> <a href="https://account.squarespace.com/domains" target="_blank" style="color:var(--accent);">https://account.squarespace.com/domains</a> 로그인</li>
+            <li class="dc-step"><strong>도메인 선택:</strong> 목록에서 대상 도메인 클릭</li>
+            <li class="dc-step"><strong>DNS 메뉴:</strong> 왼쪽 메뉴에서 <code>DNS</code> 또는 <code>DNS Settings</code> 선택</li>
+            <li class="dc-step"><strong>기존 Squarespace 레코드 삭제</strong> (있다면): <code>A</code> 타입 4개 (198.185.159.144/145, 198.49.23.144/145), <code>CNAME www → ext-sq.squarespace.com</code> — 모두 휴지통 아이콘으로 삭제</li>
+            <li class="dc-step"><strong>Custom Records</strong> 섹션에서 <code>+ Add Record</code> 버튼 → 위의 <strong>A 레코드</strong> 먼저 입력 → Save</li>
+            <li class="dc-step">다시 <code>+ Add Record</code> → 위의 <strong>CNAME 레코드</strong> 입력 → Save</li>
+            <li class="dc-step">저장 후 5-10분 기다렸다가 아래 <strong>5단계 DNS 검증</strong> 버튼 클릭</li>
+          </ol>
+          ${warn}
+        `,
+
+        gabia: `
+          <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
+            <strong>🇰🇷 가비아 (Gabia)</strong> — 한국 최대 도메인 등록 서비스. 도메인 관리와 DNS 관리가 별도 메뉴로 분리되어 있습니다. DNS 관리 메뉴로 가셔야 합니다.
+          </div>
+          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
+          ${records}
+
+          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 가비아 단계별 안내</strong>
+          <ol class="dc-steps">
+            <li class="dc-step"><strong>My가비아 로그인:</strong> <a href="https://my.gabia.com" target="_blank" style="color:var(--accent);">https://my.gabia.com</a></li>
+            <li class="dc-step"><strong>상단 메뉴 "DNS 관리" 선택</strong> (도메인 관리 아니고 <u>DNS 관리</u>)</li>
+            <li class="dc-step">대상 도메인 오른쪽 <strong>설정</strong> 버튼 클릭</li>
+            <li class="dc-step"><strong>레코드 수정</strong> 클릭 → 기존 레코드 목록 확인</li>
+            <li class="dc-step">기존 <code>@</code>/<code>www</code> 레코드가 다른 곳 가리키면 체크 → <strong>삭제</strong></li>
+            <li class="dc-step"><strong>레코드 추가</strong> → 타입/호스트/값/TTL 입력 (위 표 참고) → <strong>저장</strong></li>
+            <li class="dc-step">두 번째 레코드도 같은 방식으로 추가 → 전체 저장</li>
+            <li class="dc-step">5-10분 후 아래 <strong>5단계 DNS 검증</strong> 클릭</li>
+          </ol>
+          ${warn}
+        `,
+
+        cloudflare: `
+          <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
+            <strong>🟧 Cloudflare</strong> — <strong>중요:</strong> 레코드 추가 시 Proxy status는 <u>DNS only (회색 구름)</u>로 두세요. Orange(Proxied)는 Let's Encrypt HTTP-01 challenge를 방해할 수 있습니다. 인증서 발급 성공 후에는 Orange로 바꿔도 됩니다.
+          </div>
+          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
+          ${records}
+
+          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 Cloudflare 단계별 안내</strong>
+          <ol class="dc-steps">
+            <li class="dc-step"><strong>Cloudflare 대시보드 로그인:</strong> <a href="https://dash.cloudflare.com" target="_blank" style="color:var(--accent);">https://dash.cloudflare.com</a></li>
+            <li class="dc-step">대상 도메인 클릭</li>
+            <li class="dc-step">왼쪽 메뉴 <code>DNS</code> → <code>Records</code></li>
+            <li class="dc-step">기존 <code>@</code>/<code>www</code> 레코드가 다른 곳 가리키면 <strong>Edit</strong> → <strong>Delete</strong></li>
+            <li class="dc-step"><code>+ Add record</code> → Type=A, Name=@, IPv4 address=<code>${ip}</code>, <strong>Proxy status = DNS only</strong> → Save</li>
+            <li class="dc-step">다시 <code>+ Add record</code> → Type=CNAME, Name=www, Target=<code>${sub}.twinverse.org</code>, <strong>Proxy status = DNS only</strong> → Save</li>
+            <li class="dc-step">아래 <strong>5단계 DNS 검증</strong> 클릭 (Cloudflare는 보통 1분 이내 전파)</li>
+          </ol>
+          ${warn}
+        `,
+
+        namecheap: `
+          <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
+            <strong>🟦 Namecheap</strong> — <strong>중요:</strong> Namecheap은 <em>Nameservers</em> 설정이 "Namecheap BasicDNS"로 되어 있어야 아래 DNS 레코드를 추가할 수 있습니다. 다른 네임서버를 쓰고 있다면 그 쪽에서 설정해야 합니다.
+          </div>
+          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
+          ${records}
+
+          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 Namecheap 단계별 안내</strong>
+          <ol class="dc-steps">
+            <li class="dc-step"><strong>로그인:</strong> <a href="https://ap.www.namecheap.com" target="_blank" style="color:var(--accent);">ap.www.namecheap.com</a></li>
+            <li class="dc-step">Domain List → 대상 도메인 <code>Manage</code></li>
+            <li class="dc-step">상단 탭 <code>Advanced DNS</code> 클릭</li>
+            <li class="dc-step">Host Records 섹션: 기존 <code>@</code>/<code>www</code> 레코드가 다른 곳 가리키면 휴지통으로 삭제</li>
+            <li class="dc-step"><code>Add New Record</code> → Type=A Record, Host=<code>@</code>, Value=<code>${ip}</code>, TTL=Automatic → 체크 아이콘으로 저장</li>
+            <li class="dc-step">다시 <code>Add New Record</code> → Type=CNAME Record, Host=<code>www</code>, Value=<code>${sub}.twinverse.org</code> → 체크 아이콘으로 저장 <em>(값 끝에 점(.)을 Namecheap이 자동 추가할 수 있음 — 정상)</em></li>
+            <li class="dc-step">아래 <strong>5단계 DNS 검증</strong> 클릭 (5-30분 소요)</li>
+          </ol>
+          ${warn}
+        `,
+
+        route53: `
+          <div style="background:rgba(80,250,123,0.06);border-left:3px solid var(--success);padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
+            <strong>🟨 AWS Route 53</strong> — 해당 도메인의 Hosted Zone이 Route 53에 이미 등록되어 있어야 합니다. (Registrar만 다른 곳이고 Nameservers가 Route 53을 가리키는 경우도 동일)
+          </div>
+          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
+          ${records}
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+            💡 Route 53은 apex에 대해 <strong>Alias</strong> 옵션도 제공하지만, 외부 IP(ALB/EIP 등)는 일반 A 레코드로 등록하면 충분합니다.
+          </div>
+
+          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 Route 53 단계별 안내</strong>
+          <ol class="dc-steps">
+            <li class="dc-step"><strong>AWS Console:</strong> <a href="https://console.aws.amazon.com/route53/" target="_blank" style="color:var(--accent);">console.aws.amazon.com/route53/</a></li>
+            <li class="dc-step">Hosted zones → 대상 도메인 클릭</li>
+            <li class="dc-step">기존 <code>A</code>/<code>CNAME</code> 레코드(@ 또는 www) 있으면 체크 → <code>Delete record</code></li>
+            <li class="dc-step"><code>Create record</code> → Record name = <em>(공란, apex)</em>, Type=A, Alias=Off, Value=<code>${ip}</code>, TTL=300 → Create</li>
+            <li class="dc-step">다시 <code>Create record</code> → Record name=<code>www</code>, Type=CNAME, Value=<code>${sub}.twinverse.org</code>, TTL=300 → Create</li>
+            <li class="dc-step">아래 <strong>5단계 DNS 검증</strong> 클릭 (Route 53은 보통 1-5분)</li>
+          </ol>
+          ${warn}
+        `,
+
+        other: `
+          <div style="background:rgba(189,147,249,0.08);border-left:3px solid #bd93f9;padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:13px;line-height:1.6;">
+            <strong>❓ 기타 / 모르겠음</strong> — 어느 서비스든 "DNS 관리"나 "DNS Records" 같은 메뉴에서 아래 두 레코드를 추가하면 동일하게 동작합니다.
+          </div>
+          <strong style="font-size:14px;">📋 추가할 DNS 레코드 2개</strong>
+          ${records}
+
+          <strong style="font-size:14px;display:block;margin-top:18px;margin-bottom:6px;">🛠 일반 단계</strong>
+          <ol class="dc-steps">
+            <li class="dc-step">도메인 등록 회사 또는 DNS 관리 서비스(호스팅사) 관리자 화면 로그인</li>
+            <li class="dc-step"><code>DNS</code>, <code>DNS 관리</code>, <code>DNS Zone</code>, <code>Records</code>, <code>Hosted Zone</code> 등의 메뉴 찾기</li>
+            <li class="dc-step">기존에 <code>@</code> 또는 <code>www</code>로 다른 곳을 가리키는 레코드가 있으면 <strong>먼저 삭제</strong></li>
+            <li class="dc-step">위 표의 두 레코드 추가 (타입 / 호스트 / 값 그대로)</li>
+            <li class="dc-step">저장 후 몇 분 기다렸다가 아래 <strong>5단계 DNS 검증</strong> 클릭</li>
+            <li class="dc-step">안 되면 도메인 회사의 "네임서버가 해당 회사 DNS를 쓰고 있는지" 확인 (타사 네임서버를 쓰고 있으면 그쪽에서 설정해야 함)</li>
+          </ol>
+          ${warn}
+        `,
+    };
+    return guides[provider] || guides.other;
+}
+
+// Render the management UI for a project that already has a custom_domain bound
+function dcRenderConnectedState(p) {
+    const wrap = document.getElementById('dc-connected-wrap');
+    if (!wrap) return;
+    const domains = (p.custom_domain || '').split(/[\s,]+/).filter(Boolean);
+    const primary = domains[0];
+    wrap.style.display = 'block';
+    wrap.innerHTML = `
+      <div class="card" style="padding:20px;border:1px solid rgba(63,185,80,0.3);background:rgba(63,185,80,0.05);">
+        <div style="display:flex;align-items:start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:240px;">
+            <div style="font-weight:700;color:var(--success);margin-bottom:8px;font-size:15px;">🟢 이 프로젝트는 이미 연결되어 있습니다</div>
+            ${domains.map(d => `<a href="https://${escapeHtml(d)}" target="_blank" style="display:block;color:var(--accent);font-size:15px;font-weight:600;text-decoration:none;margin:3px 0;">https://${escapeHtml(d)}</a>`).join('')}
+            <div id="domain-cert-status-${p.id}" style="font-size:12px;color:var(--text-muted);margin-top:10px;">SSL 인증서 상태 확인 중…</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-ghost" onclick="renewDomain(${p.id})">🔄 SSL 갱신</button>
+            <button class="btn btn-sm" style="background:rgba(248,81,73,0.1);color:var(--danger);border:1px solid rgba(248,81,73,0.3);" onclick="disconnectDomain(${p.id})">🔌 해제</button>
+          </div>
+        </div>
+        <div style="border-top:1px solid rgba(63,185,80,0.2);margin-top:14px;padding-top:14px;">
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);cursor:pointer;">
+            <input type="checkbox" id="toggle-domain-redirect-${p.id}" ${p.redirect_to_custom_domain ? 'checked' : ''} onchange="toggleDomainRedirect(${p.id}, this.checked)" style="width:16px;height:16px;cursor:pointer;">
+            <span>🧭 <strong>${escapeHtml(p.subdomain)}.twinverse.org → 공식 도메인으로 자동 리다이렉트 (301)</strong></span>
+          </label>
+          <div class="form-hint" style="font-size:11px;margin-top:4px;margin-left:26px;line-height:1.5;">
+            ${p.redirect_to_custom_domain
+              ? `<span style="color:var(--success);">✅ 활성화됨</span> — 터널 주소 방문자는 <code>https://${escapeHtml(primary)}</code>로 301 이동됩니다.`
+              : `비활성 — 터널 주소와 커스텀 도메인이 모두 독립적으로 접근 가능합니다.`}
+          </div>
+        </div>
+      </div>
+    `;
+    // Hide the add-domain wizard cards when already connected
+    ['dc-verify-wrap','dc-connect-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    // Also hide the "enter a new domain" input to reduce confusion
+    // (keep guide available though — user may want to understand)
+    if (typeof loadDomainCertStatus === 'function') loadDomainCertStatus(p.id);
+    // Show the search-engine registration section with the primary custom domain
+    if (typeof dcRenderSeoStep === 'function') dcRenderSeoStep(primary);
+}
+
+window.dcVerify = async function () {
+    if (!_dcProjectId) { toast('프로젝트를 먼저 선택하세요', 'error'); return; }
+    const domains = dcGetDomainList();
+    if (domains.length === 0) { toast('기본 도메인을 입력하세요', 'error'); return; }
+    const domain = domains.join(','); // backend parses comma/space/newline
+
+    const btn = document.getElementById('dc-verify-btn');
+    const result = document.getElementById('dc-verify-result');
+    btn.disabled = true; btn.textContent = '검증 중…';
+    result.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API}/projects/${_dcProjectId}/domain/verify`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ domain }),
+        });
+        const d = await res.json();
+        result.style.display = 'block';
+        if (d.verified) {
+            result.style.background = 'rgba(63,185,80,0.1)';
+            result.style.border = '1px solid rgba(63,185,80,0.3)';
+            result.style.color = 'var(--success)';
+            const lines = (d.perDomain || []).map(x => `  ✅ ${x.domain} (${x.details?.matched || 'ok'})`).join('\n');
+            result.textContent = `DNS 검증 성공\n${lines}\n\n아래 "SSL 발급 + 연결" 버튼을 누르세요.`;
+            document.getElementById('dc-connect-btn').disabled = false;
+        } else {
+            result.style.background = 'rgba(210,153,34,0.1)';
+            result.style.border = '1px solid rgba(210,153,34,0.3)';
+            result.style.color = 'var(--warning)';
+            const lines = (d.perDomain || []).map(x => x.verified ? `  ✅ ${x.domain}` : `  ⚠️ ${x.domain} — ${x.details?.reason || '확인 불가'}`).join('\n');
+            result.textContent = lines || d.message || d.error || '검증 실패';
+            document.getElementById('dc-connect-btn').disabled = true;
+        }
+    } catch (e) {
+        toast('DNS 검증 실패: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = '🔍 DNS 검증';
+    }
+};
+
+window.dcConnect = async function () {
+    if (!_dcProjectId) return;
+    const domains = dcGetDomainList();
+    if (domains.length === 0) { toast('기본 도메인을 입력하세요', 'error'); return; }
+    const domain = domains.join(',');
+    const redirect = !!document.getElementById('dc-redirect').checked;
+
+    const btn = document.getElementById('dc-connect-btn');
+    const result = document.getElementById('dc-connect-result');
+    btn.disabled = true; btn.textContent = '🔄 SSL 발급 + nginx 적용 중… (최대 60초)';
+    result.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API}/projects/${_dcProjectId}/domain/connect`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ domain, redirect }),
+        });
+        const d = await res.json();
+        result.style.display = 'block';
+        if (res.ok && d.success) {
+            result.style.background = 'rgba(63,185,80,0.1)';
+            result.style.border = '1px solid rgba(63,185,80,0.3)';
+            result.style.color = 'var(--success)';
+            result.innerHTML = `<strong>${escapeHtml(d.message || '연결 완료')}</strong><br>${(d.urls || [d.url]).map(u => `→ <a href="${u}" target="_blank" style="color:var(--accent);">${u}</a>`).join('<br>')}<br><span style="font-size:11px;color:var(--text-muted);">SSL 만료 ${d.cert?.daysLeft || '?'}일 남음 · 만료 전 자동 갱신됩니다</span>`;
+            // Update cached project + rerender connected state
+            if (_dcProject) {
+                _dcProject.custom_domain = (d.domains || [d.domain]).join(',');
+                _dcProject.redirect_to_custom_domain = redirect;
+            }
+            try { await loadProjects(); } catch {}
+            if (_dcProject) dcRenderConnectedState(_dcProject);
+            // After a fresh connect, ensure the SEO step is visible and scroll to it so the
+            // user sees the "now register your site at Google/Naver" checklist right away.
+            const firstDomain = (d.domains || [d.domain])[0];
+            if (typeof dcRenderSeoStep === 'function') dcRenderSeoStep(firstDomain);
+            setTimeout(() => document.getElementById('dc-seo-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 400);
+            toast('커스텀 도메인 연결 + SSL 발급 완료', 'success');
+        } else {
+            result.style.background = 'rgba(248,81,73,0.1)';
+            result.style.border = '1px solid rgba(248,81,73,0.3)';
+            result.style.color = 'var(--danger)';
+            result.textContent = d.error || '연결 실패';
+            if (d.hint) result.textContent += `\n힌트: ${d.hint}`;
+            if (d.failures) result.textContent += '\n' + d.failures.map(f => `  - ${f.domain}: ${f.reason}`).join('\n');
+        }
+    } catch (e) {
+        toast('연결 실패: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = '🔗 Let\'s Encrypt SSL 발급 + 연결';
+    }
+};
+
+// ============ SEARCH ENGINE REGISTRATION (Step 7 of Domain Connect wizard) ============
+
+// Build the per-engine guide cards HTML. `primaryDomain` is the domain user will register.
+function dcBuildSeoGuides(primaryDomain) {
+    const d = primaryDomain || '(도메인을 먼저 연결하세요)';
+    const url = `https://${d}`;
+    const sitemap = `${url}/sitemap.xml`;
+
+    const card = (head, href, badge, body) => `
+      <div class="dc-seo-card" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;background:var(--surface);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+          <div style="font-weight:700;font-size:14px;">${head}</div>
+          <a href="${href}" target="_blank" class="btn btn-sm btn-primary" style="text-decoration:none;padding:5px 12px;">${badge} →</a>
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.65;">${body}</div>
+      </div>`;
+
+    const copyBtn = (text, label) =>
+        `<button type="button" class="dc-copy-btn" onclick="dcCopyText(this,'${text.replace(/'/g, "\\'")}')">📋 ${label || text}</button>`;
+
+    return `
+      ${card(
+        '🔵 Google Search Console',
+        'https://search.google.com/search-console',
+        '등록하러 가기',
+        `전세계 검색 점유율 1위. <strong>필수</strong>.<br>
+         1) 링크 클릭 → Google 계정 로그인<br>
+         2) "속성 추가" → <strong>도메인</strong>을 선택 (URL 접두어 말고) → <code>${d}</code> 입력<br>
+         3) 소유권 확인 — <strong>DNS TXT 레코드 1개 추가</strong> 방식 (Google이 <code>google-site-verification=xxx...</code> 형식 값 제공)<br>
+         4) DNS 공급자(Squarespace/Cloudflare/가비아 등)에서 타입=<code>TXT</code>, 호스트=<code>@</code>, 값=Google이 준 문자열 추가 → 5-10분 대기<br>
+         5) Search Console로 돌아와 "확인" 클릭 → ✅<br>
+         6) 왼쪽 메뉴 <strong>Sitemaps</strong> → ${copyBtn(sitemap, 'sitemap URL')} 입력 후 "제출"<br>
+         7) <strong>URL 검사</strong> 메뉴에서 ${copyBtn(url, '메인 URL')} 넣고 "색인 요청" 클릭 → 빠른 첫 인덱싱`
+      )}
+
+      ${card(
+        '🟢 네이버 서치어드바이저 (Naver Search Advisor)',
+        'https://searchadvisor.naver.com/',
+        '등록하러 가기',
+        `한국 검색 점유율 2위. <strong>한국 서비스면 필수</strong>.<br>
+         1) 링크 클릭 → 네이버 로그인<br>
+         2) 우측 상단 <strong>웹마스터 도구</strong> → <strong>사이트 등록</strong><br>
+         3) 사이트 URL 란에 ${copyBtn(url, url)} 입력<br>
+         4) 소유권 확인 — <strong>HTML 파일 업로드</strong> 또는 <strong>HTML 태그 삽입</strong> 택1<br>
+         &nbsp;&nbsp;• 파일 방식: 네이버가 준 <code>naver1234abcd.html</code> 파일을 프로젝트 루트에 배치 → 재배포<br>
+         &nbsp;&nbsp;• 태그 방식: <code>&lt;meta name="naver-site-verification" content="..."&gt;</code>을 앱의 <code>&lt;head&gt;</code>에 추가 → 재배포<br>
+         5) 네이버로 돌아와 "확인" → ✅<br>
+         6) 왼쪽 <strong>요청 → 사이트맵 제출</strong>에 ${copyBtn(sitemap, 'sitemap URL')}<br>
+         7) 왼쪽 <strong>요청 → 웹페이지 수집</strong>에 핵심 URL 3-5개 수동 제출 → 크롤링 가속`
+      )}
+
+      ${card(
+        '🟦 Microsoft Bing Webmaster Tools',
+        'https://www.bing.com/webmasters/',
+        '등록하러 가기',
+        `Bing + Yahoo 한번에 커버. ChatGPT·Copilot의 "웹 검색" 결과에도 영향 (이들이 Bing을 소스로 씀).<br>
+         1) 로그인 (Microsoft / Google / Facebook 계정)<br>
+         2) 사이트 URL ${copyBtn(url, url)} 입력<br>
+         3) ⚡ <strong>Import from Google Search Console</strong> 옵션이 있음 — Search Console에 이미 등록했다면 원클릭 이관 (소유권 재검증 불필요)<br>
+         4) 아니면 DNS TXT / XML 파일 / 메타태그 중 택1로 검증<br>
+         5) Sitemaps 메뉴에 ${copyBtn(sitemap, 'sitemap')} 제출<br>
+         6) <strong>URL 검사</strong>에서 핵심 URL 수동 제출`
+      )}
+
+      ${card(
+        '🟠 Daum / Kakao 검색 등록',
+        'https://register.search.daum.net/index.daum',
+        '등록하러 가기',
+        `Daum·카카오톡 검색. 한국 사용자 대상이면 유용.<br>
+         1) 링크 클릭 → 카카오 계정 로그인<br>
+         2) <strong>사이트 등록</strong> 클릭 → 카테고리 선택<br>
+         3) URL ${copyBtn(url, url)} 및 사이트 정보 입력<br>
+         4) 등록 완료 → <strong>수동 심사</strong> (보통 1-2일 내 반영)<br>
+         <span style="color:var(--text-muted);">참고: Daum은 자동 크롤링 중심이 아니라 등록·심사 방식이 강해서 초기 노출에 효과적.</span>`
+      )}
+
+      <details style="margin-top:14px;">
+        <summary style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;padding:6px 0;">📚 기본 SEO 체크리스트 (등록 전에 확인)</summary>
+        <div style="margin-top:10px;font-size:12.5px;color:var(--text-secondary);line-height:1.7;background:rgba(255,255,255,0.02);padding:12px 14px;border-radius:6px;">
+          <strong>📄 sitemap.xml 준비</strong> — 검색엔진이 페이지 목록을 읽는 표준 파일. <code>${sitemap}</code>에서 접근 가능해야 함. Next.js는 <code>next-sitemap</code> 패키지, 정적 사이트는 <code>sitemap-generator</code> 등으로 자동 생성 가능.<br><br>
+
+          <strong>🤖 robots.txt 준비</strong> — 크롤러에게 어디 보면 되는지 알려주는 파일. <code>${url}/robots.txt</code>에 다음 내용이면 기본 OK:
+          <pre style="background:#0b0d12;padding:10px;border-radius:4px;margin:6px 0;font-size:12px;">User-agent: *
+Allow: /
+Sitemap: ${sitemap}</pre>
+
+          <strong>🏷️ 메타태그 최소 세트</strong> — 각 페이지 <code>&lt;head&gt;</code>에:
+          <pre style="background:#0b0d12;padding:10px;border-radius:4px;margin:6px 0;font-size:12px;">&lt;title&gt;명확한 페이지 제목 (50-60자)&lt;/title&gt;
+&lt;meta name="description" content="페이지 요약 (150-160자)"&gt;
+&lt;meta property="og:title" content="..."&gt;
+&lt;meta property="og:description" content="..."&gt;
+&lt;meta property="og:image" content="https://..."&gt;
+&lt;link rel="canonical" href="${url}/현재경로"&gt;</pre>
+
+          <strong>🔗 canonical URL</strong> — 도메인 리다이렉트가 활성화되어 있으면 터널 도메인과 중복 콘텐츠 문제 자동 해결. 그 외 상황에선 canonical 태그를 꼭 넣으세요.
+          <br><br>
+          <strong>⏱ 인덱싱 타임라인 참고</strong><br>
+          • Google: 첫 방문 1-3일, 본격 인덱싱 1-2주<br>
+          • Naver: 등록 후 2-4일 이내 첫 크롤링, 정식 노출 1-2주<br>
+          • Bing: Google 대비 빠름, 수일 내 반영<br>
+          • Daum: 심사 1-3일
+        </div>
+      </details>
+
+      <div style="background:rgba(210,153,34,0.08);border-left:3px solid var(--warning);padding:10px 14px;border-radius:4px;margin-top:14px;font-size:12px;color:var(--text-secondary);line-height:1.6;">
+        <strong style="color:var(--warning);">⚠️ 등록 전 체크</strong><br>
+        • 위 7단계는 <strong>1-6단계 완료 후(https://${d} 가 정상 200 응답해야)</strong> 해야 소유권 검증이 성공합니다.<br>
+        • DNS TXT 레코드 방식으로 소유권 확인 시 <strong>기존 A/CNAME 레코드는 건드리지 마세요</strong>. TXT는 같은 <code>@</code>에 여러 개 공존 가능.<br>
+        • 여러 도메인을 연결했다면 (apex + www) <strong>각각 따로 Search Console 속성을 추가</strong>하는 것이 정확한 통계를 줍니다.
+      </div>
+    `;
+}
+
+// Populate and show the SEO step if the project has a connected custom domain.
+window.dcRenderSeoStep = function (primaryDomain) {
+    const wrap = document.getElementById('dc-seo-wrap');
+    const body = document.getElementById('dc-seo-body');
+    if (!wrap || !body) return;
+    if (!primaryDomain) { wrap.style.display = 'none'; return; }
+    body.innerHTML = dcBuildSeoGuides(primaryDomain);
+    wrap.style.display = 'block';
 };

@@ -69,6 +69,10 @@ DO $$ BEGIN
     -- Project group support
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES project_groups(id) ON DELETE SET NULL;
 
+    -- When true, requests to {subdomain}.twinverse.org are 301-redirected to the primary
+    -- custom_domain (canonical hostname enforcement, SEO-friendly).
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS redirect_to_custom_domain BOOLEAN DEFAULT false;
+
     -- Services config for project groups
     ALTER TABLE project_groups ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '[]'::jsonb;
 
