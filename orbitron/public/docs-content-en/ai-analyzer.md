@@ -93,7 +93,7 @@ All Gemma calls automatically route to the remote server — no code changes. `s
 
 - **Scalability**: point at any number of GPU hosts by flipping `OLLAMA_HOST`; load balancers drop in behind the same contract.
 - **Isolation**: restarting Orbitron no longer interrupts an active AI inference.
-- **GPU sharing**: when Gemma and the Wan video pipelines share a single RTX 3090, `OLLAMA_KEEP_ALIVE=30s` makes Gemma hold VRAM *only while active*. See the [AI Video Generation guide](/docs-en.html#/ai-video) for the full story.
+- **VRAM efficiency**: `OLLAMA_KEEP_ALIVE=30s` makes Gemma hold VRAM *only while active*; 30 s of idle and it auto-unloads, so the GPU can serve other workloads.
 - **Security**: the GPU server is LAN-only via UFW; clients reach it exclusively through Orbitron's authenticated proxy.
 
 ### Topologies
@@ -113,12 +113,9 @@ All Gemma calls automatically route to the remote server — no code changes. `s
 **Multi-GPU (future)**:
 ```
 [Orbitron] ──┬──→ [GPU box A: LLMs]
-             └──→ [GPU box B: video gen]
+             └──→ [GPU box B: additional workloads]
 .env: OLLAMA_HOST=http://gpu-a.internal:11434
-      WAN_VIDEO_HOST=http://gpu-b.internal:8200
 ```
-
-Full architecture diagram: see the "Distributed GPU Routing" section in the [AI Video Generation guide](/docs-en.html#/ai-video).
 
 ---
 

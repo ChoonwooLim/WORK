@@ -93,7 +93,7 @@ Orbitron의 모든 Gemma 호출이 자동으로 원격 서버로 라우팅됩니
 
 - **확장성**: 여러 GPU 서버를 `OLLAMA_HOST` 값만 바꿔가며 활용 가능. 차후 로드 밸런서 도입 시에도 API 계약 그대로 유지
 - **격리**: Orbitron 재시작이 진행 중인 AI 추론에 영향 없음
-- **GPU 공유**: 같은 RTX 3090에서 Gemma + Wan 비디오 모델이 공존해도 `OLLAMA_KEEP_ALIVE=30s` 설정으로 **사용 중일 때만** VRAM 점유. 비디오 생성 시 충돌 없음 (자세한 것은 [AI 영상 생성 가이드](/docs.html#/ai-video) 참고)
+- **VRAM 효율**: `OLLAMA_KEEP_ALIVE=30s` 설정으로 **사용 중일 때만** VRAM 점유. 30초 idle 시 자동 언로드되어 다른 워크로드와 GPU 공유 가능
 - **보안**: GPU 서버는 UFW로 LAN만 허용. Orbitron 프록시를 통해서만 접근 가능 — 외부 인터넷 비공개
 
 ### 구성 예시
@@ -113,12 +113,9 @@ Orbitron의 모든 Gemma 호출이 자동으로 원격 서버로 라우팅됩니
 **멀티 GPU (향후 확장)**:
 ```
 [Orbitron] ──┬──→ [GPU box A: LLM 전용]
-             └──→ [GPU box B: 영상 생성 전용]
+             └──→ [GPU box B: 추가 워크로드]
 .env: OLLAMA_HOST=http://gpu-a.internal:11434
-      WAN_VIDEO_HOST=http://gpu-b.internal:8200
 ```
-
-자세한 아키텍처 다이어그램은 [AI 영상 생성 가이드의 "분산 GPU 라우팅" 섹션](/docs.html#/ai-video)을 참고하세요.
 
 ---
 

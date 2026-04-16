@@ -637,35 +637,21 @@
         </div>
 
         <!-- ═══════════════════════════════════════════════════ -->
-        <!-- v2.2 — 2026-04-13 (AI Video Gen + Dedicated GPU Server) -->
+        <!-- v2.2 — 2026-04-13 (Dedicated GPU Server + Ops Cleanup) -->
         <!-- ═══════════════════════════════════════════════════ -->
         <div class="version-block">
-            <div class="version-dot" style="background:#ff79c6; box-shadow: 0 0 14px rgba(255,121,198,0.5);"></div>
+            <div class="version-dot" style="background:#50fa7b; box-shadow: 0 0 14px rgba(80,250,123,0.5);"></div>
             <div class="version-header">
-                <span class="version-tag" style="color:#ff79c6;">v2.2</span>
+                <span class="version-tag" style="color:#50fa7b;">v2.2</span>
                 <span class="version-date">April 13, 2026</span>
             </div>
-            <p class="version-title">🎬 AI Video Generation (Wan 2.2) + Dedicated GPU Server + Ops Cleanup</p>
+            <p class="version-title">🖥 Dedicated GPU Server + Ops Cleanup</p>
             <ul class="change-list">
-                <li class="change-item">
-                    <span class="change-badge badge-feature">Feature</span>
-                    <div class="change-content">
-                        <strong>Wan 2.2 AI Video Generation — one-click inside the dashboard</strong>
-                        <p>Integrated Alibaba's <strong>Wan 2.2</strong> (the current official open-source SOTA) in three variants: <code>ti2v-5b</code> (5B, fast, ~36s/clip) · <code>t2v-14b</code> (A14B MoE, cinematic) · <code>i2v-14b</code> (A14B MoE, image-to-video). Note: "Wan 2.5" remains Alibaba-API-only as of April 2026 with no open-source weights; we'll add it the moment it's released. A new <strong>AI Studio → 🎬 AI Video Generation</strong> sidebar section exposes prompt input, model selector, frame/step/resolution controls, a live status chip (GPU / VRAM / loaded model), the player, and an activity log. Orbitron proxies every call via <code>/api/wan/{status,t2v,i2v,video/:filename,healthz}</code> so the LAN IP is never exposed and only authenticated sessions can reach the service. Multipart for image uploads (multer, 20MB cap).</p>
-                    </div>
-                </li>
                 <li class="change-item">
                     <span class="change-badge badge-feature">Infrastructure</span>
                     <div class="change-content">
                         <strong>Dedicated GPU Server (twinverse-ai)</strong>
-                        <p>Split the production Orbitron host from a dedicated AI-inference box: <strong>Threadripper 3970X (32C/64T) + RTX 3090 24GB + 128GB DDR4</strong> + dual 10GbE Intel X550, Ubuntu 24.04 LTS. Heavy workloads (31B LLMs, A14B MoE video) moved off the dashboard host, so restarting Orbitron no longer interrupts renders. LAN-only access via UFW (<code>192.168.219.0/24</code> allowlist on 22/11434/8200/8100), SSH key-only (password auth disabled), systemd linger enabled for boot-time auto-start, nvidia-persistenced + 350W power-limit systemd unit, CUDA Toolkit 12.0 installed. Orbitron routes Gemma 4 chat to the remote GPU via <code>OLLAMA_HOST=http://192.168.219.117:11434</code>: throughput ~46 → ~133 tok/s (2.9×), boot warmup 43.5 → 5.2 s (8.4×).</p>
-                    </div>
-                </li>
-                <li class="change-item">
-                    <span class="change-badge badge-feature">Engineering</span>
-                    <div class="change-content">
-                        <strong>Dynamic GPU VRAM Sharing — triple guardrail</strong>
-                        <p>(1) <code>OLLAMA_KEEP_ALIVE=30s</code> so Gemma only holds VRAM while actively chatting — idle for 30 s and it auto-unloads. (2) The Wan service's <code>_free_ollama_vram()</code> hook posts <code>keep_alive:0</code> to Ollama right before loading an A14B pipeline, forcing an immediate unload instead of waiting for the timer. (3) <code>enable_sequential_cpu_offload()</code> streams the 28GB-bfloat16 A14B MoE layer-by-layer into 24GB VRAM, and <code>PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True</code> cuts fragmentation.</p>
+                        <p>Split the production Orbitron host from a dedicated AI-inference box: <strong>Threadripper 3970X (32C/64T) + RTX 3090 24GB + 128GB DDR4</strong> + dual 10GbE Intel X550, Ubuntu 24.04 LTS. Heavy workloads (31B LLMs) moved off the dashboard host, so restarting Orbitron no longer interrupts inference. LAN-only access via UFW (<code>192.168.219.0/24</code> allowlist on 22/11434), SSH key-only (password auth disabled), systemd linger enabled for boot-time auto-start, nvidia-persistenced + 350W power-limit systemd unit, CUDA Toolkit 12.0 installed. Orbitron routes Gemma 4 chat to the remote GPU via <code>OLLAMA_HOST=http://192.168.219.117:11434</code>: throughput ~46 → ~133 tok/s (2.9×), boot warmup 43.5 → 5.2 s (8.4×).</p>
                     </div>
                 </li>
                 <li class="change-item">
@@ -673,13 +659,6 @@
                     <div class="change-content">
                         <strong>Trust proxy, log hygiene, npm audit, Docker prune</strong>
                         <p><code>app.set('trust proxy', 1)</code> replaces the permissive <code>true</code>, killing the <code>ERR_ERL_PERMISSIVE_TRUST_PROXY</code> stream and blocking X-Forwarded-For spoofing. morgan now skips <code>/api/projects*/stats</code> dashboard polling, shrinking PM2 <code>out.log</code> from 158MB / 2.5M lines to 47 lines. <code>pm2-logrotate</code> installed (10MB / 7d / compress). A one-shot Gemma 4 warmup request on boot removes the ~30 s first-call cold start. <code>npm audit fix</code> resolved 6 advisories (5 high + 1 moderate: basic-ftp, brace-expansion, express-rate-limit, multer, path-to-regexp) with no breaking changes. <code>docker builder prune -a</code> + <code>image prune --filter until=24h</code> reclaimed <strong>278GB</strong> of system disk (/ went from 86% to 22%). All four project <code>.env</code> files chmod-ed to 600 to remove world-readable bits. Three zombie RemoteAGT containers cleaned up and <code>nginx/conf.d/remoteagt.conf</code> upstream pointed back at the DB-registered container.</p>
-                    </div>
-                </li>
-                <li class="change-item">
-                    <span class="change-badge badge-feature">Docs</span>
-                    <div class="change-content">
-                        <strong>New documentation</strong>
-                        <p>New page: <a href="/docs-en.html#/ai-video">AI Video Generation (Wan 2.2)</a> — three-model comparison, parameter reference, distributed-GPU architecture diagram, measured performance, FAQ, security notes (KR + EN). Sidebar reorganized: old "Observability" group split into a new "🌱 AI &amp; Generative" group with both the troubleshooting and the video-gen guides. Added distributed-GPU routing section to the AI Analyzer guide. Overview / Features / Index / Comparison / Pricing pages refreshed.</p>
                     </div>
                 </li>
             </ul>

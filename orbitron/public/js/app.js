@@ -240,15 +240,9 @@ function navigateTo(page) {
         'admin-bugs': '🐞 버그 수정 로그',
         'deploy-vps': '🖥 VPS 호스팅',
         'business-plan': '🚀 Orbitron 상용 서비스 계획서',
-        'ai-video': '🎬 AI 영상 생성 — Wan 2.2',
         'domain-connect': '🌐 커스텀 도메인 연결',
     };
     document.getElementById('topbar-title').textContent = titles[page] || '';
-
-    // Refresh Wan status when entering the AI Video page
-    if (page === 'ai-video' && typeof wanRefresh === 'function') {
-        wanRefresh();
-    }
 
     // Initialize the Domain Connect wizard
     if (page === 'domain-connect' && typeof dcInit === 'function') {
@@ -5562,109 +5556,6 @@ function renderBusinessPlan() {
     </div>
     `;
 }
-
-// ============ AI VIDEO (Wan 2.2) ============
-
-let wanMode = 't2v';
-
-window.wanSetMode = function (m) {
-    wanMode = m;
-    const t2v = document.getElementById('wan-tab-t2v');
-    const i2v = document.getElementById('wan-tab-i2v');
-    if (t2v) t2v.style.borderBottom = m === 't2v' ? '2px solid #58a6ff' : '2px solid transparent';
-    if (t2v) t2v.style.color = m === 't2v' ? '' : 'var(--text-secondary)';
-    if (i2v) i2v.style.borderBottom = m === 'i2v' ? '2px solid #58a6ff' : '2px solid transparent';
-    if (i2v) i2v.style.color = m === 'i2v' ? '' : 'var(--text-secondary)';
-    const imgSec = document.getElementById('wan-img-section');
-    if (imgSec) imgSec.style.display = m === 'i2v' ? 'block' : 'none';
-    const sel = document.getElementById('wan-model');
-    if (sel) sel.value = m === 'i2v' ? 'i2v-14b' : 'ti2v-5b';
-};
-
-function wanLog(msg, cls) {
-    const l = document.getElementById('wan-log');
-    if (!l) return;
-    const t = new Date().toLocaleTimeString();
-    const colored = cls === 'err' ? `<span style="color:#ff5c5c">${msg}</span>`
-                  : cls === 'ok'  ? `<span style="color:#50fa7b">${msg}</span>`
-                  : msg;
-    l.innerHTML += `\n[${t}] ${colored}`;
-    l.scrollTop = l.scrollHeight;
-}
-
-window.wanRefresh = async function () {
-    try {
-        const r = await fetch('/api/wan/status');
-        const d = await r.json();
-        const chip = document.getElementById('wan-status-chip');
-        if (!chip) return;
-        if (d.ok) {
-            chip.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#50fa7b;box-shadow:0 0 8px #50fa7b;margin-right:6px;"></span>${d.gpu} · ${d.vram_free_gib}/${d.vram_total_gib} GiB free · loaded: ${(d.loaded_models || []).join(', ') || 'none'}`;
-        } else {
-            chip.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff5c5c;margin-right:6px;"></span>서비스 연결 실패: ${d.error || 'unknown'}`;
-        }
-    } catch (e) {
-        const chip = document.getElementById('wan-status-chip');
-        if (chip) chip.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff5c5c;margin-right:6px;"></span>unreachable: ${e.message}`;
-    }
-};
-
-window.wanGenerate = async function () {
-    const btn = document.getElementById('wan-go');
-    const prompt = document.getElementById('wan-prompt').value.trim();
-    if (!prompt && wanMode === 't2v') { wanLog('prompt is required', 'err'); return; }
-    const model = document.getElementById('wan-model').value;
-    const body = {
-        prompt,
-        negative_prompt: document.getElementById('wan-neg').value,
-        num_frames: +document.getElementById('wan-frames').value,
-        num_inference_steps: +document.getElementById('wan-steps').value,
-        height: +document.getElementById('wan-h').value,
-        width: +document.getElementById('wan-w').value,
-        fps: +document.getElementById('wan-fps').value,
-        model,
-    };
-    const seed = document.getElementById('wan-seed').value;
-    if (seed) body.seed = +seed;
-
-    btn.disabled = true; btn.textContent = '⏳ 생성 중…';
-    const t0 = Date.now();
-    wanLog(`POST /api/wan/${wanMode} model=${model} frames=${body.num_frames} steps=${body.num_inference_steps}`);
-    try {
-        let resp;
-        if (wanMode === 't2v') {
-            resp = await fetch('/api/wan/t2v', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-        } else {
-            const fileInput = document.getElementById('wan-file');
-            if (!fileInput.files[0]) { wanLog('이미지를 선택하세요', 'err'); btn.disabled = false; btn.textContent = '🎬 영상 생성'; return; }
-            const fd = new FormData();
-            fd.append('image', fileInput.files[0]);
-            Object.entries(body).forEach(([k, v]) => fd.append(k, v));
-            resp = await fetch('/api/wan/i2v', { method: 'POST', body: fd });
-        }
-        if (!resp.ok) {
-            const t = await resp.text();
-            wanLog(`HTTP ${resp.status}: ${t.slice(0, 300)}`, 'err');
-        } else {
-            const d = await resp.json();
-            const wall = ((Date.now() - t0) / 1000).toFixed(1);
-            wanLog(`✓ ${d.filename} (inference ${d.duration_s}s, wall ${wall}s)`, 'ok');
-            const p = document.getElementById('wan-player');
-            p.src = d.videoUrl + '?t=' + Date.now();
-            p.style.display = 'block';
-            document.getElementById('wan-placeholder').style.display = 'none';
-            p.load();
-            wanRefresh();
-        }
-    } catch (e) {
-        wanLog('error: ' + e.message, 'err');
-    }
-    btn.disabled = false; btn.textContent = '🎬 영상 생성';
-};
 
 // ============ DOMAIN CONNECT WIZARD (dedicated page) ============
 

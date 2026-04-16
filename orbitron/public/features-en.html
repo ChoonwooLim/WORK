@@ -328,11 +328,6 @@
                 <h3 style="color:#50fa7b;">Local Gemma 4 (Ollama, New)</h3>
                 <p>Run Google DeepMind's <strong>Gemma 4 E4B</strong> directly on your local GPU (CUDA) for AI debugging with zero external API cost, no internet connection required, and your data never leaves the server. No Anthropic/Google signup needed — works out of the box. Model data is isolated to a separate data drive to keep system disk usage low, and the Ollama daemon is persisted via systemd user units for automatic startup on login. (2026.04 v2.1)</p>
             </div>
-            <div class="card" style="border: 1px solid rgba(255,121,198,0.3); background: rgba(255,121,198,0.03);">
-                <div class="card-icon">🎬</div>
-                <h3 style="color:#ff79c6;">AI Video Generation (Wan 2.2, New)</h3>
-                <p>Three Alibaba <strong>Wan 2.2</strong> official open-source variants (TI2V-5B / T2V-A14B / I2V-A14B) self-hosted on a dedicated RTX 3090 GPU server. Generate <strong>prompt → MP4</strong> or <strong>still → animation</strong> right from the dashboard — zero external API cost, no per-token billing. The 5B model renders in ~36s; the A14B MoE flagship fits on a single 24GB GPU via sequential CPU offload. Videos stream back through Orbitron's authenticated proxy (<code>/api/wan/video/*</code>), so the LAN IP never leaks to the browser. (2026.04 v2.2)</p>
-            </div>
             <div class="card" style="border: 1px solid rgba(88,166,255,0.3); background: rgba(88,166,255,0.03);">
                 <div class="card-icon">🌐</div>
                 <h3 style="color:#58a6ff;">Custom Domains + Let's Encrypt Auto-SSL (New)</h3>
@@ -341,7 +336,7 @@
             <div class="card" style="border: 1px solid rgba(88,166,255,0.3); background: rgba(88,166,255,0.03);">
                 <div class="card-icon">🖥</div>
                 <h3 style="color:#58a6ff;">Distributed GPU Inference (New)</h3>
-                <p>The production dashboard host is decoupled from a dedicated <strong>GPU server (Threadripper 3970X + RTX 3090 24GB + 128GB RAM)</strong>. Heavy AI workloads (31B LLMs, A14B video MoE) live on the GPU box; restarting the dashboard doesn't interrupt a running render. Adding more GPU boxes is just an env-var change (<code>OLLAMA_HOST</code> / <code>WAN_VIDEO_HOST</code>). Three concurrent workloads on one GPU are kept from OOM by a triple guard (Ollama 30s idle unload, Wan-service pre-load hook, diffusers sequential offload). (2026.04 v2.2)</p>
+                <p>The production dashboard host is decoupled from a dedicated <strong>GPU server (Threadripper 3970X + RTX 3090 24GB + 128GB RAM)</strong>. Heavy AI workloads (31B LLMs) live on the GPU box; restarting the dashboard doesn't interrupt inference. Adding more GPU boxes is just an env-var change (<code>OLLAMA_HOST</code>). Ollama's 30s idle-unload policy keeps VRAM available when the LLM is not actively serving. (2026.04 v2.2)</p>
             </div>
             <div class="card">
                 <div class="card-icon">🔄</div>

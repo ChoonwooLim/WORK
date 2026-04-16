@@ -83,7 +83,6 @@ app.use('/api/admin', authMiddleware, require('./middleware/adminAuth'), require
 app.use('/api/issues', authMiddleware, viewerGuard, require('./routes/issues'));
 app.use('/api/projects', authMiddleware, viewerGuard, require('./routes/domains'));
 app.use('/api/system', authMiddleware, viewerGuard, require('./routes/system'));
-app.use('/api/wan', authMiddleware, viewerGuard, require('./routes/wan'));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -21,3 +21,6 @@ ai-image-service/__pycache__/
 
 # Node
 orbitron/node_modules/
+
+# External sub-project (managed in own repo: ChoonwooLim/TwinversePS2-Deploy)
+orbitron/deployments/twinverse-ps2/
