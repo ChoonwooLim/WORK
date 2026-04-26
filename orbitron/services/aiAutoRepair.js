@@ -90,7 +90,7 @@ ${sourceContext}
         let responseText;
         try {
             console.log(`[AI AutoRepair] Requesting patch generation via OpenClaw (agent=${agentId})...`);
-            responseText = await openclawClient.chat(agentId, sessionKey, prompt, 90000);
+            responseText = await openclawClient.chat(agentId, sessionKey, prompt, 30000);
         } catch (e) {
             console.error('[AutoRepair] OpenClaw 호출 실패:', e.message);
             return { canFix: false, summary: `AI 호출 실패: ${e.message}`, patches: [] };
