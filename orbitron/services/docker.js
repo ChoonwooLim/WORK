@@ -62,10 +62,43 @@ class DockerService {
 
         const imageName = `orbitron-${project.subdomain}`;
 
-        // Check if a custom Dockerfile exists (marked with "# CUSTOM" on first line)
+        // Check if a custom Dockerfile should be used:
+        //   1. Orbitron.yaml 에 build.dockerfile 명시 → 사용자 Dockerfile 존중 (자동 감지 비활성)
+        //   2. Dockerfile 첫 줄 "# CUSTOM" → 레거시 호환
         const dockerfilePath = path.join(projectDir, 'Dockerfile');
         let useCustom = false;
-        if (fs.existsSync(dockerfilePath)) {
+
+        // Priority 1: Orbitron.yaml build.dockerfile 명시 확인
+        const yamlCandidates = ['orbitron.yaml', 'Orbitron.yaml', 'orbitron.yml', 'Orbitron.yml'];
+        for (const yName of yamlCandidates) {
+            const yPath = path.join(projectDir, yName);
+            if (fs.existsSync(yPath)) {
+                try {
+                    const yaml = require('js-yaml');
+                    const parsed = yaml.load(fs.readFileSync(yPath, 'utf8'));
+                    const explicitDockerfile = parsed?.build?.dockerfile;
+                    if (explicitDockerfile) {
+                        const explicitPath = path.join(projectDir, explicitDockerfile);
+                        if (fs.existsSync(explicitPath)) {
+                            // 명시된 Dockerfile 을 빌드 위치로 복사 (이름이 다를 수 있으므로)
+                            if (explicitPath !== dockerfilePath) {
+                                fs.copyFileSync(explicitPath, dockerfilePath);
+                            }
+                            useCustom = true;
+                            detailLogs += `  📋 build.dockerfile 명시: ${explicitDockerfile} → 자동 감지 비활성\n`;
+                        } else {
+                            detailLogs += `  ⚠️ build.dockerfile "${explicitDockerfile}" 파일 없음 → 자동 감지 폴백\n`;
+                        }
+                    }
+                } catch (e) {
+                    detailLogs += `  ⚠️ Orbitron YAML 파싱 오류: ${e.message}\n`;
+                }
+                break;
+            }
+        }
+
+        // Priority 2: Legacy "# CUSTOM" marker
+        if (!useCustom && fs.existsSync(dockerfilePath)) {
             const firstLine = fs.readFileSync(dockerfilePath, 'utf-8').split('\n')[0].trim();
             if (firstLine.startsWith('# CUSTOM')) {
                 useCustom = true;
@@ -742,7 +775,14 @@ EXPOSE ${port}
         envKeys.forEach(k => {
             runArgs.push('-e', `${k}=${String(envVars[k])}`);
         });
-        startLogs += `  환경변수: ${envKeys.length}개 (${envKeys.join(', ') || '없음'})\n`;
+
+        // Auto-inject PORT env var (PaaS 표준 — Render, Railway, Heroku 등과 동일)
+        if (port && !envVars.PORT) {
+            runArgs.push('-e', `PORT=${port}`);
+            startLogs += `  ⚡ PORT=${port} 자동 주입\n`;
+        }
+
+        startLogs += `  환경변수: ${envKeys.length + (port && !envVars.PORT ? 1 : 0)}개\n`;
 
         // ── Feature 1: Auto-mount persistent volumes ──
         const hostBaseDir = path.join(PROJECTS_DIR, project.subdomain || project.id, '_volumes');

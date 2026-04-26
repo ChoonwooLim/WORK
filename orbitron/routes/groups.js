@@ -58,7 +58,8 @@ function enrichConfigService(svc) {
     if (svc.type === 'db_postgres' && svc.connection_info) {
         const hostIP = getHostIP();
         const c = svc.connection_info;
-        c.internal_url = c.internal_url || `postgresql://${c.username}:${c.password}@${c.hostname}:${c.port}/${c.database}`;
+        const internalPort = 5432;  // PostgreSQL 컨테이너 내부 listen 포트
+        c.internal_url = c.internal_url || `postgresql://${c.username}:${c.password}@${c.hostname}:${internalPort}/${c.database}`;
         c.external_url = c.external_url || `postgresql://${c.username}:${c.password}@${hostIP}:${c.port}/${c.database}`;
         c.psql_command = c.psql_command || `PGPASSWORD=${c.password} psql -h ${hostIP} -p ${c.port} -U ${c.username} -d ${c.database}`;
     }
@@ -184,12 +185,13 @@ router.get('/:id', async (req, res) => {
                 const pass = s.env_vars?.POSTGRES_PASSWORD || 'orbitron_db_pass';
                 const dbName = s.env_vars?.POSTGRES_DB || 'orbitron_db';
                 const containerHost = `orbitron-${s.subdomain}`;
-                const port = s.port || 5432;
+                const hostPort = s.port || 5432;       // Orbitron 할당 외부 매핑 포트
+                const internalPort = 5432;             // PostgreSQL 컨테이너 내부 listen 포트
                 s.connection_info = {
-                    hostname: containerHost, port, database: dbName, username: user, password: pass,
-                    internal_url: `postgresql://${user}:${pass}@${containerHost}:${port}/${dbName}`,
-                    external_url: `postgresql://${user}:${pass}@${hostIP}:${port}/${dbName}`,
-                    psql_command: `PGPASSWORD=${pass} psql -h ${hostIP} -p ${port} -U ${user} -d ${dbName}`
+                    hostname: containerHost, port: internalPort, external_port: hostPort, database: dbName, username: user, password: pass,
+                    internal_url: `postgresql://${user}:${pass}@${containerHost}:${internalPort}/${dbName}`,
+                    external_url: `postgresql://${user}:${pass}@${hostIP}:${hostPort}/${dbName}`,
+                    psql_command: `PGPASSWORD=${pass} psql -h ${hostIP} -p ${hostPort} -U ${user} -d ${dbName}`
                 };
             }
 
@@ -407,7 +409,7 @@ router.post('/:id/deploy', async (req, res) => {
         projects.sort((a, b) => (typeOrder[a.type] ?? 1) - (typeOrder[b.type] ?? 1));
 
         const deployer = require('../services/deployer');
-        const { encrypt } = require('../db/crypto');
+        const { encryptForJsonb } = require('../db/crypto');
         const results = [];
 
         // Phase 1: Deploy databases first
@@ -450,14 +452,16 @@ router.post('/:id/deploy', async (req, res) => {
                         envVars = wp.env_vars;
                     }
 
+                    const nextDatabaseUrl = managedDatabaseUrl(envVars.DATABASE_URL, databaseUrl);
                     let updated = false;
-                    if (!envVars.DATABASE_URL || envVars.DATABASE_URL.includes('localhost')) {
-                        envVars.DATABASE_URL = databaseUrl;
+                    if (nextDatabaseUrl !== envVars.DATABASE_URL) {
+                        envVars.DATABASE_URL = nextDatabaseUrl;
                         updated = true;
                     }
 
+
                     if (updated) {
-                        const encrypted = '"' + encrypt(JSON.stringify(envVars)) + '"';
+                        const encrypted = encryptForJsonb(envVars);
                         await db.query('UPDATE projects SET env_vars = $1 WHERE id = $2', [encrypted, wp.id]);
                         // Refresh the project object with new env_vars
                         wp.env_vars = encrypted;
