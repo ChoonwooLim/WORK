@@ -24,6 +24,8 @@ const pending = new Map();   // id -> { resolve, reject, timer }
 const streams = new Map();   // sessionKey -> { resolve, reject, chunks, timer }
 let ready = false;
 let connectingP = null;
+const sessionCache = new Map();   // logicalKey → actual gateway key
+const sessionKeys = new Map();  // logical key → actual gateway key
 
 // ─── helpers ─────────────────────────────────────────────────────────
 function nextId() {
@@ -266,14 +268,19 @@ async function listAgents() {
 async function chat(agentId, sessionKey, message, timeoutMs = 120_000) {
   await ensure();
 
-  // Create or reuse session — gateway assigns the actual key
-  let actualKey;
-  try {
-    const created = await rpcSend('sessions.create', { agentId });
-    actualKey = created?.key || `agent:${agentId}:${sessionKey}`;
-  } catch (e) {
-    // Session might already exist or creation not needed — use provided key
-    actualKey = sessionKey.startsWith('agent:') ? sessionKey : `agent:${agentId}:${sessionKey}`;
+  // Reuse existing session or create new one
+  const logicalKey = sessionKey.startsWith('agent:') ? sessionKey : `agent:${agentId}:${sessionKey}`;
+  let actualKey = sessionCache.get(logicalKey);
+
+  if (!actualKey) {
+    try {
+      const created = await rpcSend('sessions.create', { agentId });
+      actualKey = created?.key || logicalKey;
+      sessionCache.set(logicalKey, actualKey);
+    } catch (e) {
+      // Session creation failed — try sending to logical key directly
+      actualKey = logicalKey;
+    }
   }
 
   // Set up stream collector using the actual key
