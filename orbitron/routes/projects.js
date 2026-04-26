@@ -32,8 +32,8 @@ const chatUpload = multer({
     dest: path.join(__dirname, '..', 'uploads_tmp'),
     limits: { fileSize: 20 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'application/json', 'text/csv', 'application/pdf'];
-        if (allowed.includes(file.mimetype) || file.originalname.match(/\.(png|jpg|jpeg|gif|webp|txt|json|csv|log|md|pdf)$/i)) {
+        const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'text/markdown', 'text/csv', 'text/yaml', 'text/html', 'text/css', 'text/xml', 'application/json', 'application/pdf', 'application/yaml', 'application/x-yaml', 'application/javascript', 'application/octet-stream'];
+        if (allowed.includes(file.mimetype) || file.originalname.match(/\.(png|jpg|jpeg|gif|webp|txt|json|csv|log|md|pdf|yaml|yml|js|ts|py|html|css|xml|sh|env|conf|cfg|ini|toml)$/i)) {
             cb(null, true);
         } else {
             cb(new Error('지원하지 않는 파일 형식입니다. (이미지, 텍스트, JSON, CSV, PDF 지원)'));

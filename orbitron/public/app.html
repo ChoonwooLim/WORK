@@ -415,7 +415,7 @@
         </div>
         <div
           style="display:flex; gap:8px; background:var(--surface); padding:12px; border:1px solid var(--border); border-radius:0 0 8px 8px;" id="ai-chat-input-bar">
-          <input type="file" id="ai-chat-file-input" accept="image/*,.txt,.json,.csv,.log,.md,.pdf" style="display:none;" onchange="onChatFileSelected(this)">
+          <input type="file" id="ai-chat-file-input" accept="image/*,.txt,.json,.csv,.log,.md,.pdf,.yaml,.yml,.js,.ts,.py,.html,.css,.xml,.sh,.env,.conf,.cfg,.ini,.toml,text/*,application/json,application/pdf" style="display:none;" onchange="onChatFileSelected(this)">
           <button onclick="document.getElementById('ai-chat-file-input').click()" class="btn btn-sm"
             style="background:transparent; border:1px solid var(--border); color:var(--text-muted); padding:6px 10px; cursor:pointer;" title="이미지/파일 첨부">
             📎
