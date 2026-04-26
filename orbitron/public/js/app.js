@@ -973,38 +973,19 @@ function renderSettings() {
       </div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-      <label style="font-size:15px;font-weight:600;">🤖 AI 에러 분석 모델 설정</label>
-      <div class="form-hint" style="margin-bottom:8px;">배포 실패 시 에러 로그를 분석할 AI 모델을 선택하세요.</div>
-      <select id="set-ai-model" style="width:100%; padding:10px; border-radius:6px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); font-family:var(--font-family); margin-bottom: 12px;" onchange="toggleAiKeyFields()">
-          <option value="claude-4-6-opus-20260205" ${p.ai_model === 'claude-4-6-opus-20260205' ? 'selected' : ''}>👑 Claude 4.6 Opus (가장 강력함)</option>
-          <option value="claude-4-6-sonnet-20260217" ${p.ai_model === 'claude-4-6-sonnet-20260217' ? 'selected' : ''}>⚡ Claude 4.6 Sonnet (빠르고 똑똑함)</option>
-          <option value="claude-3-5-sonnet-20241022" ${p.ai_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Claude 3.5 Sonnet</option>
-          <option value="gemini-3.1-pro" ${p.ai_model === 'gemini-3.1-pro' ? 'selected' : ''}>🔭 Gemini 3.1 Pro (강력한 추론)</option>
-          <option value="gemini-3.0-flash" ${p.ai_model === 'gemini-3.0-flash' ? 'selected' : ''}>🚀 Gemini 3.0 Flash (초고속)</option>
-          <option value="gemini-2.5-pro" ${p.ai_model === 'gemini-2.5-pro' ? 'selected' : ''}>📚 Gemini 2.5 Pro</option>
-          <option value="gemini-2.5-flash" ${p.ai_model === 'gemini-2.5-flash' ? 'selected' : ''}>✨ Gemini 2.5 Flash</option>
-          <option value="gemma-4-e4b" ${p.ai_model === 'gemma-4-e4b' ? 'selected' : ''}>🌱 Gemma 4 E4B (로컬·무료, Ollama)</option>
+      <label style="font-size:15px;font-weight:600;">🤖 AI 에러 분석 에이전트</label>
+      <div class="form-hint" style="margin-bottom:8px;">배포 실패 시 에러 로그를 분석할 OpenClaw 에이전트를 선택하세요.</div>
+      <div class="setting-group" style="margin-bottom:12px;">
+          <label>🔌 OpenClaw 게이트웨이</label>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:4px;">
+              <button onclick="testOpenclawConnection()" class="btn btn-sm" style="white-space:nowrap;">연결 테스트</button>
+              <span id="openclaw-status" style="font-size:0.85em; color:var(--text-secondary);"></span>
+          </div>
+      </div>
+      <select id="set-ai-model" style="width:100%; padding:10px; border-radius:6px; background:var(--surface); border:1px solid var(--border); color:var(--text-primary); font-family:var(--font-family); margin-bottom: 12px;">
+          <option value="">서버 기본값 사용</option>
+          <!-- The select will be populated dynamically by loadOpenclawAgents() -->
       </select>
-
-      <div id="ai-info-gemma" style="display: ${p.ai_model?.startsWith('gemma-') ? 'block' : 'none'}; padding:10px 12px; border-radius:6px; background:rgba(80,200,120,0.08); border:1px solid rgba(80,200,120,0.3); font-size:12px; color:var(--text-secondary); margin-bottom:8px;">
-         🌱 <strong>로컬 실행 모델</strong> — API 키 불필요. 이 서버의 Ollama daemon (<code>127.0.0.1:11434</code>)에서 직접 추론합니다. 인터넷 연결과 외부 비용이 발생하지 않습니다.
-      </div>
-
-      <div id="ai-key-anthropic" style="display: ${(!p.ai_model || p.ai_model.startsWith('claude')) ? 'block' : 'none'};">
-         <label style="font-size:13px;font-weight:600;color:var(--text-secondary);">🔑 Anthropic API Key <span style="font-weight:normal;font-size:11px;">(해당 프로젝트 전용)</span></label>
-         <div style="display:flex; gap:8px; margin-top:4px;">
-            <input type="password" id="set-anthropic-key" placeholder="${(p.env_vars && p.env_vars.ANTHROPIC_API_KEY) ? '✅ 설정됨 (변경하려면 새 키 입력)' : 'sk-ant-...'}" style="flex:1;">
-            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="btn btn-outline" style="white-space:nowrap; text-decoration:none; display:flex; align-items:center;">발급받기 🔗</a>
-         </div>
-      </div>
-      
-      <div id="ai-key-gemini" style="display: ${p.ai_model?.startsWith('gemini') ? 'block' : 'none'};">
-         <label style="font-size:13px;font-weight:600;color:var(--text-secondary);">🔑 Gemini API Key <span style="font-weight:normal;font-size:11px;">(해당 프로젝트 전용)</span></label>
-         <div style="display:flex; gap:8px; margin-top:4px;">
-            <input type="password" id="set-gemini-key" placeholder="${(p.env_vars && p.env_vars.GEMINI_API_KEY) ? '✅ 설정됨 (변경하려면 새 키 입력)' : 'AIzaSy...'}" style="flex:1;">
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn btn-outline" style="white-space:nowrap; text-decoration:none; display:flex; align-items:center;">발급받기 🔗</a>
-         </div>
-      </div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🔗 GitHub Webhook URL</label>
@@ -1028,15 +1009,54 @@ function renderSettings() {
     }
 }
 
-window.toggleAiKeyFields = function () {
-    const model = document.getElementById('set-ai-model').value;
-    const anthropicDiv = document.getElementById('ai-key-anthropic');
-    const geminiDiv = document.getElementById('ai-key-gemini');
-    const gemmaInfo = document.getElementById('ai-info-gemma');
-    if (anthropicDiv) anthropicDiv.style.display = model.startsWith('claude') ? 'block' : 'none';
-    if (geminiDiv) geminiDiv.style.display = model.startsWith('gemini') ? 'block' : 'none';
-    if (gemmaInfo) gemmaInfo.style.display = model.startsWith('gemma-') ? 'block' : 'none';
-};
+async function testOpenclawConnection() {
+    const status = document.getElementById('openclaw-status');
+    if (status) {
+        status.textContent = '연결 중...';
+        status.style.color = 'var(--text-secondary)';
+    }
+    try {
+        const res = await fetch('/api/projects/openclaw/health');
+        const data = await res.json();
+        if (status) {
+            if (data.ok) {
+                status.textContent = `연결 성공 (에이전트 ${data.agents}개)`;
+                status.style.color = '#4caf50';
+                await loadOpenclawAgents();
+            } else {
+                status.textContent = `연결 실패: ${data.error}`;
+                status.style.color = '#f44336';
+            }
+        }
+    } catch (e) {
+        if (status) {
+            status.textContent = `오류: ${e.message}`;
+            status.style.color = '#f44336';
+        }
+    }
+}
+
+async function loadOpenclawAgents() {
+    try {
+        const res = await fetch('/api/projects/openclaw/agents');
+        const data = await res.json();
+        const agents = data.agents || [];
+        const sel = document.getElementById('set-ai-model');
+        if (!sel) return;
+        const currentVal = sel.value;
+        sel.innerHTML = '<option value="">서버 기본값 사용</option>';
+        for (const agent of agents) {
+            const opt = document.createElement('option');
+            opt.value = agent.id || agent.name;
+            opt.textContent = `${agent.name} (${agent.model || 'default'})`;
+            sel.appendChild(opt);
+        }
+        if (currentVal) sel.value = currentVal;
+    } catch (e) {
+        console.error('에이전트 목록 로드 실패:', e);
+    }
+}
+window.testOpenclawConnection = testOpenclawConnection;
 
 let currentSourceTab = 'github';
 let selectedUploadFile = null;
@@ -1465,15 +1485,7 @@ async function saveEnvVars() {
 async function saveSettings() {
     try {
         const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
-        const ai_model = document.getElementById('set-ai-model')?.value || 'claude-4-6-sonnet-20260217';
-
-        const anthropicKey = document.getElementById('set-anthropic-key')?.value?.trim();
-        const geminiKey = document.getElementById('set-gemini-key')?.value?.trim();
-
-        let targetEnvVars = currentProject.env_vars || {};
-        let envVarsChanged = false;
-        if (anthropicKey) { targetEnvVars.ANTHROPIC_API_KEY = anthropicKey; envVarsChanged = true; }
-        if (geminiKey) { targetEnvVars.GEMINI_API_KEY = geminiKey; envVarsChanged = true; }
+        const ai_model = document.getElementById('set-ai-model')?.value || '';
 
         const webhook_url = document.getElementById('set-webhook-url')?.value?.trim() || null;
 
@@ -1487,9 +1499,6 @@ async function saveSettings() {
             ai_model,
             webhook_url
         };
-        if (envVarsChanged) {
-            payload.env_vars = targetEnvVars;
-        }
 
         await fetch(`${API}/projects/${currentProject.id}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
