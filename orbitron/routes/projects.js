@@ -27,6 +27,20 @@ const upload = multer({
     }
 });
 
+// Multer config for AI chat file upload (images + text files, max 20MB)
+const chatUpload = multer({
+    dest: path.join(__dirname, '..', 'uploads_tmp'),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'application/json', 'text/csv', 'application/pdf'];
+        if (allowed.includes(file.mimetype) || file.originalname.match(/\.(png|jpg|jpeg|gif|webp|txt|json|csv|log|md|pdf)$/i)) {
+            cb(null, true);
+        } else {
+            cb(new Error('지원하지 않는 파일 형식입니다. (이미지, 텍스트, JSON, CSV, PDF 지원)'));
+        }
+    }
+});
+
 // Helper: Get project with admin bypass - admins can access any project
 async function getProjectForUser(projectId, user) {
     if (user.role === 'admin' || user.role === 'superadmin') {
@@ -875,10 +889,32 @@ router.get('/:id/chat', async (req, res) => {
 });
 
 // POST /api/projects/:id/chat - Send a message to AI (enhanced with context + actions)
-router.post('/:id/chat', async (req, res) => {
+// Supports optional file upload (image/text) via multipart/form-data
+router.post('/:id/chat', chatUpload.single('file'), async (req, res) => {
     try {
-        const { message } = req.body;
-        if (!message) return res.status(400).json({ error: 'Message is required' });
+        const message = req.body?.message || '';
+        const uploadedFile = req.file || null;
+
+        // Build file description for AI if file was uploaded
+        let fileContent = '';
+        if (uploadedFile) {
+            const isImage = uploadedFile.mimetype?.startsWith('image/');
+            if (isImage) {
+                // Convert image to base64 data URL for AI context
+                const imgData = fs.readFileSync(uploadedFile.path);
+                const base64 = imgData.toString('base64');
+                fileContent = `\n\n[첨부 이미지: ${uploadedFile.originalname} (${uploadedFile.mimetype}, ${Math.round(uploadedFile.size / 1024)}KB)]\n[이미지 데이터: data:${uploadedFile.mimetype};base64,${base64}]`;
+            } else {
+                // Read text file content
+                const textData = fs.readFileSync(uploadedFile.path, 'utf-8');
+                fileContent = `\n\n[첨부 파일: ${uploadedFile.originalname}]\n\`\`\`\n${textData.slice(0, 10000)}\n\`\`\``;
+            }
+            // Clean up temp file
+            try { fs.unlinkSync(uploadedFile.path); } catch {}
+        }
+
+        const fullMessage = (message + fileContent).trim();
+        if (!fullMessage) return res.status(400).json({ error: 'Message or file is required' });
 
         // Fetch full project data for context
         const project = await db.queryOne(
@@ -894,8 +930,13 @@ router.post('/:id/chat', async (req, res) => {
             history = typeof project.ai_chat_history === 'string' ? JSON.parse(project.ai_chat_history) : project.ai_chat_history;
         }
 
-        // Add user message
-        const userMsg = { role: 'user', content: message, timestamp: new Date().toISOString() };
+        // Add user message (store display text + file info separately)
+        const userMsg = {
+            role: 'user',
+            content: fullMessage,
+            timestamp: new Date().toISOString(),
+            ...(uploadedFile ? { file: { name: uploadedFile.originalname, type: uploadedFile.mimetype, size: uploadedFile.size } } : {})
+        };
         history.push(userMsg);
 
         // Decrypt env_vars

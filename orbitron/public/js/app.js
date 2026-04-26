@@ -2826,6 +2826,8 @@ function renderAiMessage(msg, isSystem = false) {
         <div style="display:flex; flex-direction:${isUser ? 'row-reverse' : 'row'}; gap:8px; max-width:85%;">
             <div style="font-size:20px; margin-top:4px;">${icon}</div>
             <div style="background:${bg}; border:1px solid ${border}; border-radius:8px; padding:12px 16px; text-align:${textAlign}; line-height:1.6; font-size:14px;">
+                ${msg.fileThumb ? `<img src="${msg.fileThumb}" style="max-width:200px; max-height:150px; border-radius:6px; margin-bottom:8px; display:block;" />` : ''}
+                ${msg.file ? `<div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">📎 ${escapeHtml(msg.file.name)} (${(msg.file.size/1024).toFixed(1)}KB)</div>` : ''}
                 ${isUser ? escapeHtml(msg.content) : formatMarkdownLite(msg.content)}
                 ${actionsHtml}
             </div>
@@ -2853,18 +2855,58 @@ async function loadAiChatHistory() {
     }
 }
 
+// ── AI Chat file attachment state ──
+let _chatAttachedFile = null;
+
+function onChatFileSelected(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    _chatAttachedFile = file;
+    const preview = document.getElementById('ai-chat-file-preview');
+    const nameEl = document.getElementById('ai-chat-file-name');
+    const thumb = document.getElementById('ai-chat-file-thumb');
+    const inputBar = document.getElementById('ai-chat-input-bar');
+    nameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
+    if (file.type.startsWith('image/')) {
+        thumb.src = URL.createObjectURL(file);
+        thumb.style.display = 'block';
+    } else {
+        thumb.style.display = 'none';
+    }
+    preview.style.display = 'flex';
+    inputBar.style.borderRadius = '0 0 8px 8px';
+}
+
+function clearChatFile() {
+    _chatAttachedFile = null;
+    const preview = document.getElementById('ai-chat-file-preview');
+    const thumb = document.getElementById('ai-chat-file-thumb');
+    const inputBar = document.getElementById('ai-chat-input-bar');
+    const fileInput = document.getElementById('ai-chat-file-input');
+    preview.style.display = 'none';
+    thumb.style.display = 'none';
+    if (inputBar) inputBar.style.borderRadius = '8px';
+    if (fileInput) fileInput.value = '';
+}
+
 async function sendAiChat() {
     const input = document.getElementById('ai-chat-input');
     const text = input.value.trim();
-    if (!text || !currentProject) return;
+    const file = _chatAttachedFile;
+    if ((!text && !file) || !currentProject) return;
 
     const container = document.getElementById('ai-chat-messages');
 
     // Remove the greeting helper message if it exists and history was empty
     if (container.innerHTML.includes('무엇을 도와드릴까요?')) container.innerHTML = '';
 
-    // Add user message locally
-    container.innerHTML += renderAiMessage({ role: 'user', content: text });
+    // Add user message locally (with file indicator)
+    const displayContent = text + (file ? `\n📎 ${file.name}` : '');
+    const userMsgData = { role: 'user', content: displayContent };
+    if (file && file.type.startsWith('image/')) {
+        userMsgData.fileThumb = URL.createObjectURL(file);
+    }
+    container.innerHTML += renderAiMessage(userMsgData);
     input.value = '';
 
     // Add loading indicator
@@ -2879,10 +2921,15 @@ async function sendAiChat() {
     btn.disabled = true;
 
     try {
+        // Use FormData for multipart upload (supports file + text)
+        const formData = new FormData();
+        formData.append('message', text);
+        if (file) formData.append('file', file);
+
         const res = await fetch(`${API}/projects/${currentProject.id}/chat`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            body: formData
+            // No Content-Type header — browser sets multipart boundary automatically
         });
         const data = await res.json();
 
@@ -2899,6 +2946,7 @@ async function sendAiChat() {
     } finally {
         container.scrollTop = container.scrollHeight;
         btn.disabled = false;
+        clearChatFile();
         input.focus();
     }
 }

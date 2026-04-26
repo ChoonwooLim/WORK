@@ -402,8 +402,19 @@
           </div>
         </div>
 
+        <!-- File preview bar (hidden by default) -->
+        <div id="ai-chat-file-preview" style="display:none; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-bottom:none; border-radius:8px 8px 0 0; font-size:13px; color:var(--text-secondary); align-items:center; gap:8px;">
+          <span id="ai-chat-file-name"></span>
+          <img id="ai-chat-file-thumb" style="max-height:60px; max-width:120px; border-radius:4px; display:none;" />
+          <button onclick="clearChatFile()" style="margin-left:auto; background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px;" title="파일 제거">✕</button>
+        </div>
         <div
-          style="display:flex; gap:8px; background:var(--surface); padding:12px; border:1px solid var(--border); border-radius:8px;">
+          style="display:flex; gap:8px; background:var(--surface); padding:12px; border:1px solid var(--border); border-radius:0 0 8px 8px;" id="ai-chat-input-bar">
+          <input type="file" id="ai-chat-file-input" accept="image/*,.txt,.json,.csv,.log,.md,.pdf" style="display:none;" onchange="onChatFileSelected(this)">
+          <button onclick="document.getElementById('ai-chat-file-input').click()" class="btn btn-sm"
+            style="background:transparent; border:1px solid var(--border); color:var(--text-muted); padding:6px 10px; cursor:pointer;" title="이미지/파일 첨부">
+            📎
+          </button>
           <input type="text" id="ai-chat-input" placeholder="어떤 부분이 궁금하신가요?"
             style="flex:1; background:transparent; border:none; outline:none; color:var(--text-primary); font-size:14px; padding:0 8px;"
             onkeypress="if(event.key==='Enter') sendAiChat()">
