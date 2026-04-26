@@ -392,7 +392,12 @@
             <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">현재 프로젝트의 코드와 배포 상태에 대해 무엇이든 물어보세요.
             </div>
           </div>
-          <button class="btn btn-sm btn-outline" onclick="clearAiChat()" title="대화 기록 초기화">🧹 대화 초기화</button>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <select id="ai-chat-agent-select" style="padding:4px 8px; border-radius:4px; background:var(--surface); border:1px solid var(--border); color:var(--text-secondary); font-size:12px; max-width:180px;">
+              <option value="">기본 에이전트</option>
+            </select>
+            <button class="btn btn-sm btn-outline" onclick="clearAiChat()" title="대화 기록 초기화">🧹 대화 초기화</button>
+          </div>
         </div>
 
         <div id="ai-chat-messages"

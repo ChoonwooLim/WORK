@@ -1002,7 +1002,10 @@ router.post('/:id/chat', chatUpload.single('file'), async (req, res) => {
         }
 
         // Get AI response with full context
-        let aiResponseText = await aiAnalyzer.chat(history, '', {}, projectContext, project);
+        // Allow per-request agent override from frontend selector
+        const requestAgentId = req.body?.agentId || '';
+        const projectWithAgent = requestAgentId ? { ...project, openclaw_agent_id: requestAgentId } : project;
+        let aiResponseText = await aiAnalyzer.chat(history, '', {}, projectContext, projectWithAgent);
 
         // ── Parse and execute ACTION tags ──
         const actions = [];

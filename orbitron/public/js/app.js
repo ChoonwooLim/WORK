@@ -309,6 +309,7 @@ function navigateTo(page) {
     if (page === 'project-ai') {
         document.getElementById('page-project-ai').style.display = 'flex'; // Ensure flex layout
         loadAiChatHistory();
+        if (!_openclawAgentsCache) loadOpenclawAgents();
     } else {
         const aiPage = document.getElementById('page-project-ai');
         if (aiPage) aiPage.style.display = 'none';
@@ -1036,22 +1037,30 @@ async function testOpenclawConnection() {
     }
 }
 
+let _openclawAgentsCache = null;
+
 async function loadOpenclawAgents() {
     try {
         const res = await fetch('/api/projects/openclaw/agents');
         const data = await res.json();
         const agents = data.agents || [];
-        const sel = document.getElementById('set-ai-model');
-        if (!sel) return;
-        const currentVal = sel.value;
-        sel.innerHTML = '<option value="">서버 기본값 사용</option>';
-        for (const agent of agents) {
-            const opt = document.createElement('option');
-            opt.value = agent.id || agent.name;
-            opt.textContent = `${agent.name} (${agent.model || 'default'})`;
-            sel.appendChild(opt);
+        _openclawAgentsCache = agents;
+
+        // Populate all agent selectors on the page
+        for (const selId of ['set-ai-model', 'ai-chat-agent-select']) {
+            const sel = document.getElementById(selId);
+            if (!sel) continue;
+            const currentVal = sel.value;
+            const defaultLabel = selId === 'ai-chat-agent-select' ? '기본 에이전트' : '서버 기본값 사용';
+            sel.innerHTML = `<option value="">${defaultLabel}</option>`;
+            for (const agent of agents) {
+                const opt = document.createElement('option');
+                opt.value = agent.id || agent.agentId || agent.name;
+                opt.textContent = agent.name || agent.id;
+                sel.appendChild(opt);
+            }
+            if (currentVal) sel.value = currentVal;
         }
-        if (currentVal) sel.value = currentVal;
     } catch (e) {
         console.error('에이전트 목록 로드 실패:', e);
     }
@@ -2925,6 +2934,8 @@ async function sendAiChat() {
         const formData = new FormData();
         formData.append('message', text);
         if (file) formData.append('file', file);
+        const selectedAgent = document.getElementById('ai-chat-agent-select')?.value;
+        if (selectedAgent) formData.append('agentId', selectedAgent);
 
         const res = await fetch(`${API}/projects/${currentProject.id}/chat`, {
             method: 'POST',
