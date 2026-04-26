@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db/db');
 const { decrypt } = require('../db/crypto');
+const openclawClient = require('../services/openclawClient');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
 const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', 'dist', 'build', '.next', 'venv', '.venv', '.cache', 'coverage']);
@@ -345,62 +346,19 @@ router.post('/:id/source/ai-edit', async (req, res) => {
             userPrompt += `요청: ${instruction}`;
         }
 
-        // Call AI (try Claude first, then Gemini fallback)
+        // Call AI via OpenClaw gateway
+        const agentId = openclawClient.resolveAgent(project);
+        if (!agentId || !openclawClient.isConfigured()) {
+            return res.status(500).json({ error: 'OpenClaw 게이트웨이 미설정. 서버 설정에서 URL/토큰/에이전트를 설정하세요.' });
+        }
+        const sessionKey = openclawClient.sessionKey(agentId, req.params.id, `code-${action}`);
+        const fullPrompt = systemPrompt + '\n\n' + userPrompt;
         let aiResponse;
-        const anthropicKey = process.env.ANTHROPIC_API_KEY;
-        const geminiKey = process.env.GEMINI_API_KEY;
-
-        if (anthropicKey) {
-            try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 45000);
-                const resp = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': anthropicKey,
-                        'anthropic-version': '2023-06-01'
-                    },
-                    body: JSON.stringify({
-                        model: project.ai_model || 'claude-sonnet-4-20250514',
-                        max_tokens: 4096,
-                        system: systemPrompt,
-                        messages: [{ role: 'user', content: userPrompt }]
-                    }),
-                    signal: controller.signal
-                });
-                clearTimeout(timeout);
-                const data = await resp.json();
-                aiResponse = data.content?.[0]?.text || data.error?.message || 'AI 응답 없음';
-            } catch (e) {
-                if (e.name === 'AbortError' && geminiKey) {
-                    // Fallback to Gemini
-                } else if (!geminiKey) {
-                    return res.status(500).json({ error: `AI 호출 실패: ${e.message}` });
-                }
-            }
-        }
-
-        if (!aiResponse && geminiKey) {
-            try {
-                const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        system_instruction: { parts: [{ text: systemPrompt }] },
-                        contents: [{ parts: [{ text: userPrompt }] }],
-                        generationConfig: { maxOutputTokens: 4096, temperature: 0.2 }
-                    })
-                });
-                const data = await resp.json();
-                aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Gemini 응답 없음';
-            } catch (e) {
-                return res.status(500).json({ error: `AI 호출 실패: ${e.message}` });
-            }
-        }
-
-        if (!aiResponse) {
-            return res.status(500).json({ error: 'AI API 키가 설정되지 않았습니다.' });
+        try {
+            aiResponse = await openclawClient.chat(agentId, sessionKey, fullPrompt, 60000);
+        } catch (e) {
+            console.error('[source/ai-edit] OpenClaw 오류:', e.message);
+            return res.status(500).json({ error: `AI 응답 실패: ${e.message}` });
         }
 
         // Parse response based on action
