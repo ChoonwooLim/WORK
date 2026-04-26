@@ -1,51 +1,9 @@
-const { GoogleGenAI } = require('@google/genai');
-const Anthropic = require('@anthropic-ai/sdk');
+const openclawClient = require('./openclawClient');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 const fs = require('fs');
 const path = require('path');
-
-// Local Ollama endpoint for Gemma 4 etc.
-const OLLAMA_HOST = (process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').replace(/\/$/, '');
-
-function gemmaToOllamaTag(aiModel) {
-    const map = {
-        'gemma-4-e2b': 'gemma4:e2b',
-        'gemma-4-e4b': 'gemma4:e4b',
-        'gemma-4-26b': 'gemma4:26b',
-        'gemma-4-31b': 'gemma4:31b',
-    };
-    return map[aiModel] || 'gemma4:e4b';
-}
-
-async function callOllamaSingle(aiModel, prompt, { timeoutMs = 240000 } = {}) {
-    const ollamaModel = gemmaToOllamaTag(aiModel);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: ollamaModel,
-                messages: [{ role: 'user', content: prompt }],
-                stream: false,
-                format: 'json',
-                options: { temperature: 0.1 }
-            }),
-            signal: controller.signal
-        });
-        if (!res.ok) {
-            const errText = await res.text().catch(() => '');
-            throw new Error(`Ollama HTTP ${res.status}: ${errText.slice(0, 300)}`);
-        }
-        const data = await res.json();
-        return data?.message?.content || '';
-    } finally {
-        clearTimeout(timer);
-    }
-}
 
 class AIAutoRepair {
 
@@ -54,14 +12,9 @@ class AIAutoRepair {
      * Returns: { patches: [{ file, original, modified, explanation }], summary } | null
      */
     async analyzeAndGeneratePatch(logs, projectDir, aiModel = 'claude-4-6-sonnet-20260217', envVars = {}) {
-        const anthropicKey = envVars.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-        const geminiKey = envVars.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        const isGemma = typeof aiModel === 'string' && aiModel.startsWith('gemma-');
-
-        // Local Gemma via Ollama needs no API key
-        if (!isGemma && !anthropicKey && !geminiKey) {
-            console.log('[AI AutoRepair] Skipping: No AI API key available.');
-            return null;
+        const agentId = openclawClient.resolveAgent({ openclaw_agent_id: envVars?.OPENCLAW_AGENT_ID });
+        if (!agentId || !openclawClient.isConfigured()) {
+            return { canFix: false, summary: 'OpenClaw 미설정', patches: [] };
         }
 
         // Collect relevant source files with priority ordering
@@ -133,32 +86,17 @@ ${sourceContext}
             }
         } catch (e) { /* knowledge DB not available yet */ }
 
+        const sessionKey = openclawClient.sessionKey(agentId, 'auto-repair', Date.now().toString(36));
+        let responseText;
         try {
-            console.log(`[AI AutoRepair] Requesting patch generation via ${aiModel}...`);
-            let responseText;
+            console.log(`[AI AutoRepair] Requesting patch generation via OpenClaw (agent=${agentId})...`);
+            responseText = await openclawClient.chat(agentId, sessionKey, prompt, 90000);
+        } catch (e) {
+            console.error('[AutoRepair] OpenClaw 호출 실패:', e.message);
+            return { canFix: false, summary: `AI 호출 실패: ${e.message}`, patches: [] };
+        }
 
-            if (isGemma) {
-                responseText = await callOllamaSingle(aiModel, prompt, { timeoutMs: 240000 });
-            } else if (aiModel.startsWith('claude-') && anthropicKey) {
-                const client = new Anthropic({ apiKey: anthropicKey });
-                const response = await client.messages.create({
-                    model: aiModel,
-                    max_tokens: 4000,
-                    messages: [{ role: 'user', content: prompt }]
-                });
-                responseText = response.content[0].text;
-            } else if (geminiKey) {
-                const client = new GoogleGenAI({ apiKey: geminiKey });
-                const model = aiModel.startsWith('gemini-') ? aiModel : 'gemini-2.5-flash';
-                const response = await client.models.generateContent({
-                    model,
-                    contents: prompt,
-                });
-                responseText = response.text;
-            } else {
-                return null;
-            }
-
+        try {
             // Parse JSON from response (strip markdown fences if any)
             const jsonStr = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
             const result = JSON.parse(jsonStr);
