@@ -10,7 +10,7 @@ const multer = require('multer');
 const AdmZip = require('adm-zip');
 const path = require('path');
 const fs = require('fs');
-const { encrypt, decrypt } = require('../db/crypto');
+const { decrypt, encryptForJsonb } = require('../db/crypto');
 
 // Multer config for ZIP upload (max 500MB)
 const upload = multer({
@@ -65,6 +65,26 @@ router.get('/', async (req, res) => {
         res.json(decryptedProjects);
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ── OpenClaw 설정 ──
+
+// GET /api/projects/openclaw/health — 연결 상태 확인
+router.get('/openclaw/health', async (req, res) => {
+    const openclawClient = require('../services/openclawClient');
+    const health = await openclawClient.health();
+    res.json(health);
+});
+
+// GET /api/projects/openclaw/agents — 에이전트 목록
+router.get('/openclaw/agents', async (req, res) => {
+    const openclawClient = require('../services/openclawClient');
+    try {
+        const agents = await openclawClient.listAgents();
+        res.json({ agents: agents || [] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -123,7 +143,7 @@ router.post('/', async (req, res) => {
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
         // Encrypt environment variables and wrap in double quotes for JSONB column
-        const encryptedEnvVars = '"' + encrypt(JSON.stringify(env_vars || {})) + '"';
+        const encryptedEnvVars = encryptForJsonb(env_vars);
 
         // Include ai_model and type in insertion
         const project = await db.queryOne(
@@ -151,7 +171,7 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
 
-        const encryptedEnvVars = env_vars ? '"' + encrypt(JSON.stringify(env_vars)) + '"' : null;
+        const encryptedEnvVars = env_vars ? encryptForJsonb(env_vars) : null;
 
         const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
         const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id];
@@ -612,7 +632,7 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
         } else if (project_type === 'unity_webgl') {
             env_vars.PROJECT_TYPE = 'unity_webgl';
         }
-        const encryptedEnvVars = '"' + encrypt(JSON.stringify(env_vars)) + '"';
+        const encryptedEnvVars = encryptForJsonb(env_vars);
 
         // Create project in DB
         const project = await db.queryOne(
@@ -941,7 +961,7 @@ router.post('/:id/chat', async (req, res) => {
         }
 
         // Get AI response with full context
-        let aiResponseText = await aiAnalyzer.chat(history, model, envVars, projectContext);
+        let aiResponseText = await aiAnalyzer.chat(history, '', {}, projectContext, project);
 
         // ── Parse and execute ACTION tags ──
         const actions = [];
