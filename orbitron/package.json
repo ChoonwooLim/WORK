@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "lint": "eslint services/ routes/ db/ server.js",
+    "lint:fix": "eslint services/ routes/ db/ server.js --fix",
+    "preflight": "npm run lint -- --quiet"
   },
   "keywords": [],
   "author": "",
@@ -27,5 +30,8 @@
     "pg": "^8.18.0",
     "puppeteer-core": "^24.40.0",
     "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "eslint": "^10.3.0"
   }
 }

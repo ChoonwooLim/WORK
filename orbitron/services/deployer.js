@@ -15,7 +15,8 @@ const aiAutoRepair = require('./aiAutoRepair');
 const cfPagesDeployer = require('./cfPagesDeployer');
 const projectAnalyzer = require('./projectAnalyzer');
 const notifier = require('./notifier');
-const { encrypt, decrypt } = require('../db/crypto');
+const { managedDatabaseUrl } = require('./envUtils');
+const { decrypt, encryptForJsonb } = require('../db/crypto');
 const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
@@ -156,6 +157,7 @@ class Deployer extends EventEmitter {
             let containerName = null;
             let tunnelUrl = null;
             let isCompose = false;
+            let actualPort = null;
             let isPixelStreaming = false;
             let isWorker = false;
 
@@ -297,7 +299,7 @@ class Deployer extends EventEmitter {
                                         }
                                     });
                                     project.env_vars = newEnv;
-                                    const encryptedEnvVars = encrypt(JSON.stringify(newEnv || {}));
+                                    const encryptedEnvVars = encryptForJsonb(newEnv);
                                     updates.push(`env_vars = $${valIndex++}`);
                                     params.push(encryptedEnvVars);
                                     logs += `  - Override env_vars: ${Object.keys(newEnv).length} keys securely applied\n`;
@@ -369,10 +371,17 @@ class Deployer extends EventEmitter {
                             else if (svcField === 'host') { value = targetHost; }
                         }
 
-                        if (value && (!resolvedEnv[key] || resolvedEnv[key].includes('localhost'))) {
-                            resolvedEnv[key] = value;
-                            envChanged = true;
-                            logs += `  📎 Auto-resolved: ${key} → ${value}\n`;
+                        if (value) {
+                            const currentValue = resolvedEnv[key];
+                            const nextValue = key === 'DATABASE_URL'
+                                ? managedDatabaseUrl(currentValue, value)
+                                : ((!currentValue || String(currentValue).includes('localhost')) ? value : currentValue);
+
+                            if (nextValue !== currentValue) {
+                                resolvedEnv[key] = nextValue;
+                                envChanged = true;
+                                logs += `  📎 Auto-resolved: ${key} → ${nextValue}\n`;
+                            }
                         }
                     }
 
@@ -387,7 +396,7 @@ class Deployer extends EventEmitter {
 
                     if (envChanged) {
                         project.env_vars = resolvedEnv;
-                        const encryptedEnvVars = encrypt(JSON.stringify(resolvedEnv));
+                        const encryptedEnvVars = encryptForJsonb(resolvedEnv);
                         await db.query('UPDATE projects SET env_vars = $1 WHERE id = $2', [encryptedEnvVars, project.id]);
                         logs += `  ✅ Resolved ${Object.keys(svc.envRefs).length} env references\n`;
                     }
@@ -594,7 +603,7 @@ class Deployer extends EventEmitter {
 
                     containerId = startRes.containerId;
                     containerName = startRes.containerName;
-                    const actualPort = startRes.port || project.port || 3000;
+                    actualPort = startRes.port || project.port || 3000;
                     logs += `Container started: ${containerId} (${containerName})\n`;
 
                     // Post-deploy verification: ensure container is actually in Running state
