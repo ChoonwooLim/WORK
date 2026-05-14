@@ -27,9 +27,22 @@ function confPathFor(subdomain) {
 }
 
 class NginxService {
-    // Build the proxy_pass block shared by both HTTP and HTTPS server blocks
+    // Build the proxy_pass block shared by both HTTP and HTTPS server blocks.
+    //
+    // CRITICAL: We use `set $upstream <host>:<port>` + `proxy_pass http://$upstream`
+    // pattern. Without a variable, nginx resolves the hostname ONCE at config-load
+    // time and caches the IP forever. When a project is redeployed, the new
+    // container gets a different docker network IP — nginx keeps trying the old
+    // (now-dead) IP → 502 Bad Gateway until nginx is reloaded.
+    //
+    // Using a variable forces nginx to re-resolve through the configured `resolver`
+    // on each request (with valid=10s TTL), so redeploys are zero-downtime.
+    //
+    // The Docker embedded DNS server is at 127.0.0.11 inside containers.
     _proxyPassBlock(upstreamHost, upstreamPort) {
-        return `        proxy_pass http://${upstreamHost}:${upstreamPort};
+        return `        resolver 127.0.0.11 valid=10s ipv6=off;
+        set $upstream ${upstreamHost}:${upstreamPort};
+        proxy_pass http://$upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
