@@ -310,6 +310,31 @@ async function start() {
             try {
                 const tunnelService = require('./services/tunnel');
                 const dockerService = require('./services/docker');
+
+                // Recover stale 'building' status: if a deployment was interrupted
+                // (page closed, network drop, server restart mid-deploy) the project
+                // can get stuck at status='building' forever. On startup, find any
+                // project where the container is actually up and serving — promote
+                // it to 'running' automatically.
+                try {
+                    const staleBuilding = await db.query(
+                        "SELECT id, name, subdomain FROM projects WHERE status = 'building' AND updated_at < NOW() - INTERVAL '5 minutes'"
+                    );
+                    for (const p of (staleBuilding.rows || [])) {
+                        try {
+                            const { stdout } = await execAsync(
+                                `docker ps --filter "name=orbitron-${p.subdomain}" --format "{{.Names}}|{{.Status}}" | head -1`
+                            );
+                            if (stdout.trim().startsWith(`orbitron-${p.subdomain}`) && stdout.includes('Up ')) {
+                                await db.query("UPDATE projects SET status = 'running' WHERE id = $1", [p.id]);
+                                console.log(`🔓 Unstuck stale 'building' status: ${p.name} → running (container alive)`);
+                            }
+                        } catch (e) { /* ignore individual failures */ }
+                    }
+                } catch (e) {
+                    console.error('⚠️ Stale building recovery skipped:', e.message);
+                }
+
                 const result = await db.query("SELECT * FROM projects WHERE status = 'running'");
                 const runningProjects = result.rows || [];
                 for (const project of runningProjects) {

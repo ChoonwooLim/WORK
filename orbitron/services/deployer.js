@@ -995,6 +995,18 @@ class Deployer extends EventEmitter {
             return { success: false, logs, error: error.message };
         } finally {
             this.activeDeployments.delete(project.id);
+
+            // Safety net: ensure status never stays 'building'. If the try/catch
+            // above failed to update status (e.g. catch handler itself threw),
+            // demote to 'failed' here so the project doesn't stay locked.
+            try {
+                const cur = await db.queryOne(`SELECT status FROM projects WHERE id = $1`, [project.id]);
+                if (cur && cur.status === 'building') {
+                    await db.query(`UPDATE projects SET status = 'failed' WHERE id = $1`, [project.id]);
+                    console.warn(`⚠️ Project ${project.id} left in 'building' state — demoted to 'failed' by finally guard`);
+                }
+            } catch (e) { /* db unreachable in finally — best effort only */ }
+
             // Keep the final 'success' or 'failed' event in cache for 60 seconds so late clients see it
             setTimeout(() => {
                 if (!this.activeDeployments.has(project.id)) {
