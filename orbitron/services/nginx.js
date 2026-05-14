@@ -231,6 +231,25 @@ ${httpsBlock}`;
     async addProject(project, targetContainer) {
         const configPath = confPathFor(project.subdomain);
         const config = this.generateConfig(project, targetContainer);
+
+        // Regression guard: generated config must use resolver+variable pattern.
+        // If somebody refactors _proxyPassBlock and forgets this, redeploys
+        // start returning 502 (nginx DNS caching). Fail loud at config-write
+        // time instead of letting it slip into production.
+        if (!config.includes('resolver 127.0.0.11')) {
+            throw new Error(
+                `[nginx] generated config for "${project.subdomain}" is missing the docker DNS resolver. ` +
+                `proxy_pass with a literal hostname caches the IP forever and breaks on redeploy. ` +
+                `Use 'resolver 127.0.0.11 valid=10s' + 'set $upstream ...' + 'proxy_pass http://$upstream;'.`
+            );
+        }
+        if (!config.includes('proxy_pass http://$upstream')) {
+            throw new Error(
+                `[nginx] generated config for "${project.subdomain}" does not use a variable in proxy_pass. ` +
+                `Literal hostnames in proxy_pass cause IP caching → 502 on redeploy.`
+            );
+        }
+
         await fsp.writeFile(configPath, config);
         await this.reload(project.subdomain);
     }
