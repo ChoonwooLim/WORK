@@ -116,6 +116,47 @@ ${this._proxyPassBlock(upstreamHost, upstreamPort)}
         let upstreamHost = targetContainer || `orbitron-${project.subdomain}`;
         let upstreamPort = project.port || 3000;
 
+        // Auto-detect actual container listen port (handles Dockerfiles that
+        // hardcode --port instead of honoring $PORT env var). Verify by
+        // checking the container's actual TCP listening sockets — not just
+        // ExposedPorts metadata, since `-p` mappings auto-add to ExposedPorts
+        // and would mask the real listen port.
+        //
+        // This rescues common user error: CMD ["uvicorn", "main:app", "--port", "8000"]
+        // (hardcoded) — Orbitron injects PORT=3576 but app ignores it.
+        if (targetContainer && !project.container_id?.startsWith('compose-')) {
+            try {
+                // Read /proc/net/tcp directly — always present in Linux containers,
+                // no need for ss/netstat (often absent in minimal images like
+                // python:slim, node:alpine).
+                //
+                // Format: each line starts with "  N: local_addr:hex_port rem_addr:rem_port st ..."
+                // state 0A = TCP_LISTEN. local_addr is hex IP, port is hex.
+                const out = execFileSync('docker', ['exec', targetContainer, 'cat', '/proc/net/tcp'], {
+                    encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+                });
+                const listenPorts = new Set();
+                for (const line of out.split('\n')) {
+                    // " 0: 00000000:1F40 00000000:0000 0A ..."
+                    // Match LISTEN (state 0A) AND bound to 0.0.0.0 (00000000).
+                    // Bindings to 127.0.0.1 (0100007F) or other interfaces are
+                    // not reachable from another container — skip them. nginx
+                    // proxying to them would fail.
+                    const m = line.match(/^\s*\d+:\s+00000000:([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
+                    if (m) {
+                        const p = parseInt(m[1], 16);
+                        if (p > 0 && p < 65536) listenPorts.add(p);
+                    }
+                }
+                if (listenPorts.size > 0 && !listenPorts.has(upstreamPort)) {
+                    // App is NOT listening on project.port — pick first actual listen port
+                    const detected = [...listenPorts][0];
+                    console.log(`[nginx] ${project.subdomain}: app not listening on project.port=${upstreamPort}; detected actual listen on ${detected} (likely hardcoded CMD ignoring $PORT)`);
+                    upstreamPort = detected;
+                }
+            } catch (e) { /* exec failed — use project.port as-is */ }
+        }
+
         // For Docker Compose projects: if the compose stack has its own nginx/proxy container,
         // route to that container's internal port (80) instead of the host-mapped port
         if (project.container_id && project.container_id.startsWith('compose-')) {
