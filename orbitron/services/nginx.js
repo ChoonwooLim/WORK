@@ -125,36 +125,46 @@ ${this._proxyPassBlock(upstreamHost, upstreamPort)}
         // This rescues common user error: CMD ["uvicorn", "main:app", "--port", "8000"]
         // (hardcoded) — Orbitron injects PORT=3576 but app ignores it.
         if (targetContainer && !project.container_id?.startsWith('compose-')) {
-            try {
-                // Read /proc/net/tcp directly — always present in Linux containers,
-                // no need for ss/netstat (often absent in minimal images like
-                // python:slim, node:alpine).
-                //
-                // Format: each line starts with "  N: local_addr:hex_port rem_addr:rem_port st ..."
-                // state 0A = TCP_LISTEN. local_addr is hex IP, port is hex.
-                const out = execFileSync('docker', ['exec', targetContainer, 'cat', '/proc/net/tcp'], {
-                    encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
-                });
-                const listenPorts = new Set();
-                for (const line of out.split('\n')) {
-                    // " 0: 00000000:1F40 00000000:0000 0A ..."
-                    // Match LISTEN (state 0A) AND bound to 0.0.0.0 (00000000).
-                    // Bindings to 127.0.0.1 (0100007F) or other interfaces are
-                    // not reachable from another container — skip them. nginx
-                    // proxying to them would fail.
-                    const m = line.match(/^\s*\d+:\s+00000000:([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
-                    if (m) {
-                        const p = parseInt(m[1], 16);
-                        if (p > 0 && p < 65536) listenPorts.add(p);
+            // Poll /proc/net/tcp inside the container for up to 12s. Python/Node
+            // apps with heavy imports (SQLAlchemy, large frameworks) can take
+            // several seconds to bind their listen socket — without this poll,
+            // deployer would catch the container before the app is ready,
+            // see no listen ports, and fall back to project.port (which may
+            // be the wrong port if the app hardcodes --port).
+            //
+            // Reads /proc/net/tcp — always present in Linux containers, no
+            // dependency on ss/netstat (often absent in minimal images).
+            const deadline = Date.now() + 12000;
+            let listenPorts = new Set();
+            while (Date.now() < deadline) {
+                try {
+                    const out = execFileSync('docker', ['exec', targetContainer, 'cat', '/proc/net/tcp'], {
+                        encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+                    });
+                    listenPorts = new Set();
+                    for (const line of out.split('\n')) {
+                        // " 0: 00000000:1F40 00000000:0000 0A ..."
+                        // Match LISTEN (state 0A) AND bound to 0.0.0.0 (00000000).
+                        // Bindings to 127.0.0.1 (0100007F) etc. are not reachable
+                        // from another container — skip them.
+                        const m = line.match(/^\s*\d+:\s+00000000:([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
+                        if (m) {
+                            const p = parseInt(m[1], 16);
+                            if (p > 0 && p < 65536) listenPorts.add(p);
+                        }
                     }
-                }
-                if (listenPorts.size > 0 && !listenPorts.has(upstreamPort)) {
-                    // App is NOT listening on project.port — pick first actual listen port
-                    const detected = [...listenPorts][0];
-                    console.log(`[nginx] ${project.subdomain}: app not listening on project.port=${upstreamPort}; detected actual listen on ${detected} (likely hardcoded CMD ignoring $PORT)`);
-                    upstreamPort = detected;
-                }
-            } catch (e) { /* exec failed — use project.port as-is */ }
+                    if (listenPorts.size > 0) break;  // app has started listening
+                } catch (e) { /* container not exec-able yet */ }
+                // Sleep 500ms before retry — use external sleep (sync, no CPU spin).
+                // generateConfig is called from sync context so we cannot use async/await here.
+                try { execFileSync('sleep', ['0.5'], { stdio: 'ignore' }); } catch { /* keep going */ }
+            }
+            if (listenPorts.size > 0 && !listenPorts.has(upstreamPort)) {
+                // App is NOT listening on project.port — pick first actual listen port
+                const detected = [...listenPorts][0];
+                console.log(`[nginx] ${project.subdomain}: app not listening on project.port=${upstreamPort}; detected actual listen on ${detected} (likely hardcoded CMD ignoring $PORT)`);
+                upstreamPort = detected;
+            }
         }
 
         // For Docker Compose projects: if the compose stack has its own nginx/proxy container,
