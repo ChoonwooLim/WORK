@@ -769,12 +769,49 @@ EXPOSE ${port}
             envVars = {};
         }
         const envKeys = Object.keys(envVars).filter(k => !k.startsWith('_ORBITRON_'));
-        
+
+        // Auto-normalize inter-container DB URLs: when env value references an
+        // orbitron DB container by name (orbitron-*-db) but uses the host-mapped
+        // port (e.g. :3127) instead of the container's internal listen port,
+        // rewrite it. The host-mapped port is unreachable across the docker
+        // network; only the internal port works for container-to-container.
+        //
+        // Pattern: orbitron-<sub>-db:<port> → orbitron-<sub>-db:5432 (postgres)
+        //          orbitron-<sub>-redis:<port> → orbitron-<sub>-redis:6379
+        //
+        // Applies to ANY env var value, not just DATABASE_URL — covers cases
+        // where users put DB URLs into custom env names.
+        const normalizeDbHosts = (val) => {
+            if (typeof val !== 'string') return val;
+            let out = val;
+            // postgres: orbitron-X-db:<not-5432> → :5432
+            out = out.replace(/(orbitron-[a-z0-9-]+-db):(\d+)/g, (m, host, p) => {
+                if (p === '5432') return m;
+                return `${host}:5432`;
+            });
+            // redis: orbitron-X-redis:<not-6379> → :6379
+            out = out.replace(/(orbitron-[a-z0-9-]+-redis):(\d+)/g, (m, host, p) => {
+                if (p === '6379') return m;
+                return `${host}:6379`;
+            });
+            return out;
+        };
+
         const runArgs = ['run', '-d', '--name', containerName, '--restart', 'unless-stopped', '--network', 'orbitron_internal', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3'];
-        
+
+        let normalized = 0;
         envKeys.forEach(k => {
-            runArgs.push('-e', `${k}=${String(envVars[k])}`);
+            const orig = String(envVars[k]);
+            const fixed = normalizeDbHosts(orig);
+            if (fixed !== orig) {
+                normalized++;
+                startLogs += `  🔧 ${k}: host-mapped port → internal port normalized\n`;
+            }
+            runArgs.push('-e', `${k}=${fixed}`);
         });
+        if (normalized > 0) {
+            console.log(`[docker] ${containerName}: normalized ${normalized} env var(s) with host-mapped DB ports`);
+        }
 
         // Auto-inject PORT env var (PaaS 표준 — Render, Railway, Heroku 등과 동일)
         if (port && !envVars.PORT) {
