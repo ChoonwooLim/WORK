@@ -22,6 +22,11 @@
 | 추가: 채팅 페이지 에이전트 선택 | `af4ea1e` | ✅ |
 | 추가: Orbi 시스템 프롬프트 주입 | `2bdc826` | ✅ |
 | 추가: nginx DNS 캐싱 우회 (재배포 502 해결) | `a8975f1` | ✅ |
+| 추가: nginx 회귀 방지 가드 (resolver+variable 패턴 강제) | `bcb7df0` | ✅ |
+| 추가: stale 'building' status 자동 복구 (2중 안전망) | `28ffdac` | ✅ |
+| 추가: 컨테이너 listen 포트 자동 감지 (`/proc/net/tcp` 파싱) | `d136d57` | ✅ |
+| 추가: listen 포트 감지 polling (12s, 무거운 app startup 대응) | `b49800a` | ✅ |
+| 추가: DB host-mapped port 자동 정규화 (`:host-port` → `:5432`) | `3362f6b` | ✅ |
 
 ---
 
