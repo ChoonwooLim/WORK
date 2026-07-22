@@ -5,6 +5,7 @@ const { decrypt } = require('../db/crypto');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+const { managedDatabaseUrl } = require('../services/envUtils');
 
 // Helper: get host LAN IP for external DB URLs
 function getHostIP() {
