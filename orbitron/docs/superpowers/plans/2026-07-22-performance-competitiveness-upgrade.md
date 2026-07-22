@@ -28,7 +28,11 @@ nginx, node:test (신규 도입), BuildKit (신규 활성화)
 ## Phase 0: 테스트 하네스 (모든 Phase의 전제조건)
 
 ### Task 0.1: node:test 기반 최소 테스트 하네스
-- [ ] 완료
+- [x] 완료 (2026-07-22 — 하네스 자체는 Task 4.1에서 선행 도입, 본 태스크에서 envUtils
+  특성화 테스트 19개 추가(총 30개), tracked pre-commit 훅(orbitron/scripts/pre-commit,
+  eslint+test 게이트) 신설·설치, lint 범위 test/ 확장. 잠복 버그 2건 특성화로 고정:
+  ① isLocalHost의 '::1' 항목은 URL.hostname이 '[::1]'을 반환해 도달 불가,
+  ② target URL 파싱 불가+current에 'localhost' 포함 시 raw 문자열 반환 — 추후 수정 태스크 후보)
 
 **Files:**
 - Create: `orbitron/test/` 디렉터리, `orbitron/test/envUtils.test.js` (첫 대상: 순수 함수)
