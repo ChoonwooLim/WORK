@@ -1,0 +1,39 @@
+#!/bin/sh
+# Orbitron pre-commit hook (tracked copy).
+# Install: cp orbitron/scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#
+# Gate 1: ESLint preflight (npm run preflight) — skipped with a warning when
+#         orbitron/node_modules is absent, since eslint is a devDependency.
+# Gate 2: npm test (node --test, zero runtime deps) — always runs; a failing
+#         test blocks the commit.
+# Bypass either gate with: git commit --no-verify
+
+set -u
+
+repo_root="$(git rev-parse --show-toplevel)" || exit 1
+orbitron_dir="$repo_root/orbitron"
+
+if [ ! -d "$orbitron_dir" ]; then
+    echo "pre-commit: $orbitron_dir not found — skipping Orbitron checks" >&2
+    exit 0
+fi
+
+cd "$orbitron_dir" || exit 1
+
+if [ -d node_modules ]; then
+    echo "pre-commit: running ESLint preflight (npm run preflight)..."
+    if ! npm run preflight; then
+        echo "pre-commit: ESLint preflight failed — commit blocked (bypass: git commit --no-verify)" >&2
+        exit 1
+    fi
+else
+    echo "pre-commit: warning — orbitron/node_modules missing, skipping ESLint preflight" >&2
+fi
+
+echo "pre-commit: running test suite (npm test)..."
+if ! npm test; then
+    echo "pre-commit: tests failed — commit blocked (bypass: git commit --no-verify)" >&2
+    exit 1
+fi
+
+exit 0
