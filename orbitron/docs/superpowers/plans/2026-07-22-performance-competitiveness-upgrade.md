@@ -55,7 +55,11 @@ nginx, node:test (신규 도입), BuildKit (신규 활성화)
 "푸시 후 1분 내 라이브"를 목표로 한다.
 
 ### Task 1.1: BuildKit 활성화 + 캐시 마운트
-- [ ] 완료
+- [x] 완료 (2026-07-22 — DOCKER_BUILDKIT=1 + --progress=plain을 docker build 2개 사이트에 강제,
+  자동 생성 템플릿 7개 RUN 라인에 npm/pip 캐시 마운트(모듈 상수로 중앙화), pip --no-cache-dir 제거
+  (마운트와 상충). 사용자 Dockerfile/compose 경로 무변경. 테스트 14개 추가(총 44). 호스트 docker
+  29.2.1은 이미 BuildKit 기본이나 명시 고정. 리뷰 권고: maxBuffer 10MB 상향은 라이브 로그
+  스트리밍 작업 시 함께)
 
 **Files:**
 - Modify: `orbitron/services/docker.js:30-170` (`buildImage`)
@@ -106,6 +110,11 @@ deployments.image_tag 채워짐, 4번째 배포 시 가장 오래된 태그만 �
 
 **이유:** 현재는 동시 배포 수 제한이 없다. webhook이 몰리면 8코어에서 빌드
 N개가 경합해 전부 느려지고 최악엔 OOM. 상한 2개면 단일 빌드 속도를 보장한다.
+
+**Task 1.1 리뷰에서 이월된 요구사항:** 동시 빌드 도입 시 pip 캐시 마운트에
+`sharing=locked` 추가 필수 (docker.js의 `PIP_CACHE_MOUNT` 상수 한 줄 수정).
+pip wheel 캐시는 재사용 시 해시 재검증이 없어 동시 쓰기 오염/교차 프로젝트
+포이즈닝 여지가 있음. npm 캐시(cacache)는 동시 접근 안전 설계라 `shared` 유지.
 
 **검증:** 프로젝트 3개 동시 배포 트리거 → 2개 빌드 진행 + 1개 queued 확인,
 전체 완료 시간이 무제한 동시 실행보다 짧거나 같음.
