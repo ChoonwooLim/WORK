@@ -214,7 +214,13 @@ deployer의 기동/스위치/정리 로직을 그대로 재사용해야 blue-gre
 재시작 불가 상황(이미지 삭제) 연출 → 텔레그램 수신 확인.
 
 ### Task 2.3: 리소스 메트릭 수집 + 대시보드 차트
-- [ ] 완료
+- [x] 완료 (2026-07-22 — services/metrics.js(주입 가능 MetricsCollector, 60s docker stats,
+  overlapping-tick 가드+SIGKILL). 서브도메인당 1440슬롯 링 버퍼(raw 샘플 DB 저장 금지 준수),
+  시간 단위 집계만 metrics 테이블(30일 보존, UNIQUE+ON CONFLICT 재시작 안전). 타임존 완전 독립
+  왕복(쓰기 AT TIME ZONE 'UTC', 읽기 EXTRACT(EPOCH)). GET /api/projects/:id/metrics 1h/24h/7d.
+  손수 그린 SVG 스파크라인 + 범위 토글(stale-fetch 가드). twinverse/twinverseai 프리픽스 함정
+  해소된 컨테이너→서브도메인 해석. 테스트 27개 추가(총 139). 마이그레이션 프로덕션 적용,
+  📊 수집기 기동 확인. 후속 메모: server.js 백그라운드 루프 3개 — lifecycle 레지스트리 통합 후보)
 
 **Files:**
 - Create: `orbitron/services/metrics.js` — 60초 주기 `docker stats --no-stream`
