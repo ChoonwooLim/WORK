@@ -85,14 +85,19 @@ function confPathFor(subdomain) {
 }
 
 // ── 컨테이너 리슨 포트 감지 (generateConfig + deployer 스모크 체크 공유) ──────
-// /proc/net/tcp 텍스트에서 0.0.0.0 에 바인드된 LISTEN(state 0A) 포트를 추출.
-// " 0: 00000000:1F40 00000000:0000 0A ..." → 0x1F40 = 8000.
-// 127.0.0.1(0100007F) 등 루프백 바인딩은 다른 컨테이너(nginx 포함)에서 도달
-// 불가하므로 제외한다. (pure — 테스트는 smokeCheck.test.js 에서 핀)
+// /proc/net/tcp + /proc/net/tcp6 연결 텍스트에서 any-address 에 바인드된
+// LISTEN(state 0A) 포트를 추출.
+//   tcp  (8-hex):  " 0: 00000000:1F40 ... 0A" → 0.0.0.0:8000
+//   tcp6 (32-hex): " 0: 00000000000000000000000000000000:1F90 ... 0A" → [::]:8080
+// tcp6 가 필수인 이유: 기본 Node server.listen(port) 는 :: 에 바인드되어
+// tcp6 에만 나타난다 — tcp 만 보면 이런 앱을 "리슨 없음"으로 오판한다.
+// 루프백 바인딩(127.0.0.1 = 0100007F, ::1 = ...0001, ::ffff:127.0.0.1)은
+// 전부-0 이 아니므로 자동 제외 — 다른 컨테이너(nginx 포함)에서 도달 불가.
+// (pure — 테스트는 smokeCheck.test.js 에서 핀)
 function parseListenPorts(procNetTcpText) {
     const ports = new Set();
     for (const line of String(procNetTcpText).split('\n')) {
-        const m = line.match(/^\s*\d+:\s+00000000:([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
+        const m = line.match(/^\s*\d+:\s+(?:00000000|00000000000000000000000000000000):([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
         if (m) {
             const p = parseInt(m[1], 16);
             if (p > 0 && p < 65536) ports.add(p);
@@ -124,7 +129,15 @@ function detectContainerListenPorts(targetContainer, { budgetMs = 12000 } = {}) 
     let listenPorts = new Set();
     while (Date.now() < deadline) {
         try {
-            const out = execFileSync('docker', ['exec', targetContainer, 'cat', '/proc/net/tcp'], {
+            // tcp + tcp6 모두 읽는다 (:: 바인딩 앱은 tcp6 에만 나타남).
+            // sh -c + 2>/dev/null + || true: tcp6 가 없는(IPv6 비활성) 컨테이너
+            // 에서 cat 이 exit 1 로 끝나도 exec 이 throw 하지 않고 이미 출력된
+            // tcp 내용을 그대로 쓴다 (|| true 없이는 execFileSync 가 throw 해
+            // stdout 을 버린다).
+            const out = execFileSync('docker', [
+                'exec', targetContainer, 'sh', '-c',
+                'cat /proc/net/tcp /proc/net/tcp6 2>/dev/null || true',
+            ], {
                 encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
             });
             listenPorts = parseListenPorts(out);

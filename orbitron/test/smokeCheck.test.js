@@ -251,6 +251,29 @@ test('parseListenPorts: 빈/이상 입력 → 빈 Set', () => {
     assert.strictEqual(parseListenPorts('garbage\nlines').size, 0);
 });
 
+// tcp6: local_address 가 32-hex. 기본 Node server.listen(port) 는 :: 에
+// 바인드되어 /proc/net/tcp6 에만 나타난다 — tcp 만 보면 이런 앱의 배포가
+// 전부 "리슨 없음"으로 중단된다 (하드 게이트 회귀 방지 핀).
+const PROC_NET_TCP6_SAMPLE = [
+    '  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode',
+    '   0: 00000000000000000000000000000000:1F90 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 22345 1 0000000000000000 100 0 0 10 0',
+    '   1: 00000000000000000000000000000001:1F91 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 22346 1 0000000000000000 100 0 0 10 0',
+    '   2: 0000000000000000FFFF00000100007F:1F92 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 22347 1 0000000000000000 100 0 0 10 0',
+    '   3: 00000000000000000000000000000000:1F93 00000000000000000000000000000000:0000 01 00000000:00000000 00:00000000 00000000  1000        0 22348 1 0000000000000000 100 0 0 10 0',
+].join('\n');
+
+test('parseListenPorts: tcp6 — :: 바인딩(전부 0)만 수용, ::1/IPv4-mapped 루프백/비 LISTEN 제외', () => {
+    const ports = parseListenPorts(PROC_NET_TCP6_SAMPLE);
+    // 0x1F90 = 8080 (:: LISTEN ✓), 8081 (::1 ✗), 8082 (::ffff:127.0.0.1 ✗),
+    // 8083 (state 01 ✗)
+    assert.deepStrictEqual([...ports], [8080]);
+});
+
+test('parseListenPorts: tcp + tcp6 연결(cat 두 파일) 혼합 입력 → 양쪽 포트 합집합', () => {
+    const ports = parseListenPorts(PROC_NET_TCP_SAMPLE + '\n' + PROC_NET_TCP6_SAMPLE);
+    assert.deepStrictEqual([...ports].sort((a, b) => a - b), [8000, 8080]);
+});
+
 test('selectListenPort: 기대 포트가 열려 있으면 그대로', () => {
     assert.strictEqual(selectListenPort(new Set([3000, 8000]), 3000), 3000);
 });
