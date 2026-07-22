@@ -128,7 +128,12 @@ pip wheel 캐시는 재사용 시 해시 재검증이 없어 동시 쓰기 오�
 전체 완료 시간이 무제한 동시 실행보다 짧거나 같음.
 
 ### Task 1.4: 정적 자산 캐시 헤더 (런타임 응답 성능)
-- [ ] 완료
+- [x] 완료 (2026-07-22 — 품질 리뷰가 원안(expires+무조건 add_header)의 업스트림
+  Cache-Control(private/no-store) 덮어쓰기 = 엣지 캐시 프라이버시 회귀를 적발, map 기반으로
+  재설계: 00-orbitron-cache.conf(http-context map, # orbitron:manual 보호)가 업스트림 침묵 시에만
+  1일 public 기본값 적용, private/no-store/immutable은 그대로 통과. TTL도 7d→1d 하향(브라우저
+  캐시는 배포 후 퍼지 불가). 생성 conf는 다음 재배포부터 정적 location 획득(점진 롤아웃).
+  nginx -t 검증 + 리로드 완료. 테스트 12개 추가(총 73))
 
 **Files:**
 - Modify: `orbitron/services/nginx.js:109-` (`generateConfig`) — 생성 conf에 추가:
