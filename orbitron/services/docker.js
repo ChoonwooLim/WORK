@@ -218,9 +218,10 @@ class DockerService {
     }
 
     // 배포 이미지 보존 개수 — env DEPLOY_IMAGE_RETENTION, 검증 실패 시 기본 3
+    // formatDeployTag 와 동일한 왕복 검증: '5abc'/'2.9' 같은 부분 파싱은 기본값으로 폴백
     deployImageRetention(rawValue = process.env.DEPLOY_IMAGE_RETENTION) {
         const n = parseInt(rawValue, 10);
-        if (Number.isNaN(n) || n < 1) return DEFAULT_DEPLOY_IMAGE_RETENTION;
+        if (Number.isNaN(n) || n < 1 || String(n) !== String(rawValue).trim()) return DEFAULT_DEPLOY_IMAGE_RETENTION;
         return n;
     }
 
@@ -253,7 +254,7 @@ class DockerService {
             let removed = 0;
             for (const tag of toRemove) {
                 try {
-                    await execFileAsync('docker', ['rmi', tag]); // untag only — running containers keep their blob
+                    await execFileAsync('docker', ['rmi', tag]); // best-effort 태그 해제 — 사용 중 이미지의 마지막 태그면 실패하지만 무해함
                     console.log(`🧹 Removed old deploy tag: ${tag}`);
                     removed++;
                 } catch { /* tag already gone or in use — best effort */ }

@@ -122,6 +122,10 @@ test('deployImageRetention parses value with fallback 3 on invalid input', () =>
     assert.strictEqual(docker.deployImageRetention(''), 3);
     assert.strictEqual(docker.deployImageRetention('0'), 3);
     assert.strictEqual(docker.deployImageRetention('-2'), 3);
+    // 왕복 검증: 부분 파싱되는 값은 신뢰하지 않고 기본값으로 폴백
+    assert.strictEqual(docker.deployImageRetention('5abc'), 3);
+    assert.strictEqual(docker.deployImageRetention('2.9'), 3);
+    assert.strictEqual(docker.deployImageRetention(' 5 '), 5);
 });
 
 test('deployImageRetention defaults from DEPLOY_IMAGE_RETENTION env', () => {
