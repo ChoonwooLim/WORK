@@ -443,6 +443,21 @@ async function start() {
             } catch (e) {
                 console.error('⚠️ Project recovery failed:', e.message);
             }
+
+            // Active health monitoring (Task 2.2): probe running web projects every
+            // 60s, one bounded auto-restart per outage, Telegram alerts. Kill-switch:
+            // HEALTH_MONITOR=off (default ON). Started after the recovery sweeps so
+            // the first tick sees settled container state.
+            try {
+                if (String(process.env.HEALTH_MONITOR || '').toLowerCase() === 'off') {
+                    console.log('🩺 Health monitor disabled (HEALTH_MONITOR=off)');
+                } else {
+                    require('./services/monitor').start();
+                    console.log('🩺 Health monitor started (60s interval)');
+                }
+            } catch (e) {
+                console.error('⚠️ Health monitor start failed:', e.message);
+            }
         });
     } catch (error) {
         console.error('❌ Failed to start:', error.message);
@@ -455,6 +470,9 @@ start();
 // Graceful shutdown
 function gracefulShutdown(signal) {
     console.log(`\n🛑 ${signal} received. Shutting down gracefully...`);
+    try {
+        require('./services/monitor').stop(); // Task 2.2: stop the health-check interval
+    } catch (e) { /* ignore — shutdown must proceed */ }
     const { pool } = require('./db/db');
     pool.end().then(() => {
         console.log('✅ Database pool closed');
