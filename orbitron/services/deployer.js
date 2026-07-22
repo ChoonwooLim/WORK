@@ -76,7 +76,9 @@ class Deployer extends EventEmitter {
     async deploy(project, commitHash = null, commitMessage = null, options = {}) {
         if (this.activeDeployments.has(project.id)) {
             console.log(`⚠️ Deployment already in progress for ${project.name}`);
-            return { success: false, error: 'Deployment already in progress' };
+            // code 는 안정적 계약 (rollbackTo 락 레이스 감지, Task 2.2 자동 롤백이 의존)
+            // — 사람용 error 메시지는 바뀌어도 code 는 유지할 것.
+            return { success: false, code: 'DEPLOY_IN_PROGRESS', error: 'Deployment already in progress' };
         }
         this.activeDeployments.add(project.id);
 
@@ -1100,25 +1102,35 @@ class Deployer extends EventEmitter {
     }
 
     // ── Task 2.1: prune keep-list 조립 ──────────────────────────────────────
-    // DB에서 이 프로젝트의 최신 N개 '성공' 배포 image_tag 를 뽑아 현재 태그와
-    // 합친 보존 목록을 만들어 pruneDeployImages 에 넘긴다. DB 실패 시 null →
-    // docker.js 쪽에서 기존 위치 기반(최신 N) 규칙으로 폴백.
+    // DB에서 이 프로젝트의 '성공' 배포가 참조하는 최신 N개 **서로 다른** image_tag
+    // 를 뽑아 현재 태그와 합친 보존 목록을 만들어 pruneDeployImages 에 넘긴다.
+    // DISTINCT ON: 롤백 행과 원본 배포 행이 같은 태그를 공유하므로, 단순
+    // 최신-N-행 조회는 중복 태그로 인해 N개 미만의 이미지만 보호할 수 있다 —
+    // 태그별 최신 출현 id 기준으로 중복을 접은 뒤 N개를 취한다.
     // keep-list 를 deployer 에서 조립하는 이유: docker.js 가 db 를 정식 의존하게
     // 만들지 않기 위해 (현재 cleanupOldContainers 의 lazy require 뿐) —
     // pruneDeployImages 는 docker 전용 + 순수 함수 조합으로 유지된다.
     async _pruneDeployImagesWithKeepList(project, currentTag) {
-        let keepTags = null;
+        let keepTags;
         try {
             const keepN = dockerService.deployImageRetention();
             const rows = await db.queryAll(
-                `SELECT image_tag FROM deployments
-                 WHERE project_id = $1 AND status = 'success' AND image_tag IS NOT NULL
-                 ORDER BY id DESC LIMIT $2`,
+                `SELECT image_tag FROM (
+                     SELECT DISTINCT ON (image_tag) image_tag, id
+                     FROM deployments
+                     WHERE project_id = $1 AND status = 'success' AND image_tag IS NOT NULL
+                     ORDER BY image_tag, id DESC
+                 ) t ORDER BY id DESC LIMIT $2`,
                 [project.id, keepN]
             );
             keepTags = buildKeepTagList(rows, currentTag);
         } catch (e) {
-            keepTags = null; // DB unreachable → 위치 기반 규칙 폴백 (안전측)
+            // DB 조회 실패 → prune 자체를 건너뛴다. 위치 기반(최신 N id) 폴백은
+            // 롤백 이후 안전하지 않다: 프로덕션이 가리키는 OLD d-태그가 id 순
+            // 정렬에 밀려 삭제될 수 있다. prune 은 다음 성공 배포에서 다시
+            // 시도되므로 건너뛰어도 태그가 일시적으로 더 남을 뿐 손실이 없다.
+            console.warn(`⚠️ Deploy-tag prune skipped for ${project.subdomain} (keep-list DB query failed): ${e.message}`);
+            return { removed: 0, skipped: true };
         }
         return dockerService.pruneDeployImages(project.subdomain, keepTags);
     }
@@ -1164,7 +1176,7 @@ class Deployer extends EventEmitter {
         }).then((result) => {
             // 락 경쟁에서 밀린 경우(위 has() 체크와 deploy() 진입 사이 레이스):
             // deploy() 는 미리 만든 행을 만지지 않으므로 여기서 failed 처리
-            if (result && !result.success && result.error === 'Deployment already in progress') {
+            if (result && !result.success && result.code === 'DEPLOY_IN_PROGRESS') {
                 db.query(
                     `UPDATE deployments SET status = 'failed', logs = $1, finished_at = NOW() WHERE id = $2`,
                     ['⏪ 롤백 취소: 다른 배포가 먼저 시작되었습니다. / Rollback cancelled: another deployment started first.', row.id]

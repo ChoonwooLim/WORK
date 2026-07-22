@@ -2996,7 +2996,7 @@ async function rollbackTo(deploymentId) {
 
 // ⏪ 원클릭 이미지 롤백 (Task 2.1) — 빌드 없이 저장된 배포 이미지로 전환
 async function rollbackToImage(deploymentId) {
-    if (!confirm('이 배포 버전의 저장된 이미지로 즉시 롤백하시겠습니까?\n(빌드 없이 해당 이미지로 전환합니다)')) return;
+    if (!confirm(`배포 #${deploymentId} 의 저장된 이미지로 즉시 롤백하시겠습니까?\n(빌드 없이 해당 이미지로 전환합니다)`)) return;
     try {
         const res = await fetch(`${API}/deployments/${deploymentId}/rollback`, { method: 'POST' });
         const data = await res.json().catch(() => ({}));
