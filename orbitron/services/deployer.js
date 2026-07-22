@@ -1464,11 +1464,12 @@ class Deployer extends EventEmitter {
             // ⚠️ v1 캐비앳: 프리뷰는 부모 프로젝트의 DATABASE_URL 등을 그대로
             // 물려받는다 — 프리뷰 컨테이너의 쓰기가 부모의 "실제" DB 에 반영된다.
             // (프리뷰별 DB 클론은 v2 과제)
-            // PORT 는 여기서 미리 넣지 않는다: startContainer 가 lsof 충돌 해소
-            // "이후"의 최종 포트로 PORT 를 자동 주입하므로, 미리 basePort 를
-            // 박아두면 충돌 시 env 와 호스트 매핑이 어긋난다. (부모 env 에 PORT 가
-            // 명시돼 있으면 그 값이 유지되고, nginx/스모크는 어차피 감지된 실제
-            // 리슨 포트로 라우팅한다)
+            // PORT 는 여기서 미리 넣지 않는다: docker.startContainer 의 자동 주입이
+            // (Task 3.1 리뷰에서) lsof 충돌 해소 루프 "이후"로 이동해, 주입되는
+            // PORT == 최종 호스트 매핑 포트가 보장된다. 미리 basePort 를 박으면
+            // 그 정렬을 다시 깨뜨린다. (알려진 코너: 부모 env 에 PORT 가 명시된
+            // 경우 자동 주입이 건너뛰어져 부모의 값이 그대로 쓰인다 — 부모와 동일
+            // 동작이며, nginx/스모크는 감지된 실제 리슨 포트로 라우팅하므로 무해)
             const basePort = previewRules.previewBasePort(prNumber);
             const previewEnv = { ...parentEnv };
 

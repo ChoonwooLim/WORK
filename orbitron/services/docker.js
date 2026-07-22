@@ -928,12 +928,6 @@ EXPOSE ${port}
             console.log(`[docker] ${containerName}: normalized ${normalized} env var(s) with host-mapped DB ports`);
         }
 
-        // Auto-inject PORT env var (PaaS 표준 — Render, Railway, Heroku 등과 동일)
-        if (port && !envVars.PORT) {
-            runArgs.push('-e', `PORT=${port}`);
-            startLogs += `  ⚡ PORT=${port} 자동 주입\n`;
-        }
-
         startLogs += `  환경변수: ${envKeys.length + (port && !envVars.PORT ? 1 : 0)}개\n`;
 
         // ── Feature 1: Auto-mount persistent volumes ──
@@ -982,6 +976,17 @@ EXPOSE ${port}
             runArgs.push('-p', `${port}:${port}`);
         } else {
             startLogs += `  포트: 없음 (백그라운드 워커)\n`;
+        }
+
+        // Auto-inject PORT env var (PaaS 표준 — Render, Railway, Heroku 등과 동일)
+        // 반드시 충돌 자동 해소 루프 "이후"에 주입해야 한다: 그래야 컨테이너가
+        // 받는 PORT == 실제 호스트 매핑(-p port:port)의 최종 포트가 된다.
+        // (과거에는 루프 앞에서 주입해 충돌 시 env 와 매핑이 어긋났다 —
+        //  Task 3.1 리뷰에서 일반 배포까지 포함해 정렬. 워커는 매핑이 없지만
+        //  기존과 동일하게 PORT 는 주입된다 — 루프를 건너뛰므로 원값 그대로)
+        if (port && !envVars.PORT) {
+            runArgs.push('-e', `PORT=${port}`);
+            startLogs += `  ⚡ PORT=${port} 자동 주입\n`;
         }
 
         runArgs.push(imageName);
@@ -1356,7 +1361,14 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
                 }
             } catch (e) { /* DB unavailable — skip protection */ }
 
-            for (const name of this.selectContainersToCleanup(containers, keepContainerName, protectedPrefixes)) {
+            const toRemove = this.selectContainersToCleanup(containers, keepContainerName, protectedPrefixes);
+            for (const name of containers) {
+                // 감사 로그: 보호 프리픽스가 컨테이너를 살린 경우를 가시화
+                if (name !== keepContainerName && !toRemove.includes(name)) {
+                    console.log(`⏭️ Skipping protected container (other project/preview): ${name}`);
+                }
+            }
+            for (const name of toRemove) {
                 console.log(`🧹 Force-removing old container: ${name}`);
                 // Force-remove to handle stuck Created/Restarting states
                 await execAsync(`docker rm -f ${name} 2>/dev/null || true`);
