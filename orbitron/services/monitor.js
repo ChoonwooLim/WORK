@@ -1,11 +1,26 @@
 'use strict';
 
-// 능동 헬스 모니터링 + 제한된 자동 재시작 (Task 2.2)
+// 능동 헬스 모니터링 + 제한된 자동 재시작 (Task 2.2, 프로브 경로 재작업 Task 4.2)
 //
-// 60초마다 실행 중인 웹 프로젝트를 http://127.0.0.1:<port>/ 로 프로브한다.
-// "살아있음" = 어떤 HTTP 응답이든 5초 안에 오는 것 (500 이어도 프로세스는
-// 떠 있으므로 up) — 프로세스 수준 liveness 만 판단하고 앱 로직 오류엔
-// 개입하지 않는다. "죽음" = 연결 거부/타임아웃 등 네트워크 오류.
+// 60초마다 실행 중인 웹 프로젝트를 nginx 경유(실제 서빙 경로)로 프로브한다:
+//   GET http://127.0.0.1:80/  +  Host: <subdomain>.<TUNNEL_DOMAIN>
+//
+// 판정 테이블 (프로세스 수준 liveness — 앱 로직 오류엔 개입하지 않는다):
+//   어떤 HTTP 응답 (500 포함)  → 살아있음 (nginx 가 앱의 500 을 중계했다는
+//                                것 자체가 앱이 응답했다는 증거)
+//   301 등 3xx                → 살아있음 (custom-domain 리다이렉트 프로젝트는
+//                                터널 Host 에 nginx 가 직접 301 을 돌려준다 —
+//                                redirect:'manual' 이므로 응답으로 관찰됨)
+//   502 / 504                 → 죽음 (nginx 가 업스트림 컨테이너에 도달 못 함)
+//   네트워크 오류/타임아웃     → 죽음 (nginx 자체 다운 — 역시 외부에서 죽은 상태)
+//
+// host-mapped 포트(127.0.0.1:<project.port>)를 직접 찌르면 안 되는 이유:
+// PORT env 를 무시하고 내부 포트(예: 8000)에 하드코딩된 앱은 host 포트로는
+// 도달 불가지만, nginx 는 리슨 포트 자동 감지(nginx.js)로 컨테이너 내부
+// 포트에 정상 프록시한다. 직접 프로브는 이런 멀쩡한 앱을 죽은 것으로 오판해
+// 재시작 + unhealthy 처리했다 (실장애: suit/twinland/joojooland, 2026-07).
+// nginx 경유 프로브는 포트 매핑과 무관하게 모든 프로젝트에 동작하고,
+// nginx conf 유실(외부에서 실제로 죽은 상태)도 함께 잡는다.
 //
 // 프로젝트별 상태 머신 (in-memory, 연속 실패 카운터):
 //   fail 1..2               → 관찰만
@@ -30,6 +45,12 @@
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const PROBE_TIMEOUT_MS = 5000;
+// nginx 경유 프로브 대상 — Host 헤더로 프로젝트를 구분한다 (위 헤더 주석 참고).
+const PROBE_URL = 'http://127.0.0.1:80/';
+// nginx.js 와 동일한 소스 (server_name <subdomain>.<TUNNEL_DOMAIN> 생성 규칙)
+const TUNNEL_DOMAIN = process.env.TUNNEL_DOMAIN || 'twinverse.org';
+// nginx 가 업스트림에 도달하지 못했다는 뜻의 상태 코드 — 이것만 "죽음"이다.
+const UPSTREAM_DEAD_STATUSES = new Set([502, 504]);
 const RESTART_THRESHOLD = 3;   // 3번째 연속 실패에 1회 재시작 (compose 는 unhealthy)
 const UNHEALTHY_THRESHOLD = 6; // 6번째 연속 실패에 unhealthy 확정
 const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
@@ -39,6 +60,9 @@ const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 // - pixel_streaming 은 type 컬럼이 아니라 env_vars.PROJECT_TYPE 에 저장되므로
 //   (routes/projects.js 참고) SQL 로 거를 수 없어 JS 쪽에서 제외한다.
 // - building/stopped/failed 등은 SELECT 단계에서 이미 제외.
+// - port 는 nginx 경유 프로브 이후 프로브 자체엔 쓰이지 않지만, 알림 본문
+//   (_where)의 식별 정보 + "포트 있는 웹 프로젝트만 감시" 필터로 계속 쓴다
+//   (워커 등 nginx conf 가 없는 프로젝트를 대상에서 걸러내는 역할).
 const SELECT_TARGETS_SQL =
     "SELECT id, name, subdomain, port, container_id, status, env_vars FROM projects " +
     "WHERE status IN ('running', 'unhealthy') " +
@@ -46,10 +70,12 @@ const SELECT_TARGETS_SQL =
     "AND port IS NOT NULL";
 
 // 기본 프로브 — 응답이 오면 status 반환, 네트워크 오류/타임아웃이면 throw.
-async function defaultCheckHttp(url) {
+// headers 로 Host 를 전달해 nginx 의 server_name 라우팅을 태운다.
+async function defaultCheckHttp(url, { headers } = {}) {
     const res = await fetch(url, {
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         redirect: 'manual',
+        headers,
     });
     // 응답 본문은 쓰지 않으므로 소켓 누수 방지를 위해 즉시 폐기
     try { if (res.body) await res.body.cancel(); } catch { /* ignore */ }
@@ -149,9 +175,15 @@ class Monitor {
         let alive = false;
         let lastError = null;
         try {
-            const res = await this.checkHttp(`http://127.0.0.1:${project.port}/`);
-            // 어떤 HTTP 응답이든 (500 포함) 프로세스는 떠 있는 것 — liveness 만 판단
-            alive = !res || typeof res.status !== 'number' || res.status < 600;
+            const res = await this.checkHttp(PROBE_URL, {
+                headers: { Host: `${project.subdomain}.${TUNNEL_DOMAIN}` },
+            });
+            // 판정: 응답이 왔으면 502/504(nginx 가 업스트림 도달 실패)만 죽음.
+            // 500 등 앱 자체 오류는 "앱이 응답했다"는 증거 — liveness 만 판단.
+            // 301 도 살아있음 (custom-domain 리다이렉트는 nginx 직접 응답).
+            const status = res && typeof res.status === 'number' ? res.status : null;
+            alive = status === null || !UPSTREAM_DEAD_STATUSES.has(status);
+            if (!alive) lastError = `nginx upstream unreachable (HTTP ${status})`;
         } catch (e) {
             lastError = e && e.message ? e.message : String(e);
         }
@@ -238,6 +270,8 @@ class Monitor {
 const monitor = new Monitor();
 monitor.Monitor = Monitor; // 테스트에서 독립 인스턴스 생성용 (buildQueue.js 관례)
 monitor.TICK_INTERVAL_MS = TICK_INTERVAL_MS;
+monitor.PROBE_URL = PROBE_URL;
+monitor.TUNNEL_DOMAIN = TUNNEL_DOMAIN;
 monitor.ALERT_COOLDOWN_MS = ALERT_COOLDOWN_MS;
 monitor.RESTART_THRESHOLD = RESTART_THRESHOLD;
 monitor.UNHEALTHY_THRESHOLD = UNHEALTHY_THRESHOLD;

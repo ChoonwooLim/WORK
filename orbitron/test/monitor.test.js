@@ -3,8 +3,16 @@
 // Tests for services/monitor.js + services/alerts.js — 능동 헬스 모니터링 (Task 2.2)
 //
 // Pins:
+//   0. 프로브는 nginx 경유 실제 서빙 경로: GET http://127.0.0.1:80/ +
+//      Host: <subdomain>.<TUNNEL_DOMAIN> (기본 twinverse.org).
+//      host-mapped 포트 직접 프로브 금지 — PORT env 를 무시하고 내부 포트에
+//      하드코딩된 앱(nginx 리슨 포트 감지로 구제됨)을 죽은 것으로 오판해
+//      멀쩡한 컨테이너를 재시작/unhealthy 처리한 실장애의 회귀 방지
+//      (suit/twinland/joojooland, 2026-07).
 //   1. 건강한 프로젝트 → 완전 no-op (쓰기/재시작/알림 없음)
-//   2. HTTP 500 도 "살아있음" (프로세스 수준 liveness)
+//   2. HTTP 500 도 "살아있음" (nginx 가 앱의 500 을 돌려줌 = 앱이 응답했다);
+//      301 도 "살아있음" (custom-domain 리다이렉트 — nginx 직접 응답);
+//      502/504 는 "죽음" (nginx 가 업스트림에 도달하지 못함)
 //   3. 연속 3회 실패 → docker restart 정확히 1회 (outage 당 1회)
 //   4. compose-* (compose-manual-* 포함) → 재시작 금지, unhealthy + 알림
 //   5. 연속 6회 실패 → status='unhealthy' + 마지막 오류 포함 알림
@@ -58,8 +66,8 @@ function harness({ projects = [project()], deployingIds = [] } = {}) {
                 return { rows: [] };
             },
         },
-        checkHttp: async (url) => {
-            h.probes.push(url);
+        checkHttp: async (url, opts) => {
+            h.probes.push({ url, host: opts && opts.headers && opts.headers.Host });
             const r = typeof h.httpResult === 'function' ? h.httpResult(url) : h.httpResult;
             if (r === 'ok') return { status: 200 };
             if (typeof r === 'number') return { status: r };
@@ -107,19 +115,46 @@ test('healthy project is a complete no-op (no writes, restarts, alerts)', async 
     await h.monitor.tick();
     await h.monitor.tick();
     assert.strictEqual(h.probes.length, 2);
-    assert.strictEqual(h.probes[0], 'http://127.0.0.1:3100/');
+    // nginx 경유 실제 서빙 경로 핀 — host-mapped 포트 직접 프로브로의 회귀 방지
+    assert.strictEqual(h.probes[0].url, 'http://127.0.0.1:80/');
+    assert.strictEqual(h.probes[0].host, 'webapp-sub.twinverse.org');
     assert.deepStrictEqual(h.updates, []);
     assert.deepStrictEqual(h.restarts, []);
     assert.deepStrictEqual(h.alertCalls, []);
 });
 
-test('HTTP 500 still counts as alive (process-level liveness only)', async () => {
+test('HTTP 500 still counts as alive (nginx relayed the app\'s own 500 — the app answered)', async () => {
     const h = harness();
     h.httpResult = 500;
     for (let i = 0; i < 6; i++) await h.monitor.tick();
     assert.deepStrictEqual(h.restarts, []);
     assert.deepStrictEqual(h.updates, []);
     assert.deepStrictEqual(h.alertCalls, []);
+});
+
+test('HTTP 301 counts as alive (custom-domain redirect projects: nginx 301s the tunnel Host)', async () => {
+    const h = harness();
+    h.httpResult = 301;
+    for (let i = 0; i < 6; i++) await h.monitor.tick();
+    assert.deepStrictEqual(h.restarts, []);
+    assert.deepStrictEqual(h.updates, []);
+    assert.deepStrictEqual(h.alertCalls, []);
+});
+
+test('HTTP 502 counts as dead (nginx cannot reach the upstream) — restart on 3rd failure', async () => {
+    const h = harness();
+    h.httpResult = 502;
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
+    // 알림/unhealthy 단계에서 마지막 오류로 502 가 보고되도록 기록됨
+    assert.match(h.monitor.states.get(1).lastError, /HTTP 502/);
+});
+
+test('HTTP 504 counts as dead (upstream timeout through nginx)', async () => {
+    const h = harness();
+    h.httpResult = 504;
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
 });
 
 // ── 3. 3연속 실패 → 1회 재시작 ──────────────────────────────────────────────
@@ -230,7 +265,7 @@ test('projects with an in-flight deployment are not probed at all', async () => 
     await failTicks(h, 3);
     // 프로브는 project 1 에만 (3회), project 2 는 0회
     assert.strictEqual(h.probes.length, 3);
-    assert.ok(h.probes.every(u => u === 'http://127.0.0.1:3100/'));
+    assert.ok(h.probes.every(p => p.url === 'http://127.0.0.1:80/' && p.host === 'webapp-sub.twinverse.org'));
     assert.strictEqual(h.restarts.length, 1);
     assert.strictEqual(h.restarts[0].id, 1);
 });
