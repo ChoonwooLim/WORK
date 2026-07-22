@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     commit_message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     logs TEXT DEFAULT '',
+    image_tag VARCHAR(200),
     started_at TIMESTAMP DEFAULT NOW(),
     finished_at TIMESTAMP
 );

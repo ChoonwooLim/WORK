@@ -1,6 +1,7 @@
 'use strict';
 
-// Tests for services/docker.js — BuildKit + cache-mount support (Task 1.1).
+// Tests for services/docker.js — BuildKit + cache-mount support (Task 1.1)
+// and per-deploy image tagging (Task 1.2).
 //
 // Pins:
 //   1. docker build 인자에 --progress=plain 포함 + DOCKER_BUILDKIT=1 env 강제
@@ -8,6 +9,8 @@
 //      (npm → /root/.npm, pip → /root/.cache/pip)
 //   3. 사용자 정의 Dockerfile (orbitron.yaml build.dockerfile / "# CUSTOM") 은
 //      절대 자동 생성으로 대체되지 않음 (2026-04-26 규칙)
+//   4. 배포별 이미지 태그: orbitron-<sub>:d<deploymentId> 이중 태깅 + 보존 라벨,
+//      retention 선택은 숫자 정렬 (d9 < d10), DEPLOY_IMAGE_RETENTION env 파싱
 //
 // NEVER invokes docker — 순수 문자열/파일시스템 fixture 만 사용.
 
@@ -68,6 +71,96 @@ test('buildKitEnv forces DOCKER_BUILDKIT=1 and inherits process.env', () => {
     const env = docker.buildKitEnv();
     assert.strictEqual(env.DOCKER_BUILDKIT, '1');
     assert.strictEqual(env.PATH, process.env.PATH);
+});
+
+// ── 1b. Per-deploy image tags (Task 1.2) ─────────────────────────────────────
+
+test('assembleBuildArgs with deploy tag adds second -t and retention label (exact array)', () => {
+    const args = docker.assembleBuildArgs(
+        { subdomain: 'myapp' }, 'orbitron-myapp', '/deploy/myapp', 'orbitron-myapp:d42'
+    );
+    assert.deepStrictEqual(args, [
+        'build', '--progress=plain',
+        '-t', 'orbitron-myapp',
+        '-t', 'orbitron-myapp:d42',
+        '--label', 'orbitron.deploy-image=true',
+        '/deploy/myapp',
+    ]);
+});
+
+test('assembleBuildArgs with deploy tag honors DOCKER_NO_CACHE (exact array)', () => {
+    const project = { subdomain: 'myapp', env_vars: { DOCKER_NO_CACHE: 'true' } };
+    const args = docker.assembleBuildArgs(project, 'orbitron-myapp', '/deploy/myapp', 'orbitron-myapp:d7');
+    assert.deepStrictEqual(args, [
+        'build', '--progress=plain', '--no-cache',
+        '-t', 'orbitron-myapp',
+        '-t', 'orbitron-myapp:d7',
+        '--label', 'orbitron.deploy-image=true',
+        '/deploy/myapp',
+    ]);
+});
+
+test('formatDeployTag formats orbitron-<sub>:d<id>', () => {
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', 42), 'orbitron-myapp:d42');
+    // 문자열 숫자 id 도 허용 (DB 드라이버가 문자열로 돌려줄 수 있음)
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', '7'), 'orbitron-myapp:d7');
+});
+
+test('formatDeployTag rejects invalid deployment ids', () => {
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', undefined), null);
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', null), null);
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', 0), null);
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', -3), null);
+    assert.strictEqual(docker.formatDeployTag('orbitron-myapp', 'abc'), null);
+});
+
+test('deployImageRetention parses value with fallback 3 on invalid input', () => {
+    assert.strictEqual(docker.deployImageRetention(undefined), 3);
+    assert.strictEqual(docker.deployImageRetention('5'), 5);
+    assert.strictEqual(docker.deployImageRetention('1'), 1);
+    assert.strictEqual(docker.deployImageRetention('abc'), 3);
+    assert.strictEqual(docker.deployImageRetention(''), 3);
+    assert.strictEqual(docker.deployImageRetention('0'), 3);
+    assert.strictEqual(docker.deployImageRetention('-2'), 3);
+    // 왕복 검증: 부분 파싱되는 값은 신뢰하지 않고 기본값으로 폴백
+    assert.strictEqual(docker.deployImageRetention('5abc'), 3);
+    assert.strictEqual(docker.deployImageRetention('2.9'), 3);
+    assert.strictEqual(docker.deployImageRetention(' 5 '), 5);
+});
+
+test('deployImageRetention defaults from DEPLOY_IMAGE_RETENTION env', () => {
+    const saved = process.env.DEPLOY_IMAGE_RETENTION;
+    try {
+        process.env.DEPLOY_IMAGE_RETENTION = '7';
+        assert.strictEqual(docker.deployImageRetention(), 7);
+        delete process.env.DEPLOY_IMAGE_RETENTION;
+        assert.strictEqual(docker.deployImageRetention(), 3);
+    } finally {
+        if (saved === undefined) delete process.env.DEPLOY_IMAGE_RETENTION;
+        else process.env.DEPLOY_IMAGE_RETENTION = saved;
+    }
+});
+
+test('selectDeployTagsToRemove keeps N newest by NUMERIC id (d9 vs d10 vs d11)', () => {
+    const tags = ['orbitron-x:d9', 'orbitron-x:d10', 'orbitron-x:latest', 'orbitron-x:d11', 'orbitron-x:d2'];
+    // keep 3 → d11, d10, d9 생존; d2 제거 (사전순 정렬이면 d9 가 최신으로 오판됨)
+    assert.deepStrictEqual(docker.selectDeployTagsToRemove(tags, 3), ['orbitron-x:d2']);
+    // keep 1 → d11 만 생존, 나머지는 최신순으로 제거 목록에
+    assert.deepStrictEqual(
+        docker.selectDeployTagsToRemove(tags, 1),
+        ['orbitron-x:d10', 'orbitron-x:d9', 'orbitron-x:d2']
+    );
+});
+
+test('selectDeployTagsToRemove ignores non-deploy tags and short lists', () => {
+    // latest / <none> / 숫자 아닌 태그는 절대 제거 대상이 아님
+    assert.deepStrictEqual(
+        docker.selectDeployTagsToRemove(['orbitron-x:latest', 'orbitron-x:<none>', 'orbitron-x:dev'], 3),
+        []
+    );
+    // 보존 개수 이하이면 아무것도 제거하지 않음
+    assert.deepStrictEqual(docker.selectDeployTagsToRemove(['orbitron-x:d1', 'orbitron-x:d2'], 3), []);
+    assert.deepStrictEqual(docker.selectDeployTagsToRemove([], 3), []);
 });
 
 // ── 2. Cache mounts in auto-generated templates ──────────────────────────────
