@@ -71,17 +71,30 @@ test('addProject: protected conf → throws ManualConfProtectedError, file byte-
     const before = fs.readFileSync(confPath);
     const reloadsBefore = reloadCalls;
 
-    // The guard must run BEFORE generateConfig — a project object with just
-    // `subdomain` must be enough to reach (and trip) the guard.
-    await assert.rejects(
-        () => nginxService.addProject({ subdomain: sub }),
-        (err) => {
-            assert.ok(err instanceof ManualConfProtectedError, `expected ManualConfProtectedError, got: ${err && err.constructor.name}: ${err && err.message}`);
-            assert.strictEqual(err.code, 'MANUAL_CONF_PROTECTED');
-            return true;
-        }
-    );
+    // Pin guard placement by assertion: the guard must run BEFORE generateConfig,
+    // so generateConfig must NEVER be called for a protected conf. Spy on it —
+    // a comment alone would not catch the guard being moved after config generation.
+    const originalGenerateConfig = nginxService.generateConfig;
+    let generateConfigCalls = 0;
+    nginxService.generateConfig = function spiedGenerateConfig(...args) {
+        generateConfigCalls += 1;
+        return originalGenerateConfig.apply(this, args);
+    };
 
+    try {
+        await assert.rejects(
+            () => nginxService.addProject({ subdomain: sub }),
+            (err) => {
+                assert.ok(err instanceof ManualConfProtectedError, `expected ManualConfProtectedError, got: ${err && err.constructor.name}: ${err && err.message}`);
+                assert.strictEqual(err.code, 'MANUAL_CONF_PROTECTED');
+                return true;
+            }
+        );
+    } finally {
+        nginxService.generateConfig = originalGenerateConfig;
+    }
+
+    assert.strictEqual(generateConfigCalls, 0, 'generateConfig must never run for a protected conf (guard must come first)');
     const after = fs.readFileSync(confPath);
     assert.ok(before.equals(after), 'protected conf file must remain byte-identical');
     assert.strictEqual(reloadCalls, reloadsBefore, 'nginx reload must not run for a protected conf');
