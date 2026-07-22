@@ -1,0 +1,175 @@
+'use strict';
+
+// Tests for services/docker.js — BuildKit + cache-mount support (Task 1.1).
+//
+// Pins:
+//   1. docker build 인자에 --progress=plain 포함 + DOCKER_BUILDKIT=1 env 강제
+//   2. 자동 생성 Dockerfile 템플릿의 npm/pip 설치 단계에 RUN --mount=type=cache
+//      (npm → /root/.npm, pip → /root/.cache/pip)
+//   3. 사용자 정의 Dockerfile (orbitron.yaml build.dockerfile / "# CUSTOM") 은
+//      절대 자동 생성으로 대체되지 않음 (2026-04-26 규칙)
+//
+// NEVER invokes docker — 순수 문자열/파일시스템 fixture 만 사용.
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const docker = require('../services/docker');
+
+// js-yaml 은 런타임 의존성 — node_modules 없는 환경(pre-commit zero-dep 게이트)에서는
+// yaml 경로 테스트만 건너뛴다.
+let hasJsYaml = true;
+try { require.resolve('js-yaml'); } catch { hasJsYaml = false; }
+
+function makeTmpProject(files) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbitron-dockerbuild-test-'));
+    for (const [rel, content] of Object.entries(files)) {
+        const abs = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content);
+    }
+    return dir;
+}
+
+const NPM_MOUNT = '--mount=type=cache,target=/root/.npm';
+const PIP_MOUNT = '--mount=type=cache,target=/root/.cache/pip';
+
+// ── 1. Build args / env assembly ─────────────────────────────────────────────
+
+test('assembleBuildArgs includes --progress=plain and image tag', () => {
+    const args = docker.assembleBuildArgs({ subdomain: 'myapp' }, 'orbitron-myapp', '/deploy/myapp');
+    assert.deepStrictEqual(args, ['build', '--progress=plain', '-t', 'orbitron-myapp', '/deploy/myapp']);
+});
+
+test('assembleBuildArgs honors DOCKER_NO_CACHE=true', () => {
+    const project = { subdomain: 'myapp', env_vars: { DOCKER_NO_CACHE: 'true' } };
+    const args = docker.assembleBuildArgs(project, 'orbitron-myapp', '/deploy/myapp');
+    assert.ok(args.includes('--no-cache'));
+    assert.ok(args.includes('--progress=plain'));
+    // 순서: build 가 첫 인자, 빌드 컨텍스트가 마지막 인자
+    assert.strictEqual(args[0], 'build');
+    assert.strictEqual(args[args.length - 1], '/deploy/myapp');
+});
+
+test('buildKitEnv forces DOCKER_BUILDKIT=1 and inherits process.env', () => {
+    const env = docker.buildKitEnv();
+    assert.strictEqual(env.DOCKER_BUILDKIT, '1');
+    assert.strictEqual(env.PATH, process.env.PATH);
+});
+
+// ── 2. Cache mounts in auto-generated templates ──────────────────────────────
+
+test('node template: npm install step gets /root/.npm cache mount', () => {
+    const dir = makeTmpProject({ 'package.json': JSON.stringify({ name: 'x' }) });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 3000 }, dir);
+    assert.ok(df.includes(`RUN ${NPM_MOUNT} npm install\n`), `expected npm cache mount in:\n${df}`);
+    assert.ok(df.includes('FROM node:20-alpine'));
+});
+
+test('node template: custom build_command keeps its exact command behind the mount', () => {
+    const dir = makeTmpProject({ 'package.json': JSON.stringify({ name: 'x' }) });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 3000, build_command: 'npm ci' }, dir);
+    assert.ok(df.includes(`RUN ${NPM_MOUNT} npm ci\n`));
+});
+
+test('nextjs template: npm install step gets /root/.npm cache mount', () => {
+    const dir = makeTmpProject({
+        'package.json': JSON.stringify({ name: 'x', dependencies: { next: '14.0.0' } }),
+    });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 3000 }, dir);
+    assert.ok(df.includes(`RUN ${NPM_MOUNT} npm install --legacy-peer-deps --ignore-scripts`));
+});
+
+test('fullstack python template: npm ci + pip install both get cache mounts', () => {
+    const dir = makeTmpProject({
+        'frontend/package.json': JSON.stringify({
+            name: 'fe',
+            scripts: { build: 'vite build' },
+            dependencies: { react: '18.0.0', vite: '5.0.0' },
+        }),
+        'backend/requirements.txt': 'fastapi\nuvicorn\n',
+        'backend/main.py': 'from fastapi import FastAPI\napp = FastAPI()\n',
+    });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 8000, name: 'x' }, dir);
+    assert.ok(df.includes(`RUN ${NPM_MOUNT} npm ci\n`), `expected npm cache mount in:\n${df}`);
+    assert.ok(df.includes(`RUN ${PIP_MOUNT} pip install -r requirements.txt`), `expected pip cache mount in:\n${df}`);
+    // pip 캐시 마운트와 --no-cache-dir 는 상호모순 — 마운트 도입 후 제거됐어야 함
+    assert.ok(!df.includes('--no-cache-dir'), 'stale --no-cache-dir defeats the pip cache mount');
+});
+
+test('fullstack python template: extra frontend app stages also get npm cache mount', () => {
+    const dir = makeTmpProject({
+        'frontend/package.json': JSON.stringify({
+            name: 'fe',
+            scripts: { build: 'vite build' },
+            dependencies: { react: '18.0.0', vite: '5.0.0' },
+        }),
+        'backend/requirements.txt': 'flask\n',
+        'backend/main.py': 'from flask import Flask\napp = Flask(__name__)\n',
+        'zadmin/package.json': JSON.stringify({
+            name: 'admin',
+            scripts: { build: 'vite build' },
+            dependencies: { react: '18.0.0', vite: '5.0.0' },
+        }),
+    });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 8000, name: 'x' }, dir);
+    const mountedNpmCi = df.split('\n').filter(l => l.startsWith(`RUN ${NPM_MOUNT} npm ci`));
+    assert.strictEqual(mountedNpmCi.length, 2, `expected 2 mounted "npm ci" stages in:\n${df}`);
+    // 마운트 없는 설치 단계가 남아있으면 안 됨
+    assert.ok(!/^RUN npm ci$/m.test(df));
+});
+
+test('fullstack node template: frontend npm ci and backend npm install get cache mounts', () => {
+    const dir = makeTmpProject({
+        'frontend/package.json': JSON.stringify({
+            name: 'fe',
+            scripts: { build: 'vite build' },
+            dependencies: { react: '18.0.0', vite: '5.0.0' },
+        }),
+        'backend/package.json': JSON.stringify({ name: 'be', dependencies: { express: '4.0.0' } }),
+    });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 3000, name: 'x' }, dir);
+    assert.ok(df.includes(`RUN ${NPM_MOUNT} npm ci\n`));
+    assert.ok(df.includes(`RUN ${NPM_MOUNT} npm install --production\n`));
+});
+
+test('static template has no cache mounts (unchanged)', () => {
+    const dir = makeTmpProject({ 'index.html': '<html></html>' });
+    const df = docker.generateDockerfile({ subdomain: 'x', port: 3000 }, dir);
+    assert.ok(!df.includes('--mount='));
+    assert.ok(df.startsWith('FROM nginx:alpine'));
+});
+
+// ── 3. User-specified Dockerfile bypass (자동 생성 금지 규칙) ─────────────────
+
+test('legacy "# CUSTOM" Dockerfile marker bypasses template generation', () => {
+    const dir = makeTmpProject({ 'Dockerfile': '# CUSTOM\nFROM scratch\n' });
+    const { useCustom } = docker.resolveCustomDockerfile(dir);
+    assert.strictEqual(useCustom, true);
+});
+
+test('no marker and no orbitron.yaml → auto-generation path', () => {
+    const dir = makeTmpProject({ 'Dockerfile': 'FROM scratch\n' });
+    const { useCustom } = docker.resolveCustomDockerfile(dir);
+    assert.strictEqual(useCustom, false);
+});
+
+test('orbitron.yaml build.dockerfile bypasses template generation', { skip: !hasJsYaml && 'js-yaml unavailable (zero-dep env)' }, () => {
+    const dir = makeTmpProject({
+        'orbitron.yaml': 'build:\n  dockerfile: Dockerfile.prod\n',
+        'Dockerfile.prod': 'FROM scratch\nCMD ["true"]\n',
+    });
+    const { useCustom } = docker.resolveCustomDockerfile(dir);
+    assert.strictEqual(useCustom, true);
+    // 명시된 파일이 빌드 위치(Dockerfile)로 복사되고 내용은 그대로여야 함
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf-8'), 'FROM scratch\nCMD ["true"]\n');
+});
+
+test('orbitron.yaml build.dockerfile pointing at missing file falls back to auto-detect', { skip: !hasJsYaml && 'js-yaml unavailable (zero-dep env)' }, () => {
+    const dir = makeTmpProject({ 'orbitron.yaml': 'build:\n  dockerfile: nope.Dockerfile\n' });
+    const { useCustom } = docker.resolveCustomDockerfile(dir);
+    assert.strictEqual(useCustom, false);
+});
