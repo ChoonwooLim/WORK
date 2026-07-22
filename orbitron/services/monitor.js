@@ -12,6 +12,9 @@
 //                                터널 Host 에 nginx 가 직접 301 을 돌려준다 —
 //                                redirect:'manual' 이므로 응답으로 관찰됨)
 //   502 / 504                 → 죽음 (nginx 가 업스트림 컨테이너에 도달 못 함)
+//   X-Orbitron-Default 헤더    → 죽음 (default.conf 의 catch-all 이 응답했다는
+//                                마커 = 이 Host 를 받는 프로젝트 conf 가 없음.
+//                                랜딩 페이지 200 을 살아있음으로 오판하지 않음)
 //   네트워크 오류/타임아웃     → 죽음 (nginx 자체 다운 — 역시 외부에서 죽은 상태)
 //
 // host-mapped 포트(127.0.0.1:<project.port>)를 직접 찌르면 안 되는 이유:
@@ -80,12 +83,15 @@ const SELECT_TARGETS_SQL =
 // 구분이 사라져 함대 전체를 죽은 것으로 오판하고 대량 재시작을 일으킨다.
 // node:http 는 headers 의 Host 를 그대로 전송하고, 리다이렉트도 따라가지
 // 않으므로(redirect:'manual' 과 동일 의미) 301 이 응답으로 관찰된다.
+// 반환 형태: { status, orbitronDefault } — orbitronDefault 는 default.conf
+// catch-all 의 X-Orbitron-Default 마커 헤더 존재 여부 (conf 유실 감지).
 function defaultCheckHttp(url, { headers } = {}) {
     return new Promise((resolve, reject) => {
         const req = http.request(url, { method: 'GET', headers }, (res) => {
             const status = res.statusCode;
+            const orbitronDefault = res.headers['x-orbitron-default'] !== undefined;
             res.resume(); // 본문은 쓰지 않음 — 소켓 회수를 위해 즉시 소진
-            resolve({ status });
+            resolve({ status, orbitronDefault });
         });
         req.setTimeout(PROBE_TIMEOUT_MS, () => {
             // destroy(err) → 'error' 이벤트로 전파 → 아래 reject
@@ -192,12 +198,19 @@ class Monitor {
             const res = await this.checkHttp(PROBE_URL, {
                 headers: { Host: `${project.subdomain}.${TUNNEL_DOMAIN}` },
             });
-            // 판정: 응답이 왔으면 502/504(nginx 가 업스트림 도달 실패)만 죽음.
+            // 판정: 응답이 왔으면 (a) 502/504 = nginx 가 업스트림 도달 실패,
+            // (b) X-Orbitron-Default 마커 = default server 응답(프로젝트 conf
+            // 유실 — 랜딩 200 도 외부에선 죽은 상태), 이 둘만 죽음.
             // 500 등 앱 자체 오류는 "앱이 응답했다"는 증거 — liveness 만 판단.
             // 301 도 살아있음 (custom-domain 리다이렉트는 nginx 직접 응답).
             const status = res && typeof res.status === 'number' ? res.status : null;
-            alive = status === null || !UPSTREAM_DEAD_STATUSES.has(status);
-            if (!alive) lastError = `nginx upstream unreachable (HTTP ${status})`;
+            const hitDefaultServer = Boolean(res && res.orbitronDefault);
+            alive = !hitDefaultServer && (status === null || !UPSTREAM_DEAD_STATUSES.has(status));
+            if (!alive) {
+                lastError = hitDefaultServer
+                    ? 'nginx conf missing — default server answered'
+                    : `nginx upstream unreachable (HTTP ${status})`;
+            }
         } catch (e) {
             lastError = e && e.message ? e.message : String(e);
         }

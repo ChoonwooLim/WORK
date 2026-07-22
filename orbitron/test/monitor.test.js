@@ -12,7 +12,9 @@
 //   1. 건강한 프로젝트 → 완전 no-op (쓰기/재시작/알림 없음)
 //   2. HTTP 500 도 "살아있음" (nginx 가 앱의 500 을 돌려줌 = 앱이 응답했다);
 //      301 도 "살아있음" (custom-domain 리다이렉트 — nginx 직접 응답);
-//      502/504 는 "죽음" (nginx 가 업스트림에 도달하지 못함)
+//      502/504 는 "죽음" (nginx 가 업스트림에 도달하지 못함);
+//      X-Orbitron-Default 헤더가 붙은 응답도 "죽음" (default.conf 의
+//      catch-all 이 응답 = 프로젝트 conf 유실 — 랜딩 200 은 false alive)
 //   3. 연속 3회 실패 → docker restart 정확히 1회 (outage 당 1회)
 //   4. compose-* (compose-manual-* 포함) → 재시작 금지, unhealthy + 알림
 //   5. 연속 6회 실패 → status='unhealthy' + 마지막 오류 포함 알림
@@ -69,8 +71,11 @@ function harness({ projects = [project()], deployingIds = [] } = {}) {
         checkHttp: async (url, opts) => {
             h.probes.push({ url, host: opts && opts.headers && opts.headers.Host });
             const r = typeof h.httpResult === 'function' ? h.httpResult(url) : h.httpResult;
-            if (r === 'ok') return { status: 200 };
-            if (typeof r === 'number') return { status: r };
+            if (r === 'ok') return { status: 200, orbitronDefault: false };
+            // 'default' = 프로젝트 conf 유실 시나리오: default server 가
+            // X-Orbitron-Default 헤더와 함께 랜딩 페이지 200 을 돌려준다
+            if (r === 'default') return { status: 200, orbitronDefault: true };
+            if (typeof r === 'number') return { status: r, orbitronDefault: false };
             throw new Error('ECONNREFUSED 127.0.0.1');
         },
         restartContainer: async (p) => { h.restarts.push(p); },
@@ -155,6 +160,24 @@ test('HTTP 504 counts as dead (upstream timeout through nginx)', async () => {
     h.httpResult = 504;
     for (let i = 0; i < 3; i++) await h.monitor.tick();
     assert.strictEqual(h.restarts.length, 1);
+});
+
+test('default-server response (X-Orbitron-Default) counts as dead even with status 200', async () => {
+    // 프로젝트 conf 유실 시 unknown Host 는 default.conf 랜딩 페이지(200)에
+    // 떨어진다 — 외부에서는 실제로 죽은 상태이므로 false alive 금지.
+    const h = harness();
+    h.httpResult = 'default';
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
+    assert.strictEqual(h.monitor.states.get(1).lastError, 'nginx conf missing — default server answered');
+});
+
+test('orbitronDefault absent from an injected checkHttp result → treated as not-default (backward compat)', async () => {
+    const h = harness();
+    h.monitor.checkHttp = async () => ({ status: 200 }); // 옛 형태
+    await h.monitor.tick();
+    assert.deepStrictEqual(h.updates, []);
+    assert.deepStrictEqual(h.restarts, []);
 });
 
 // ── 3. 3연속 실패 → 1회 재시작 ──────────────────────────────────────────────
