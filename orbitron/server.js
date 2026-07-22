@@ -343,7 +343,7 @@ async function start() {
                 try {
                     const staleDeploys = await db.query(
                         "UPDATE deployments SET status = 'failed', finished_at = NOW(), " +
-                        "logs = logs || E'\\n❌ 서버 재시작으로 빌드 대기열이 초기화되어 배포가 중단되었습니다.\\n' " +
+                        "logs = COALESCE(logs, '') || E'\\n❌ 서버 재시작으로 빌드 대기열이 초기화되어 배포가 중단되었습니다.\\n' " +
                         "WHERE status IN ('queued', 'building') AND started_at < NOW() - INTERVAL '5 minutes' RETURNING id"
                     );
                     const staleCount = (staleDeploys.rows || []).length;
