@@ -20,6 +20,7 @@ const notifier = require('./notifier');
 const { managedDatabaseUrl } = require('./envUtils');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
 const { assessRollbackEligibility, formatRollbackCommitMessage, buildKeepTagList } = require('./rollbackRules');
+const { smokeCheck, resolveHealthPath, SMOKE_DEFAULTS } = require('./smokeCheck');
 const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
@@ -699,6 +700,61 @@ class Deployer extends EventEmitter {
                     }
 
                     this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
+
+                    // ── Task 4.2: HTTP 스모크 체크 — nginx 전환 전 앱-레벨 생존 확인 ──
+                    // 컨테이너 running + 포트 LISTEN(프로세스 준비)만으로는 부족하다:
+                    // 포트는 열었지만 모든 요청에 5xx 를 뱉는 앱이 nginx 로 전환되면
+                    // 즉시 장애가 된다. 여기서 실패하면 throw 로 기존 실패 경로를 타고,
+                    // addProject 를 호출하지 않으므로 nginx conf 는 그대로 유지된다.
+                    //
+                    // 대상: 단일 웹 컨테이너 경로만 (compose 는 단일 포트가 없어 제외;
+                    // VPS/DB/worker/pixel-streaming 은 이 분기에 도달하지 않음).
+                    // 롤백 배포(rollbackImageTag)도 같은 경로를 지나므로 동일하게 검사된다.
+                    // 검사 주소는 monitor.js 관례와 동일한 host-mapped 포트
+                    // (docker run -p <port>:<port> — 127.0.0.1:<actualPort>).
+                    if (!isCompose) {
+                        // health_path: orbitron.yaml 오버라이드 (기본 '/').
+                        // 롤백 모드에서도 projectDir 의 yaml 을 읽는다 — 소스와 이미지가
+                        // 어긋나 옛 이미지에 경로가 없어도 404 는 PASS 라 무해하다.
+                        let healthPath = '/';
+                        const smokeYamlPath = findOrbitronYaml(projectDir);
+                        if (smokeYamlPath) {
+                            try {
+                                const resolved = resolveHealthPath(yaml.load(fs.readFileSync(smokeYamlPath, 'utf8')));
+                                if (resolved.warning) logs += `\n${resolved.warning}\n`;
+                                healthPath = resolved.path;
+                            } catch (e) {
+                                logs += `\n⚠️ 스모크 체크용 orbitron.yaml 파싱 실패 — 기본 경로 '/' 사용: ${e.message}\n`;
+                            }
+                        }
+
+                        this.emitProgress(project.id, 'container', `🩺 스모크 체크 중 (GET ${healthPath})...`);
+                        logs += `\n🩺 스모크 체크: http://127.0.0.1:${actualPort}${healthPath} (5xx/무응답 = 실패, 4xx = 통과)\n`;
+                        const smokeResult = await smokeCheck(actualPort, healthPath, {
+                            onAttempt: ({ attempt, total, status, error }) => {
+                                logs += `🩺 스모크 체크: GET ${healthPath} → ${status !== null ? `HTTP ${status}` : error} (시도 ${attempt}/${total})\n`;
+                            },
+                        });
+
+                        if (!smokeResult.ok) {
+                            const detail = smokeResult.lastStatus !== null
+                                ? `HTTP ${smokeResult.lastStatus}`
+                                : (smokeResult.lastError || '응답 없음');
+                            logs += `❌ 스모크 체크 실패 (${detail}) — nginx 전환을 중단합니다 (기존 프록시 설정 유지).\n`;
+                            // Diagnosis aid: capture the failing container's recent logs
+                            try {
+                                const { stdout: cLogs } = await execAsync(`docker logs ${containerName} --tail 30 2>&1`);
+                                logs += `\n--- 컨테이너 로그 (마지막 30줄) ---\n${cLogs}\n`;
+                            } catch { }
+                            await saveLogs();
+                            throw new Error(
+                                `스모크 체크 실패: 새 컨테이너가 ${smokeResult.attempts}회 시도 동안 정상 응답하지 않았습니다 (${detail}) — nginx 전환을 중단했습니다. ` +
+                                `/ Smoke check failed: new container did not return a healthy response after ${smokeResult.attempts} attempts (${detail}) — nginx switch aborted.`
+                            );
+                        }
+                        logs += `✅ 스모크 체크 통과 (HTTP ${smokeResult.lastStatus}, 시도 ${smokeResult.attempts}/${SMOKE_DEFAULTS.retries})\n`;
+                        await saveLogs();
+                    }
 
                     // Step 4: Update nginx config (Blue-Green Swap)
                     this.emitProgress(project.id, 'nginx', '프록시 설정(Blue-Green Swap) 중...');
