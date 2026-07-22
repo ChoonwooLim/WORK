@@ -24,8 +24,18 @@ const docker = require('../services/docker');
 let hasJsYaml = true;
 try { require.resolve('js-yaml'); } catch { hasJsYaml = false; }
 
+// fixture 디렉토리 추적 → 종료 시 일괄 정리 (nginxManualConf.test.js 패턴)
+const tmpDirs = [];
+
+test.after(() => {
+    for (const dir of tmpDirs) {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 function makeTmpProject(files) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbitron-dockerbuild-test-'));
+    tmpDirs.push(dir);
     for (const [rel, content] of Object.entries(files)) {
         const abs = path.join(dir, rel);
         fs.mkdirSync(path.dirname(abs), { recursive: true });

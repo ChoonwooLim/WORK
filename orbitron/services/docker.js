@@ -7,6 +7,11 @@ const fs = require('fs');
 
 const PROJECTS_DIR = path.join(__dirname, '..', 'deployments');
 
+// BuildKit 캐시 마운트 상수 — 자동 생성 Dockerfile 템플릿의 패키지 설치 단계에 공통 사용
+// (Task 1.3 에서 sharing= 옵션 추가 시 여기 한 곳만 수정)
+const NPM_CACHE_MOUNT = '--mount=type=cache,target=/root/.npm';
+const PIP_CACHE_MOUNT = '--mount=type=cache,target=/root/.cache/pip';
+
 // Ensure deployments directory exists
 if (!fs.existsSync(PROJECTS_DIR)) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
@@ -532,7 +537,7 @@ if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
 FROM node:20-slim AS ${stageName}
 WORKDIR /build
 COPY ${ex.path}/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN ${NPM_CACHE_MOUNT} npm ci
 COPY ${ex.path}/ ./
 ENV VITE_API_URL=""
 RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
@@ -548,7 +553,7 @@ RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY ${fe.path}/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN ${NPM_CACHE_MOUNT} npm ci
 COPY ${fe.path}/ ./
 ENV VITE_API_URL=""
 RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
@@ -558,7 +563,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 ${pgInstall}COPY ${be.path}/requirements.txt ./
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN ${PIP_CACHE_MOUNT} pip install -r requirements.txt
 
 COPY ${be.path}/ ./
 COPY _orbitron_spa.py ./
@@ -576,14 +581,14 @@ CMD ["sh", "-c", "uvicorn ${startModule} --host 0.0.0.0 --port \${PORT:-${port}}
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY ${fe.path}/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN ${NPM_CACHE_MOUNT} npm ci
 COPY ${fe.path}/ ./
 RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
 
 FROM node:20-slim
 WORKDIR /app
 COPY ${be.path}/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm install --production
+RUN ${NPM_CACHE_MOUNT} npm install --production
 COPY ${be.path}/ ./
 COPY --from=frontend-build /build/dist /app/public
 
@@ -674,7 +679,7 @@ CMD [ "bash", "-c", "./${startScript} -RenderOffscreen -PixelStreamingURL=ws://1
 WORKDIR /app
 RUN apk add --no-cache openssl openssl-dev${extraApk ? extraApk : ''}
 COPY ${copyFrom}package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps --ignore-scripts
+RUN ${NPM_CACHE_MOUNT} npm install --legacy-peer-deps --ignore-scripts
 COPY ${copyFrom} ./
 RUN npx prisma generate 2>/dev/null || true
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -699,7 +704,7 @@ CMD sh -c "npx prisma db push --skip-generate 2>/dev/null || true; npx next star
         }
 
         if (type === 'node') {
-            const workdirCopy = subdir ? `COPY ${subdir}/package*.json ./\nRUN --mount=type=cache,target=/root/.npm ${project.build_command || 'npm install'}\nCOPY ${subdir}/ .` : `COPY package*.json ./\nRUN --mount=type=cache,target=/root/.npm ${project.build_command || 'npm install'}\nCOPY . .`;
+            const workdirCopy = subdir ? `COPY ${subdir}/package*.json ./\nRUN ${NPM_CACHE_MOUNT} ${project.build_command || 'npm install'}\nCOPY ${subdir}/ .` : `COPY package*.json ./\nRUN ${NPM_CACHE_MOUNT} ${project.build_command || 'npm install'}\nCOPY . .`;
             return `FROM node:20-alpine
 WORKDIR /app
 ${workdirCopy}
