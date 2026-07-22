@@ -97,6 +97,23 @@ CREATE TABLE IF NOT EXISTS deployments (
     finished_at TIMESTAMP
 );
 
+-- Metrics table (Task 2.3) — 1-hour resource aggregates ONLY.
+-- Raw per-minute samples live in the MetricsCollector in-memory ring buffer
+-- (24h) and are never written to the DB; rows here are pruned to 30 days.
+CREATE TABLE IF NOT EXISTS metrics (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    ts_hour TIMESTAMP NOT NULL,
+    cpu_avg REAL,
+    cpu_max REAL,
+    mem_avg REAL,
+    mem_max REAL,
+    samples INTEGER,
+    UNIQUE(project_id, ts_hour)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metrics_project_ts ON metrics(project_id, ts_hour);
+
 -- Error Knowledge table (AI 경험치 축적)
 CREATE TABLE IF NOT EXISTS error_knowledge (
     id SERIAL PRIMARY KEY,
