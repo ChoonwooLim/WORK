@@ -52,6 +52,15 @@ class ManualConfProtectedError extends Error {
     }
 }
 
+// ── 정적 자산 캐시 헤더 ──────────────────────────────────────────────
+// Cache-Control은 브라우저와 Cloudflare edge 양쪽에 캐시 지시 → origin 트래픽 감소.
+// html/htm/json/xml/txt는 절대 넣지 않는다 — SPA index.html이 캐시되면
+// 재배포 후에도 유저가 옛 앱을 보게 된다 (배포 신선도 계약).
+// 확장자 목록/기간 튜닝은 이 세 상수만 고치면 된다.
+const STATIC_ASSET_EXT_REGEX = String.raw`\.(js|mjs|css|png|jpg|jpeg|gif|webp|avif|svg|ico|woff|woff2|ttf|map)$`;
+const STATIC_CACHE_EXPIRES = '7d';
+const STATIC_CACHE_CONTROL = 'public, max-age=604800, stale-while-revalidate=86400';
+
 // Subdomain must be DNS-label-safe: used as filename + Docker name + shell cwd.
 // Anything outside [a-z0-9-] could enable path traversal or shell metachars.
 const SAFE_SUBDOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -105,6 +114,21 @@ class NginxService {
         proxy_connect_timeout 60s;`;
     }
 
+    // Static-asset location: same proxy body as `location /` (resolver+$upstream
+    // pattern — regression-guard compatible, DNS 재해석도 동일하게 동작) 위에
+    // 장기 캐시 헤더만 얹는다. `expires`/`add_header`는 ngx_http_headers_module
+    // 지시어라 proxy_* 지시어와 같은 location에서 문제없이 공존한다.
+    // 반드시 `location /` 앞에 배치 — nginx는 ~* 정규식 location을 접두사
+    // location보다 우선 매칭하지만, `^~` ACME location에는 진다 (인증 갱신 보호).
+    _staticAssetsBlock(upstreamHost, upstreamPort) {
+        return `    # Static assets: browser + Cloudflare edge caching (HTML은 절대 캐시 금지)
+    location ~* ${STATIC_ASSET_EXT_REGEX} {
+${this._proxyPassBlock(upstreamHost, upstreamPort)}
+        expires ${STATIC_CACHE_EXPIRES};
+        add_header Cache-Control "${STATIC_CACHE_CONTROL}";
+    }`;
+    }
+
     // Parse project.custom_domain into an array of hostnames. Supports a single domain
     // string ("app.example.com") OR a comma/space/newline-separated list for projects
     // that want multiple hostnames served by the same cert + server block
@@ -141,6 +165,8 @@ server {
         default_type "text/plain";
         try_files $uri =404;
     }
+
+${this._staticAssetsBlock(upstreamHost, upstreamPort)}
 
     location / {
 ${this._proxyPassBlock(upstreamHost, upstreamPort)}
@@ -294,6 +320,8 @@ server {
         try_files $uri =404;
     }
 
+${this._staticAssetsBlock(upstreamHost, upstreamPort)}
+
     location / {
 ${this._proxyPassBlock(upstreamHost, upstreamPort)}
     }
@@ -314,6 +342,8 @@ server {
         default_type "text/plain";
         try_files $uri =404;
     }
+
+${this._staticAssetsBlock(upstreamHost, upstreamPort)}
 
     location / {
 ${this._proxyPassBlock(upstreamHost, upstreamPort)}
@@ -390,3 +420,6 @@ module.exports = new NginxService();
 module.exports.isManuallyManaged = isManuallyManaged;
 module.exports.isProjectConfProtected = isProjectConfProtected;
 module.exports.ManualConfProtectedError = ManualConfProtectedError;
+module.exports.STATIC_ASSET_EXT_REGEX = STATIC_ASSET_EXT_REGEX;
+module.exports.STATIC_CACHE_EXPIRES = STATIC_CACHE_EXPIRES;
+module.exports.STATIC_CACHE_CONTROL = STATIC_CACHE_CONTROL;
