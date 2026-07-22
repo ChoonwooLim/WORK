@@ -20,7 +20,7 @@ const notifier = require('./notifier');
 const { managedDatabaseUrl } = require('./envUtils');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
 const { assessRollbackEligibility, formatRollbackCommitMessage, buildKeepTagList } = require('./rollbackRules');
-const { smokeCheck, resolveHealthPath, SMOKE_DEFAULTS } = require('./smokeCheck');
+const { smokeStep, resolveHealthPath, SMOKE_DEFAULTS } = require('./smokeCheck');
 const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
@@ -738,18 +738,11 @@ class Deployer extends EventEmitter {
                         const listenPorts = nginxService.detectContainerListenPorts(containerName);
                         const smokePort = nginxService.selectListenPort(listenPorts, actualPort);
                         if (smokePort === null) {
-                            logs += `\n❌ 스모크 체크 실패: 컨테이너가 12초 안에 어떤 포트도 LISTEN 하지 않았습니다 — nginx 가 프록시할 대상이 없습니다.\n`;
-                            try {
-                                const { stdout: cLogs } = await execAsync(`docker logs ${containerName} --tail 30 2>&1`);
-                                logs += `\n--- 컨테이너 로그 (마지막 30줄) ---\n${cLogs}\n`;
-                            } catch { }
-                            await saveLogs();
-                            throw new Error(
-                                '스모크 체크 실패: 컨테이너가 리슨 포트를 열지 않았습니다 (12초 대기) — nginx 전환을 중단했습니다. ' +
-                                '/ Smoke check failed: container never opened a listening port (12s wait) — nginx switch aborted.'
-                            );
-                        }
-                        if (smokePort !== actualPort) {
+                            // 하드 게이트 금지: 12초보다 늦게 바인딩하는 앱(무거운 모델
+                            // 로딩 등)은 사전-스모크 시절에도 배포됐다. 기대 포트로
+                            // 폴백 프로브 (smokeCheck 의 5×2초 재시도 예산이 추가 유예).
+                            logs += `\n  ⚠️ 리슨 포트 미감지 (12초): 기대 포트 ${actualPort} 로 폴백 프로브합니다 (늦은 바인딩 앱 보호)\n`;
+                        } else if (smokePort !== actualPort) {
                             logs += `\n  ℹ️ 리슨 포트 감지: 기대 포트 ${actualPort} 대신 ${smokePort} 에서 LISTEN 중 (하드코딩 CMD 가능성 — nginx 도 같은 포트로 프록시합니다)\n`;
                         }
 
@@ -770,17 +763,25 @@ class Deployer extends EventEmitter {
                             );
                         }
 
-                        // 3) HTTP 프로브 (5xx/무응답 = 실패, 4xx = 통과)
+                        // 3) HTTP 프로브 (5xx/무응답 = 실패, 4xx = 통과) — 감지 실패 시
+                        //    폴백 정책 포함 판정은 smokeStep (pure, 테스트 핀) 이 담당
                         this.emitProgress(project.id, 'container', `🩺 스모크 체크 중 (GET ${healthPath})...`);
-                        logs += `\n🩺 스모크 체크: http://${containerIp}:${smokePort}${healthPath} (5xx/무응답 = 실패, 4xx = 통과)\n`;
-                        const smokeResult = await smokeCheck(smokePort, healthPath, {
+                        const probePort = smokePort !== null ? smokePort : actualPort;
+                        logs += `\n🩺 스모크 체크: http://${containerIp}:${probePort}${healthPath} (5xx/무응답 = 실패, 4xx = 통과)\n`;
+                        const step = await smokeStep({
+                            detectedPort: smokePort,
+                            fallbackPort: actualPort,
                             host: containerIp,
-                            onAttempt: ({ attempt, total, status, error }) => {
-                                logs += `🩺 스모크 체크: GET ${healthPath} → ${status !== null ? `HTTP ${status}` : error} (시도 ${attempt}/${total})\n`;
+                            path: healthPath,
+                            options: {
+                                onAttempt: ({ attempt, total, status, error }) => {
+                                    logs += `🩺 스모크 체크: GET ${healthPath} → ${status !== null ? `HTTP ${status}` : error} (시도 ${attempt}/${total})\n`;
+                                },
                             },
                         });
+                        const smokeResult = step.result;
 
-                        if (!smokeResult.ok) {
+                        if (!step.ok) {
                             const detail = smokeResult.lastStatus !== null
                                 ? `HTTP ${smokeResult.lastStatus}`
                                 : (smokeResult.lastError || '응답 없음');
@@ -791,12 +792,20 @@ class Deployer extends EventEmitter {
                                 logs += `\n--- 컨테이너 로그 (마지막 30줄) ---\n${cLogs}\n`;
                             } catch { }
                             await saveLogs();
-                            throw new Error(
-                                `스모크 체크 실패: 새 컨테이너가 ${smokeResult.attempts}회 시도 동안 정상 응답하지 않았습니다 (${detail}) — nginx 전환을 중단했습니다. ` +
-                                `/ Smoke check failed: new container did not return a healthy response after ${smokeResult.attempts} attempts (${detail}) — nginx switch aborted.`
+                            throw new Error(step.usedFallback
+                                ? `스모크 체크 실패: 리슨 포트 감지(12초)와 폴백 프로브(${smokeResult.attempts}회, ${detail}) 모두 실패했습니다 — nginx 전환을 중단했습니다. ` +
+                                  `/ Smoke check failed: both listen-port detection (12s) and fallback probing (${smokeResult.attempts} attempts, ${detail}) failed — nginx switch aborted.`
+                                : `스모크 체크 실패: 새 컨테이너가 ${smokeResult.attempts}회 시도 동안 정상 응답하지 않았습니다 (${detail}) — nginx 전환을 중단했습니다. ` +
+                                  `/ Smoke check failed: new container did not return a healthy response after ${smokeResult.attempts} attempts (${detail}) — nginx switch aborted.`
                             );
                         }
-                        logs += `✅ 스모크 체크 통과 (HTTP ${smokeResult.lastStatus}, 시도 ${smokeResult.attempts}/${SMOKE_DEFAULTS.retries})\n`;
+                        if (smokeResult.ok) {
+                            logs += `✅ 스모크 체크 통과 (HTTP ${smokeResult.lastStatus}, 시도 ${smokeResult.attempts}/${SMOKE_DEFAULTS.retries})\n`;
+                        } else {
+                            // 폴백 경로에서 5xx 응답 — 응답 자체가 리슨의 증거라 소프트
+                            // 통과 (감지 불가 상태에서 오탐 중단 방지 — 사전 분기 패리티)
+                            logs += `⚠️ 스모크 체크 소프트 통과: 폴백 프로브가 HTTP ${smokeResult.lastStatus} 응답 — 리슨 감지 불가 상태라 배포는 진행하나 앱 오류 가능성이 있습니다.\n`;
+                        }
                         await saveLogs();
                     }
 

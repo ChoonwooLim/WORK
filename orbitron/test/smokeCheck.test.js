@@ -25,6 +25,7 @@ const assert = require('node:assert');
 
 const {
     smokeCheck,
+    smokeStep,
     resolveHealthPath,
     HEALTH_PATH_DEFAULT,
     SMOKE_DEFAULTS,
@@ -172,6 +173,53 @@ test('onAttempt 진행 콜백: 시도별 status/error 전달, 콜백 throw 는 �
     assert.strictEqual(seen[1].status, 500);
     assert.strictEqual(seen[2].status, 200);
     assert.strictEqual(seen[2].error, null);
+});
+
+// ── smokeStep: 감지 결과 + 폴백 정책 (deployer 의 판정을 pure 로 추출) ────
+// 감지 실패(detectedPort null)가 하드 게이트가 되면 안 된다: 사전-스모크
+// 시절에는 12초 내 미바인딩 앱(무거운 모델 로딩 등)도 배포됐다. 폴백 프로브가
+// 네트워크 오류로만 전멸했을 때에만 중단한다 (동작 패리티 핀).
+
+test('smokeStep: 감지 성공 + 200 → 통과, usedFallback=false', async () => {
+    const h = harness([200]);
+    const step = await smokeStep({ detectedPort: 8000, fallbackPort: 3100, host: '172.18.0.5', path: '/', options: h.opts });
+    assert.strictEqual(step.ok, true);
+    assert.strictEqual(step.usedFallback, false);
+    assert.strictEqual(step.port, 8000);
+    assert.strictEqual(h.calls[0].url, 'http://172.18.0.5:8000/');
+});
+
+test('smokeStep: 감지 성공 + 연속 5xx → 중단 (스모크 체크 본연의 목적)', async () => {
+    const h = harness([500]);
+    const step = await smokeStep({ detectedPort: 8000, fallbackPort: 3100, host: '172.18.0.5', path: '/', options: h.opts });
+    assert.strictEqual(step.ok, false);
+    assert.strictEqual(step.result.attempts, 5);
+});
+
+test('smokeStep: 감지 null + 폴백 프로브 200 → 배포 진행 (핀: 늦은 바인딩 앱 보호)', async () => {
+    const h = harness(['err', 200]); // 첫 시도엔 아직 미바인딩, 재시도에 응답
+    const step = await smokeStep({ detectedPort: null, fallbackPort: 3100, host: '172.18.0.5', path: '/', options: h.opts });
+    assert.strictEqual(step.ok, true);
+    assert.strictEqual(step.usedFallback, true);
+    assert.strictEqual(step.port, 3100); // 폴백은 기대 포트(actualPort)로
+    assert.strictEqual(h.calls[0].url, 'http://172.18.0.5:3100/');
+});
+
+test('smokeStep: 감지 null + 전 시도 네트워크 오류 → 그때만 중단', async () => {
+    const h = harness(['err']);
+    const step = await smokeStep({ detectedPort: null, fallbackPort: 3100, host: '172.18.0.5', path: '/', options: h.opts });
+    assert.strictEqual(step.ok, false);
+    assert.strictEqual(step.usedFallback, true);
+    assert.strictEqual(step.result.lastStatus, null);
+    assert.strictEqual(step.result.attempts, 5);
+});
+
+test('smokeStep: 감지 null + 5xx 응답 → 소프트 통과 (응답 자체가 리슨 증거 — 사전 분기 패리티)', async () => {
+    const h = harness([500]);
+    const step = await smokeStep({ detectedPort: null, fallbackPort: 3100, host: '172.18.0.5', path: '/', options: h.opts });
+    assert.strictEqual(step.ok, true);           // 배포는 진행
+    assert.strictEqual(step.result.ok, false);   // 단, 프로브 자체는 실패로 기록 (경고 로그용)
+    assert.strictEqual(step.result.lastStatus, 500);
 });
 
 // ── resolveHealthPath: orbitron.yaml 의 health_path 해석 + 검증 ──────────

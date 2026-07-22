@@ -102,6 +102,24 @@ async function smokeCheck(port, path = HEALTH_PATH_DEFAULT, options = {}) {
     return { ok: false, lastStatus, lastError, attempts: total };
 }
 
+// ── 스모크 단계 판정 (deployer 의 흐름을 pure 로 추출 — 테스트 가능) ──────
+// detectedPort: nginx.selectListenPort 결과. null = 12초 내 리슨 미감지 —
+// 하드 게이트로 만들지 않는다: 사전-스모크 시절에는 늦게 바인딩하는 앱
+// (무거운 모델 로딩 등)도 배포됐다. null 이면 fallbackPort(기대 포트)로
+// 폴백 프로브를 돌리고, "모든 시도가 네트워크 오류"일 때에만 중단 판정.
+// 폴백 중 5xx 응답이 오면 응답 자체가 리슨의 증거이므로 소프트 통과
+// (step.ok=true, result.ok=false — 호출자는 경고 로그를 남긴다).
+// 반환: { ok, usedFallback, port, result } — ok=false 가 배포 중단 판정.
+async function smokeStep({ detectedPort, fallbackPort, host, path, options = {} }) {
+    const usedFallback = detectedPort === null || detectedPort === undefined;
+    const port = usedFallback ? fallbackPort : detectedPort;
+    const result = await smokeCheck(port, path, { ...options, host });
+    const abort = usedFallback
+        ? (!result.ok && result.lastStatus === null) // 폴백: 전 시도 네트워크 오류일 때만
+        : !result.ok;                                // 감지 성공: 5xx 도 중단 (본연의 목적)
+    return { ok: !abort, usedFallback, port, result };
+}
+
 // orbitron.yaml (이미 파싱된 객체) 에서 health_path 를 해석한다.
 // 지원 위치 (기존 스키마 관례와 정렬 — deployer 의 yaml 접근 방식 참고):
 //   1. services.web.health_path  — 기존 services.web.{build_command,port,...}
@@ -139,6 +157,7 @@ function resolveHealthPath(doc) {
 
 module.exports = {
     smokeCheck,
+    smokeStep,
     resolveHealthPath,
     defaultCheckHttp,
     SMOKE_DEFAULTS,
