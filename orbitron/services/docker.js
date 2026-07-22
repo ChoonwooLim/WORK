@@ -41,9 +41,12 @@ function sanitizeSubdomain(subdomain) {
 class DockerService {
     // Build a Docker image for a project (or skip if Compose)
     // deploymentId (선택): 있으면 orbitron-<sub>:d<id> 배포 태그를 추가로 부여 (Task 1.2 롤백 기반)
-    async buildImage(project, deploymentId = null) {
+    // projectDirOverride (선택, Task 3.1): PR 프리뷰처럼 소스가 표준 위치
+    // (deployments/<subdomain>)가 아닌 곳에 체크아웃된 경우의 빌드 컨텍스트.
+    // 미지정 시 기존 경로 규칙 그대로 — 하위 호환.
+    async buildImage(project, deploymentId = null, projectDirOverride = null) {
         sanitizeSubdomain(project.subdomain);
-        const projectDir = path.join(PROJECTS_DIR, project.subdomain);
+        const projectDir = projectDirOverride ? path.resolve(projectDirOverride) : path.join(PROJECTS_DIR, project.subdomain);
         const buildStart = Date.now();
         let detailLogs = '';
 
