@@ -389,7 +389,7 @@ async function loadProjects() {
 }
 
 // ===== CUSTOM SEARCHABLE PROJECT DROPDOWN =====
-const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
 
 function renderProjectDropdown(projects) {
     const listEl = document.getElementById('project-search-list');
@@ -519,7 +519,7 @@ function renderProjects(projects) {
         list.innerHTML = `<div class="empty-state"><div class="icon">📦</div><h3>프로젝트가 없습니다</h3><p>New Project 버튼을 눌러 첫 번째 프로젝트를 추가하세요.</p></div>`;
     } else {
         list.innerHTML = `<div class="selector-grid">${projects.map(p => {
-            const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+            const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
             const statusGlow = p.status === 'running' ? `box-shadow: 0 0 20px ${statusColors.running}22, inset 0 1px 0 rgba(255,255,255,0.05);` : '';
             const updatedAt = p.updated_at ? timeAgo(p.updated_at) : timeAgo(p.created_at);
             const sourceIcon = p.source_type === 'upload' ? '📁' : '🔗';
@@ -551,7 +551,7 @@ function renderProjects(projects) {
     const dashList = document.getElementById('dashboard-project-list');
     if (dashList) {
         dashList.innerHTML = projects.map(p => {
-            const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
+            const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
             const sourceLabel = p.source_type === 'upload' ? '📁 업로드' : `${extractRepoName(p.github_url)} · ${p.branch}`;
 
             const isPixelStreaming = p.env_vars && p.env_vars.PROJECT_TYPE === 'pixel_streaming';
@@ -3296,7 +3296,7 @@ function extractRepoName(url) {
 }
 
 function statusLabel(status) {
-    const labels = { running: '실행 중', stopped: '중지됨', building: '빌드 중', queued: '빌드 대기', failed: '실패', pending: '대기' };
+    const labels = { running: '실행 중', stopped: '중지됨', building: '빌드 중', queued: '빌드 대기', failed: '실패', pending: '대기', unhealthy: '응답 없음' };
     return labels[status] || status;
 }
 
@@ -3680,8 +3680,8 @@ function renderGroupOverview() {
 
 function renderServiceRow(s, idx, g) {
     const typeIcons = { web: '\ud83c\udf10', static: '\ud83d\udcc4', db_postgres: '\ud83d\uddc4', db_redis: '\ud83d\uddc4', worker: '\u2699\ufe0f' };
-    const statusLabels = { running: '\u2705 Running', stopped: '\u23f9 Stopped', building: '\ud83d\udd28 Building', failed: '\u274c Failed' };
-    const statusColors = { running: '#3fb950', stopped: '#8b949e', building: '#d29922', failed: '#f85149' };
+    const statusLabels = { running: '\u2705 Running', stopped: '\u23f9 Stopped', building: '\ud83d\udd28 Building', failed: '\u274c Failed', unhealthy: '\u26a0\ufe0f Unhealthy' };
+    const statusColors = { running: '#3fb950', stopped: '#8b949e', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
     const isConfig = s.source === 'config';
     const isLinked = s.source === 'linked';
     const svcId = isConfig ? 'cfg-' + s.key : 'lnk-' + s.id;
@@ -4607,8 +4607,8 @@ async function renderAdminProjects() {
 
 function renderAdminProjectsTable(projects) {
     const el = document.getElementById('admin-projects-content');
-    const _sc = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149' };
-    const _sl = { running: '실행 중', stopped: '중지됨', building: '빌드 중', failed: '실패' };
+    const _sc = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
+    const _sl = { running: '실행 중', stopped: '중지됨', building: '빌드 중', failed: '실패', unhealthy: '응답 없음' };
 
     // Stats from full cache
     const total = adminProjectsCache.length;
@@ -4650,6 +4650,7 @@ function renderAdminProjectsTable(projects) {
         <option value="stopped"${statusVal === 'stopped' ? ' selected' : ''}>⚫ 중지됨</option>
         <option value="building"${statusVal === 'building' ? ' selected' : ''}>🟡 빌드 중</option>
         <option value="failed"${statusVal === 'failed' ? ' selected' : ''}>🔴 실패</option>
+        <option value="unhealthy"${statusVal === 'unhealthy' ? ' selected' : ''}>🟠 응답 없음</option>
       </select>
       <select id="admin-proj-owner" onchange="applyAdminProjectFilter()">
         <option value="">전체 소유자</option>
