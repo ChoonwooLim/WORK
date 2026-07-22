@@ -128,6 +128,16 @@ function isPreviewSubdomain(subdomain) {
     return typeof subdomain === 'string' && /^pr-\d+-[a-z0-9][a-z0-9-]*$/.test(subdomain);
 }
 
+// pr-<숫자>- 프리픽스는 프리뷰 전용 예약 네임스페이스.
+// 실 프로젝트가 이 이름을 가지면 프리뷰 흐름(nginx conf 덮어쓰기,
+// cleanupOldContainers, teardown 의 rm -rf)이 실 서비스를 파괴할 수 있으므로
+// 프로젝트 생성/수정 시 이 프리픽스를 거부한다 (routes/projects.js 가 사용,
+// test/previewRules.test.js 가 정규식을 핀).
+const RESERVED_PREVIEW_NAMESPACE = /^pr-\d+-/;
+function isReservedPreviewNamespace(subdomain) {
+    return typeof subdomain === 'string' && RESERVED_PREVIEW_NAMESPACE.test(subdomain);
+}
+
 // PR head 브랜치명 안전 검증. cloneOrPull 이 셸 문자열 보간으로 git 을 실행하므로
 // webhook payload 에서 온 브랜치명은 반드시 이 화이트리스트를 통과해야 한다
 // (공백/따옴표/세미콜론/$/백틱 등 셸 메타문자 전면 차단, 선행 '-' 옵션 주입 차단).
@@ -158,6 +168,7 @@ module.exports = {
     parseOwnerRepo,
     previewBasePort,
     isPreviewSubdomain,
+    isReservedPreviewNamespace,
     isSafeBranchName,
     isSafeCommitHash,
 };

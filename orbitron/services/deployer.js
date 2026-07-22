@@ -1398,7 +1398,24 @@ class Deployer extends EventEmitter {
 
         let rowId = null;
         try {
+            // ── 심층 방어: 계산된 프리뷰 서브도메인을 실 프로젝트가 소유하면 중단 ──
+            // 1차 방어는 routes/projects.js 의 pr-<n>- 네임스페이스 예약(생성/수정
+            // 시 400)이지만, 마이그레이션 이전에 만들어진 프로젝트가 남아있을 수
+            // 있으므로 여기서도 확인한다 — 실 서비스의 nginx conf 덮어쓰기/컨테이너
+            // 정리를 프리뷰 흐름이 절대 트리거하지 않게.
+            const collision = await db.queryOne(
+                `SELECT id, name FROM projects WHERE subdomain = $1`, [previewSubdomain]
+            );
+            if (collision) {
+                console.error(`🚫 Preview aborted: subdomain ${previewSubdomain} is owned by real project #${collision.id} (${collision.name})`);
+                return { success: false, code: 'SUBDOMAIN_OWNED', error: `프리뷰 서브도메인이 실 프로젝트와 충돌합니다: ${previewSubdomain}` };
+            }
+
             // ── max-3 활성 프리뷰 게이트 (기존 PR 재배포는 통과) ──
+            // (알려진 폭 좁은 레이스: 거의 동시에 도착한 서로 다른 PR webhook 이
+            //  둘 다 게이트를 통과해 잠깐 4개가 될 수 있다 — 락은 per-preview 키라
+            //  서로를 막지 않는다. 수용된 트레이드오프: 초과분은 7일 TTL 스윕이
+            //  회수하고, 실제 트리거 조건(동시 다PR push)이 드물다.)
             const existing = await db.queryAll(
                 `SELECT pr_number FROM preview_deployments WHERE project_id = $1`, [project.id]
             );
@@ -1407,7 +1424,10 @@ class Deployer extends EventEmitter {
                 return { success: false, code: 'PREVIEW_LIMIT', error: `프로젝트당 활성 프리뷰는 최대 ${previewRules.MAX_ACTIVE_PREVIEWS}개입니다.` };
             }
 
-            // ── 프리뷰 행 upsert (subdomain UNIQUE 가 잘린 이름 충돌의 최종 방어) ──
+            // ── 프리뷰 행 upsert (subdomain UNIQUE 가 잘린 이름 충돌의 최종 방어 —
+            //    truncate+hash 가 이론상 충돌하면 여기서 23505 로 throw 되고 아래
+            //    catch 가 실패 처리한다. 수용된 우아한 실패: 확률이 무시 가능하고
+            //    잘못된 대상을 덮어쓰는 일은 구조적으로 불가능하다) ──
             const row = await db.queryOne(
                 `INSERT INTO preview_deployments (project_id, pr_number, branch, subdomain, status, last_commit)
                  VALUES ($1, $2, $3, $4, 'building', $5)
@@ -1524,7 +1544,9 @@ class Deployer extends EventEmitter {
             console.log(`✅ Preview ready: ${previewSubdomain} (container ${containerName}, port ${actualPort})`);
 
             // ── 7. GitHub PR 코멘트 (best-effort — 실패해도 배포는 성공) ──
-            this._postPreviewComment(project, prNumber, previewSubdomain).catch(e => {
+            // project 원본의 env_vars 는 암호화 문자열이므로 토큰 탐색이 복호화된
+            // parentEnv 를 보도록 env_vars 만 치환해서 넘긴다.
+            this._postPreviewComment({ ...project, env_vars: parentEnv }, prNumber, previewSubdomain).catch(e => {
                 console.log(`⚠️ Preview PR comment skipped: ${e.message}`);
             });
 
@@ -1631,6 +1653,10 @@ class Deployer extends EventEmitter {
             return;
         }
         const tunnelDomain = process.env.TUNNEL_DOMAIN || 'twinverse.org';
+        // 수용된 v1 제약: 터널은 프로젝트별 systemd 유닛 + 명시적 hostname ingress
+        // 라 pr-N 서브도메인은 아직 외부에서 도달 불가(내부 Host 헤더 라우팅만).
+        // 와일드카드 *.{TUNNEL_DOMAIN} DNS/ingress 가 추가되면 이 URL 이 그대로
+        // 살아나므로 코멘트 형식은 정식 URL 로 유지한다.
         const body = `🔍 Preview: https://${previewSubdomain}.${tunnelDomain}`;
         const res = await fetch(`https://api.github.com/repos/${ownerRepo}/issues/${prNumber}/comments`, {
             method: 'POST',

@@ -25,12 +25,18 @@ async function handlePullRequest(payload, res) {
         return res.status(400).json({ error: 'Missing pull_request number or base repository' });
     }
 
+    // deploy 는 옵트인(preview_deploys=true) 프로젝트만 대상이지만,
+    // destroy(PR closed)는 플래그와 무관하게 실행해야 한다 — 프리뷰가 살아있는
+    // 상태에서 토글을 꺼도 닫힌 PR 의 프리뷰가 고아로 남으면 안 되기 때문.
+    // (destroyPreview 는 멱등이라 프리뷰가 없던 프로젝트에는 no-op)
     const projects = await db.queryAll(
-        `SELECT * FROM projects WHERE github_url LIKE $1 AND preview_deploys = true`,
+        route === 'deploy'
+            ? `SELECT * FROM projects WHERE github_url LIKE $1 AND preview_deploys = true`
+            : `SELECT * FROM projects WHERE github_url LIKE $1`,
         [`%${baseRepo}%`]
     );
     if (projects.length === 0) {
-        return res.json({ message: 'No preview-enabled projects for this repository' });
+        return res.json({ message: 'No matching projects for this repository' });
     }
 
     // fork PR: 배포는 스킵 (destroy 는 멱등 no-op 이므로 fork 여부 무관 실행)

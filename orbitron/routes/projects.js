@@ -11,6 +11,7 @@ const AdmZip = require('adm-zip');
 const path = require('path');
 const fs = require('fs');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
+const previewRules = require('../services/previewRules');
 
 // Multer config for ZIP upload (max 500MB)
 const upload = multer({
@@ -153,6 +154,11 @@ router.post('/', async (req, res) => {
         if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(projectSubdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
+        // pr-<n>- 는 PR 프리뷰 전용 예약 네임스페이스 (Task 3.1) — 실 프로젝트가
+        // 이 이름을 가지면 프리뷰 파괴 흐름이 실 서비스를 지울 수 있다.
+        if (previewRules.isReservedPreviewNamespace(projectSubdomain)) {
+            return res.status(400).json({ error: `'pr-<번호>-' 프리픽스는 예약된 프리뷰 네임스페이스입니다. 다른 서브도메인을 사용하세요. / The 'pr-<n>-' prefix is a reserved preview namespace.` });
+        }
 
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
@@ -183,6 +189,10 @@ router.put('/:id', async (req, res) => {
         const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url, preview_deploys } = req.body;
         if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
+        }
+        // pr-<n>- 는 PR 프리뷰 전용 예약 네임스페이스 (Task 3.1) — 수정 경로도 차단
+        if (subdomain && previewRules.isReservedPreviewNamespace(subdomain)) {
+            return res.status(400).json({ error: `'pr-<번호>-' 프리픽스는 예약된 프리뷰 네임스페이스입니다. 다른 서브도메인을 사용하세요. / The 'pr-<n>-' prefix is a reserved preview namespace.` });
         }
 
         // 수동 관리 conf 사전 검사: custom_domain을 바꾸려는 경우, DB UPDATE라는
@@ -689,6 +699,10 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
         // Check projectSubdomain validity
         if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(projectSubdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 허용됩니다.' });
+        }
+        // pr-<n>- 는 PR 프리뷰 전용 예약 네임스페이스 (Task 3.1)
+        if (previewRules.isReservedPreviewNamespace(projectSubdomain)) {
+            return res.status(400).json({ error: `'pr-<번호>-' 프리픽스는 예약된 프리뷰 네임스페이스입니다. 다른 서브도메인을 사용하세요. / The 'pr-<n>-' prefix is a reserved preview namespace.` });
         }
 
         const projectPort = port ? parseInt(port) : (3000 + Math.floor(Math.random() * 1000));

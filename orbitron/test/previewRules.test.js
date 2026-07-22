@@ -257,6 +257,29 @@ test('previewBasePort: within 5100-5899 range, deterministic, distinct from 3000
 
 // ── isPreviewSubdomain guard ────────────────────────────────────────────────
 
+// ── Reserved preview namespace (routes/projects.js 생성/수정 400 가드) ──────
+
+test('isReservedPreviewNamespace: pr-<n>- prefixed names are reserved', () => {
+    assert.strictEqual(rules.isReservedPreviewNamespace('pr-7-foo'), true);
+    assert.strictEqual(rules.isReservedPreviewNamespace('pr-123-my-app'), true);
+    assert.strictEqual(rules.isReservedPreviewNamespace('pr-1-'), true); // 프리픽스만으로도 예약
+});
+
+test('isReservedPreviewNamespace: legitimate names are NOT reserved', () => {
+    assert.strictEqual(rules.isReservedPreviewNamespace('myapp'), false);
+    assert.strictEqual(rules.isReservedPreviewNamespace('pr-foo'), false);      // 숫자 없음
+    assert.strictEqual(rules.isReservedPreviewNamespace('prod-1-app'), false);
+    assert.strictEqual(rules.isReservedPreviewNamespace('pr7-foo'), false);     // 하이픈 형식 불일치
+    assert.strictEqual(rules.isReservedPreviewNamespace('xpr-7-foo'), false);   // 선두 앵커
+    assert.strictEqual(rules.isReservedPreviewNamespace(''), false);
+    assert.strictEqual(rules.isReservedPreviewNamespace(null), false);
+});
+
+test('isReservedPreviewNamespace: every generated preview subdomain is inside the namespace', () => {
+    assert.strictEqual(rules.isReservedPreviewNamespace(rules.buildPreviewSubdomain('myapp', 5)), true);
+    assert.strictEqual(rules.isReservedPreviewNamespace(rules.buildPreviewSubdomain('x'.repeat(80), 12)), true);
+});
+
 // ── Branch / commit hash safety (shell interpolation guards) ────────────────
 
 test('isSafeBranchName: normal branches pass', () => {

@@ -213,6 +213,12 @@ async function start() {
         await db.query(schema);
         console.log('✅ Database schema initialized');
 
+        // Webhook 서명 비밀키 점검 (Task 3.1 리뷰): 기본값 'orbitron-secret' 은
+        // 공개 코드라 서명 위조가 가능하다 — 동작은 바꾸지 않고 경고만 남긴다.
+        if (!process.env.WEBHOOK_SECRET || process.env.WEBHOOK_SECRET === 'orbitron-secret') {
+            console.warn('⚠️ WEBHOOK_SECRET 미설정 — webhook 위조 가능. .env에 설정하세요.');
+        }
+
         // Ensure Docker internal network exists for inter-service communication
         try {
             await execAsync('docker network create orbitron_internal --driver bridge 2>/dev/null || true');
