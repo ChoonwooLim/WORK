@@ -335,6 +335,25 @@ async function start() {
                     console.error('⚠️ Stale building recovery skipped:', e.message);
                 }
 
+                // Recover stale 'queued'/'building' DEPLOYMENT rows (Task 1.3):
+                // the build queue is in-memory, so a process crash/restart strands
+                // deployment records at 'queued' (and interrupted builds at
+                // 'building') forever. At startup no build can still be in flight
+                // → mark rows older than 5 minutes as 'failed'.
+                try {
+                    const staleDeploys = await db.query(
+                        "UPDATE deployments SET status = 'failed', finished_at = NOW(), " +
+                        "logs = logs || E'\\n❌ 서버 재시작으로 빌드 대기열이 초기화되어 배포가 중단되었습니다.\\n' " +
+                        "WHERE status IN ('queued', 'building') AND started_at < NOW() - INTERVAL '5 minutes' RETURNING id"
+                    );
+                    const staleCount = (staleDeploys.rows || []).length;
+                    if (staleCount > 0) {
+                        console.log(`🔓 Unstuck ${staleCount} stale 'queued'/'building' deployment record(s) → failed`);
+                    }
+                } catch (e) {
+                    console.error('⚠️ Stale queued deployment recovery skipped:', e.message);
+                }
+
                 const result = await db.query("SELECT * FROM projects WHERE status = 'running'");
                 const runningProjects = result.rows || [];
                 for (const project of runningProjects) {
