@@ -79,6 +79,9 @@ DO $$ BEGIN
     -- User pricing plan tier
     ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(20) DEFAULT 'starter';
 
+    -- PR preview deployments opt-in (Task 3.1) — off by default
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS preview_deploys BOOLEAN DEFAULT false;
+
     -- Promote first user to admin
     UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY id ASC LIMIT 1) AND role = 'user';
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -95,6 +98,23 @@ CREATE TABLE IF NOT EXISTS deployments (
     image_tag VARCHAR(200),
     started_at TIMESTAMP DEFAULT NOW(),
     finished_at TIMESTAMP
+);
+
+-- PR preview deployments (Task 3.1) — one row per open PR preview.
+-- Previews never touch the projects table; teardown on PR close or 7-day TTL.
+-- v1: previews share the parent project's database (writes hit the real DB).
+CREATE TABLE IF NOT EXISTS preview_deployments (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    pr_number INTEGER NOT NULL,
+    branch VARCHAR(200),
+    subdomain VARCHAR(150) UNIQUE NOT NULL,
+    container_id VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'building',
+    last_commit VARCHAR(40),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(project_id, pr_number)
 );
 
 -- Metrics table (Task 2.3) — 1-hour resource aggregates ONLY.

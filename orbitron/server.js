@@ -213,6 +213,12 @@ async function start() {
         await db.query(schema);
         console.log('✅ Database schema initialized');
 
+        // Webhook 서명 비밀키 점검 (Task 3.1 리뷰): 기본값 'orbitron-secret' 은
+        // 공개 코드라 서명 위조가 가능하다 — 동작은 바꾸지 않고 경고만 남긴다.
+        if (!process.env.WEBHOOK_SECRET || process.env.WEBHOOK_SECRET === 'orbitron-secret') {
+            console.warn('⚠️ WEBHOOK_SECRET 미설정 — webhook 위조 가능. .env에 설정하세요.');
+        }
+
         // Ensure Docker internal network exists for inter-service communication
         try {
             await execAsync('docker network create orbitron_internal --driver bridge 2>/dev/null || true');
@@ -242,6 +248,16 @@ async function start() {
                 }
             } catch (e) {
                 console.error('Hourly cleanup failed:', e.message);
+            }
+            // PR 프리뷰 TTL 스윕 (Task 3.1): updated_at 기준 7일 지난 프리뷰 파괴.
+            // 매시 실행이지만 스윕 자체는 싼 SELECT + 만료분만 정리라 부담 없음.
+            try {
+                const swept = await deployer.sweepExpiredPreviews();
+                if (swept > 0) {
+                    console.log(`🧹 Preview TTL sweep: destroyed ${swept} expired preview(s)`);
+                }
+            } catch (e) {
+                console.error('Preview TTL sweep failed:', e.message);
             }
         }, 60 * 60 * 1000); // 1 hour
 

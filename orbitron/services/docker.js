@@ -41,9 +41,12 @@ function sanitizeSubdomain(subdomain) {
 class DockerService {
     // Build a Docker image for a project (or skip if Compose)
     // deploymentId (선택): 있으면 orbitron-<sub>:d<id> 배포 태그를 추가로 부여 (Task 1.2 롤백 기반)
-    async buildImage(project, deploymentId = null) {
+    // projectDirOverride (선택, Task 3.1): PR 프리뷰처럼 소스가 표준 위치
+    // (deployments/<subdomain>)가 아닌 곳에 체크아웃된 경우의 빌드 컨텍스트.
+    // 미지정 시 기존 경로 규칙 그대로 — 하위 호환.
+    async buildImage(project, deploymentId = null, projectDirOverride = null) {
         sanitizeSubdomain(project.subdomain);
-        const projectDir = path.join(PROJECTS_DIR, project.subdomain);
+        const projectDir = projectDirOverride ? path.resolve(projectDirOverride) : path.join(PROJECTS_DIR, project.subdomain);
         const buildStart = Date.now();
         let detailLogs = '';
 
@@ -925,12 +928,6 @@ EXPOSE ${port}
             console.log(`[docker] ${containerName}: normalized ${normalized} env var(s) with host-mapped DB ports`);
         }
 
-        // Auto-inject PORT env var (PaaS 표준 — Render, Railway, Heroku 등과 동일)
-        if (port && !envVars.PORT) {
-            runArgs.push('-e', `PORT=${port}`);
-            startLogs += `  ⚡ PORT=${port} 자동 주입\n`;
-        }
-
         startLogs += `  환경변수: ${envKeys.length + (port && !envVars.PORT ? 1 : 0)}개\n`;
 
         // ── Feature 1: Auto-mount persistent volumes ──
@@ -979,6 +976,17 @@ EXPOSE ${port}
             runArgs.push('-p', `${port}:${port}`);
         } else {
             startLogs += `  포트: 없음 (백그라운드 워커)\n`;
+        }
+
+        // Auto-inject PORT env var (PaaS 표준 — Render, Railway, Heroku 등과 동일)
+        // 반드시 충돌 자동 해소 루프 "이후"에 주입해야 한다: 그래야 컨테이너가
+        // 받는 PORT == 실제 호스트 매핑(-p port:port)의 최종 포트가 된다.
+        // (과거에는 루프 앞에서 주입해 충돌 시 env 와 매핑이 어긋났다 —
+        //  Task 3.1 리뷰에서 일반 배포까지 포함해 정렬. 워커는 매핑이 없지만
+        //  기존과 동일하게 PORT 는 주입된다 — 루프를 건너뛰므로 원값 그대로)
+        if (port && !envVars.PORT) {
+            runArgs.push('-e', `PORT=${port}`);
+            startLogs += `  ⚡ PORT=${port} 자동 주입\n`;
         }
 
         runArgs.push(imageName);
@@ -1303,6 +1311,17 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
         }
     }
 
+    // 순수 함수: 정리 대상 컨테이너 선정. keepContainerName 과, protectedPrefixes
+    // 에 속한(정확히 일치 또는 '<prefix>-' 로 시작) 이름은 제외한다.
+    // (Task 3.1 리뷰 핀: 프리픽스 형제 프로젝트/프리뷰 보호가 이 한 곳에 모임 —
+    //  test/previewRules.test.js 가 병합 보호 로직을 핀)
+    selectContainersToCleanup(containers, keepContainerName, protectedPrefixes) {
+        return (containers || []).filter(name => {
+            if (name === keepContainerName) return false;
+            return !(protectedPrefixes || []).some(prefix => name === prefix || name.startsWith(prefix + '-'));
+        });
+    }
+
     // Clean up old containers belonging to this project (except the active one)
     // Uses `docker rm -f` to guarantee removal even for stuck Created/Restarting states
     async cleanupOldContainers(subdomain, keepContainerName) {
@@ -1326,14 +1345,30 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
                 }
             } catch (e) { /* DB unavailable — skip protection */ }
 
-            for (const name of containers) {
-                if (name === keepContainerName) continue;
-                // CRITICAL: Never delete containers belonging to OTHER projects
-                const isProtected = protectedPrefixes.some(prefix => name === prefix || name.startsWith(prefix + '-'));
-                if (isProtected) {
-                    console.log(`⏭️ Skipping container from different project: ${name}`);
-                    continue;
+            // Task 3.1: 프리뷰 형제도 보호해야 한다. 프리픽스 관계의 프로젝트 쌍
+            // (myapp / myapp-x)은 프리픽스 관계의 프리뷰(pr-5-myapp / pr-5-myapp-x)
+            // 를 만들고, 위의 projects 조회는 previews 를 절대 모른다 — 이 조회가
+            // 없으면 pr-5-myapp 정리 grep 이 pr-5-myapp-x 의 살아있는 컨테이너를
+            // docker rm -f 한다.
+            try {
+                const db = require('../db/db');
+                const siblingPreviews = await db.query(
+                    "SELECT subdomain FROM preview_deployments WHERE subdomain LIKE $1 AND subdomain != $2",
+                    [subdomain + '-%', subdomain]
+                );
+                for (const row of siblingPreviews.rows) {
+                    protectedPrefixes.push(`orbitron-${row.subdomain}`);
                 }
+            } catch (e) { /* DB unavailable — skip protection */ }
+
+            const toRemove = this.selectContainersToCleanup(containers, keepContainerName, protectedPrefixes);
+            for (const name of containers) {
+                // 감사 로그: 보호 프리픽스가 컨테이너를 살린 경우를 가시화
+                if (name !== keepContainerName && !toRemove.includes(name)) {
+                    console.log(`⏭️ Skipping protected container (other project/preview): ${name}`);
+                }
+            }
+            for (const name of toRemove) {
                 console.log(`🧹 Force-removing old container: ${name}`);
                 // Force-remove to handle stuck Created/Restarting states
                 await execAsync(`docker rm -f ${name} 2>/dev/null || true`);

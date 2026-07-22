@@ -11,6 +11,7 @@ const AdmZip = require('adm-zip');
 const path = require('path');
 const fs = require('fs');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
+const previewRules = require('../services/previewRules');
 
 // Multer config for ZIP upload (max 500MB)
 const upload = multer({
@@ -153,6 +154,11 @@ router.post('/', async (req, res) => {
         if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(projectSubdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
+        // pr-<n>- 는 PR 프리뷰 전용 예약 네임스페이스 (Task 3.1) — 실 프로젝트가
+        // 이 이름을 가지면 프리뷰 파괴 흐름이 실 서비스를 지울 수 있다.
+        if (previewRules.isReservedPreviewNamespace(projectSubdomain)) {
+            return res.status(400).json({ error: `'pr-<번호>-' 프리픽스는 예약된 프리뷰 네임스페이스입니다. 다른 서브도메인을 사용하세요. / The 'pr-<n>-' prefix is a reserved preview namespace.` });
+        }
 
         const projectPort = port || (3000 + Math.floor(Math.random() * 1000));
 
@@ -180,9 +186,13 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url, preview_deploys } = req.body;
         if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
+        }
+        // pr-<n>- 는 PR 프리뷰 전용 예약 네임스페이스 (Task 3.1) — 수정 경로도 차단
+        if (subdomain && previewRules.isReservedPreviewNamespace(subdomain)) {
+            return res.status(400).json({ error: `'pr-<번호>-' 프리픽스는 예약된 프리뷰 네임스페이스입니다. 다른 서브도메인을 사용하세요. / The 'pr-<n>-' prefix is a reserved preview namespace.` });
         }
 
         // 수동 관리 conf 사전 검사: custom_domain을 바꾸려는 경우, DB UPDATE라는
@@ -208,8 +218,8 @@ router.put('/:id', async (req, res) => {
 
         const encryptedEnvVars = env_vars ? encryptForJsonb(env_vars) : null;
 
-        const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
-        const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id];
+        const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $14' : 'WHERE id = $14 AND user_id = $15';
+        const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, preview_deploys !== undefined ? preview_deploys : null, req.params.id];
         if (req.user.role !== 'admin' && req.user.role !== 'superadmin') queryParams.push(req.user.userId);
 
         const project = await db.queryOne(
@@ -226,6 +236,7 @@ router.put('/:id', async (req, res) => {
         custom_domain = COALESCE($10, custom_domain),
         ai_model = COALESCE($11, ai_model),
         webhook_url = COALESCE($12, webhook_url),
+        preview_deploys = COALESCE($13, preview_deploys),
         updated_at = NOW()
        ${whereClause} RETURNING *`,
             queryParams
@@ -688,6 +699,10 @@ router.post('/upload', upload.single('zipfile'), async (req, res) => {
         // Check projectSubdomain validity
         if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(projectSubdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 허용됩니다.' });
+        }
+        // pr-<n>- 는 PR 프리뷰 전용 예약 네임스페이스 (Task 3.1)
+        if (previewRules.isReservedPreviewNamespace(projectSubdomain)) {
+            return res.status(400).json({ error: `'pr-<번호>-' 프리픽스는 예약된 프리뷰 네임스페이스입니다. 다른 서브도메인을 사용하세요. / The 'pr-<n>-' prefix is a reserved preview namespace.` });
         }
 
         const projectPort = port ? parseInt(port) : (3000 + Math.floor(Math.random() * 1000));
@@ -1204,6 +1219,42 @@ router.post('/knowledge', async (req, res) => {
             source: 'manual'
         });
         res.json({ success: true, id });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Task 3.1: PR 프리뷰 배포 조회/삭제 ──────────────────────────────────────
+
+// GET /api/projects/:id/previews - 이 프로젝트의 활성 프리뷰 목록 (소유권 검사)
+router.get('/:id/previews', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        const previews = await db.queryAll(
+            `SELECT id, pr_number, branch, subdomain, container_id, status, last_commit, created_at, updated_at
+             FROM preview_deployments WHERE project_id = $1 ORDER BY pr_number DESC`,
+            [project.id]
+        );
+        // url 은 서버가 previewRules.previewUrl 로 계산해 내려준다 —
+        // 도메인 폴백('twinverse.org')이 프론트에 하드코딩되지 않게.
+        res.json(previews.map(p => ({ ...p, url: previewRules.previewUrl(p.subdomain, process.env.TUNNEL_DOMAIN) })));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/projects/:id/previews/:prNumber - 프리뷰 수동 파괴 (소유권 검사, 멱등)
+router.delete('/:id/previews/:prNumber', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        const prNumber = parseInt(req.params.prNumber, 10);
+        if (!Number.isInteger(prNumber) || prNumber < 1) {
+            return res.status(400).json({ error: 'Invalid PR number' });
+        }
+        const result = await deployer.destroyPreview(project, prNumber);
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

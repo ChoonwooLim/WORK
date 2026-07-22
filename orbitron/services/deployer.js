@@ -21,9 +21,12 @@ const { managedDatabaseUrl } = require('./envUtils');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
 const { assessRollbackEligibility, formatRollbackCommitMessage, buildKeepTagList } = require('./rollbackRules');
 const { smokeStep, resolveHealthPath, SMOKE_DEFAULTS } = require('./smokeCheck');
+const previewRules = require('./previewRules');
 const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
+// PR 프리뷰 클론 전용 디렉토리 (Task 3.1) — 일반 배포 트리와 물리적으로 분리
+const PREVIEWS_DIR = path.join(DEPLOYMENTS_DIR, '_previews');
 
 // Find orbitron.yaml regardless of case (Linux is case-sensitive)
 function findOrbitronYaml(dir) {
@@ -1319,7 +1322,17 @@ class Deployer extends EventEmitter {
             fs.mkdirSync(projectDir, { recursive: true });
             try {
                 const { stdout, stderr } = await execAsync(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 10 });
-                return `Git clone:\n${stdout}${stderr}`;
+                let extra = '';
+                // 첫 클론에서도 요청된 커밋으로 고정: 클론은 브랜치 HEAD 를 받으므로
+                // webhook 의 커밋 해시와 어긋날 수 있다 (해시는 호출부에서 이미
+                // 화이트리스트 검증됨 — deployPreview 의 isSafeCommitHash / 롤백 경로).
+                if (commitHash) {
+                    const { stdout: rOut, stderr: rErr } = await execAsync(
+                        `cd ${projectDir} && git reset --hard ${commitHash}`, { maxBuffer: 1024 * 1024 * 10 }
+                    );
+                    extra = `\nGit reset to ${commitHash.substring(0, 7)}:\n${rOut}${rErr}`;
+                }
+                return `Git clone:\n${stdout}${stderr}${extra}`;
             } catch (error) {
                 throw new Error(`Git clone failed: ${error.stderr || error.message}`);
             }
@@ -1357,8 +1370,357 @@ class Deployer extends EventEmitter {
         await db.query(`UPDATE projects SET status = 'stopped', container_id = NULL, tunnel_url = NULL WHERE id = $1`, [project.id]);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Task 3.1: PR 프리뷰 배포
+    //
+    // 설계 원칙:
+    //   - projects 테이블은 절대 건드리지 않는다. 프리뷰 상태는 전부
+    //     preview_deployments 행 + synthetic project 객체(메모리)로만 관리.
+    //   - 이미지/컨테이너 이름은 프리뷰 서브도메인에서 파생:
+    //     orbitron-pr-<n>-<sub>(-<hash>) — 부모의 orbitron-<sub>-* 프리픽스와
+    //     겹치지 않아 cleanupOldContainers 가 서로를 건드리지 않는다.
+    //   - v1 제약: same-repo PR 만(fork 차단은 webhook 계층), compose 프로젝트
+    //     프리뷰 미지원, DB 는 부모 프로젝트와 공유(아래 env 복사 주석 참조).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // 프리뷰 배포 진입점. 반환: { success, code?, error?, subdomain? }
+    async deployPreview(project, prNumber, branch, commitHash = null) {
+        // webhook payload 에서 온 값이 셸 보간(cloneOrPull)으로 흘러가기 전 검증.
+        // 브랜치명이 화이트리스트 밖이면 배포 자체를 거부, 커밋 해시가 이상하면
+        // 해시 없이 origin/<branch> HEAD 로 폴백한다.
+        if (!previewRules.isSafeBranchName(branch)) {
+            console.log(`⏭️ Preview skipped: unsafe branch name ${JSON.stringify(branch)} (PR #${prNumber})`);
+            return { success: false, code: 'UNSAFE_BRANCH', error: 'Unsafe branch name' };
+        }
+        if (commitHash && !previewRules.isSafeCommitHash(commitHash)) {
+            console.log(`⚠️ Preview: ignoring malformed commit hash ${JSON.stringify(commitHash)} — using branch HEAD`);
+            commitHash = null;
+        }
+        const previewSubdomain = previewRules.buildPreviewSubdomain(project.subdomain, prNumber);
+        // per-preview 락: activeDeployments 재사용 (키는 'preview:<sub>' 문자열 —
+        // 숫자 project.id 키와 충돌하지 않으므로 isDeploying() 의미는 그대로)
+        const lockKey = `preview:${previewSubdomain}`;
+        if (this.activeDeployments.has(lockKey)) {
+            console.log(`⚠️ Preview deployment already in progress: ${previewSubdomain}`);
+            return { success: false, code: 'DEPLOY_IN_PROGRESS', error: 'Preview deployment already in progress' };
+        }
+        this.activeDeployments.add(lockKey);
+
+        let rowId = null;
+        try {
+            // ── 심층 방어: 계산된 프리뷰 서브도메인을 실 프로젝트가 소유하면 중단 ──
+            // 1차 방어는 routes/projects.js 의 pr-<n>- 네임스페이스 예약(생성/수정
+            // 시 400)이지만, 마이그레이션 이전에 만들어진 프로젝트가 남아있을 수
+            // 있으므로 여기서도 확인한다 — 실 서비스의 nginx conf 덮어쓰기/컨테이너
+            // 정리를 프리뷰 흐름이 절대 트리거하지 않게.
+            const collision = await db.queryOne(
+                `SELECT id, name FROM projects WHERE subdomain = $1`, [previewSubdomain]
+            );
+            if (collision) {
+                console.error(`🚫 Preview aborted: subdomain ${previewSubdomain} is owned by real project #${collision.id} (${collision.name})`);
+                return { success: false, code: 'SUBDOMAIN_OWNED', error: `프리뷰 서브도메인이 실 프로젝트와 충돌합니다: ${previewSubdomain}` };
+            }
+
+            // ── max-3 활성 프리뷰 게이트 (기존 PR 재배포는 통과) ──
+            // (알려진 폭 좁은 레이스: 거의 동시에 도착한 서로 다른 PR webhook 이
+            //  둘 다 게이트를 통과해 잠깐 4개가 될 수 있다 — 락은 per-preview 키라
+            //  서로를 막지 않는다. 수용된 트레이드오프: 초과분은 7일 TTL 스윕이
+            //  회수하고, 실제 트리거 조건(동시 다PR push)이 드물다.)
+            const existing = await db.queryAll(
+                `SELECT pr_number FROM preview_deployments WHERE project_id = $1`, [project.id]
+            );
+            if (!previewRules.canCreatePreview(existing, prNumber)) {
+                console.log(`⏭️ Preview limit reached for ${project.subdomain} (max ${previewRules.MAX_ACTIVE_PREVIEWS}) — skipping PR #${prNumber}`);
+                return { success: false, code: 'PREVIEW_LIMIT', error: `프로젝트당 활성 프리뷰는 최대 ${previewRules.MAX_ACTIVE_PREVIEWS}개입니다.` };
+            }
+
+            // ── 프리뷰 행 upsert (subdomain UNIQUE 가 잘린 이름 충돌의 최종 방어 —
+            //    truncate+hash 가 이론상 충돌하면 여기서 23505 로 throw 되고 아래
+            //    catch 가 실패 처리한다. 수용된 우아한 실패: 확률이 무시 가능하고
+            //    잘못된 대상을 덮어쓰는 일은 구조적으로 불가능하다) ──
+            const row = await db.queryOne(
+                `INSERT INTO preview_deployments (project_id, pr_number, branch, subdomain, status, last_commit)
+                 VALUES ($1, $2, $3, $4, 'building', $5)
+                 ON CONFLICT (project_id, pr_number)
+                 DO UPDATE SET branch = $3, status = 'building', last_commit = $5, updated_at = NOW()
+                 RETURNING id`,
+                [project.id, prNumber, branch, previewSubdomain, commitHash]
+            );
+            rowId = row.id;
+
+            // ── 부모 env 복호화 → 복사 (projects 행은 읽기만) ──
+            let parentEnv = {};
+            if (project.env_vars && typeof project.env_vars === 'string') {
+                try {
+                    const decrypted = decrypt(project.env_vars);
+                    parentEnv = decrypted ? JSON.parse(decrypted) : {};
+                } catch {
+                    console.error(`Preview: failed to decrypt env_vars for project ${project.id}`);
+                }
+            } else if (typeof project.env_vars === 'object' && project.env_vars !== null) {
+                parentEnv = project.env_vars;
+            }
+
+            // ⚠️ v1 캐비앳: 프리뷰는 부모 프로젝트의 DATABASE_URL 등을 그대로
+            // 물려받는다 — 프리뷰 컨테이너의 쓰기가 부모의 "실제" DB 에 반영된다.
+            // (프리뷰별 DB 클론은 v2 과제)
+            // PORT 는 여기서 미리 넣지 않는다: docker.startContainer 의 자동 주입이
+            // (Task 3.1 리뷰에서) lsof 충돌 해소 루프 "이후"로 이동해, 주입되는
+            // PORT == 최종 호스트 매핑 포트가 보장된다. 미리 basePort 를 박으면
+            // 그 정렬을 다시 깨뜨린다. (알려진 코너: 부모 env 에 PORT 가 명시된
+            // 경우 자동 주입이 건너뛰어져 부모의 값이 그대로 쓰인다 — 부모와 동일
+            // 동작이며, nginx/스모크는 감지된 실제 리슨 포트로 라우팅하므로 무해)
+            const basePort = previewRules.previewBasePort(prNumber);
+            const previewEnv = { ...parentEnv };
+
+            // synthetic project: 배포 기계(빌드/컨테이너/nginx)가 요구하는 필드만
+            // 부모에서 복사. id 를 지워 어떤 경로도 projects 행을 UPDATE 못 하게 한다.
+            const synth = {
+                ...project,
+                id: undefined,
+                name: `${project.name} (PR #${prNumber})`,
+                subdomain: previewSubdomain,
+                branch: branch || project.branch,
+                port: basePort,
+                env_vars: previewEnv,
+                container_id: null,
+                custom_domain: null,
+                redirect_to_custom_domain: false,
+                webhook_url: null,
+                tunnel_url: null,
+            };
+
+            const previewDir = path.join(PREVIEWS_DIR, previewSubdomain);
+            fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+
+            // ── 1. Clone/pull (cloneOrPull 재사용 — synth.branch 가 PR 브랜치) ──
+            console.log(`🔍 Preview deploy: ${previewSubdomain} (branch ${synth.branch}, commit ${commitHash ? commitHash.substring(0, 7) : 'HEAD'})`);
+            await this.cloneOrPull(synth, previewDir, commitHash);
+
+            // ── 2. Build (공유 buildQueue 슬롯 — 일반 배포와 같은 동시성 한도) ──
+            const buildResult = await buildQueue.withSlot(`preview:${previewSubdomain}`, async () => {
+                return dockerService.buildImage(synth, null, previewDir);
+            });
+            if (buildResult.isCompose) {
+                throw new Error('Compose 프로젝트의 PR 프리뷰는 v1 에서 지원하지 않습니다. / Compose previews are not supported in v1.');
+            }
+
+            // ── 3. Start container (블루-그린: 새 컨테이너 먼저, 옛것은 뒤에 정리) ──
+            const startRes = await dockerService.startContainer(synth);
+            const containerName = startRes.containerName;
+            const actualPort = startRes.port || basePort;
+            synth.port = actualPort;
+
+            // 시작 직후 상태 검증 (즉사 감지)
+            await new Promise(r => setTimeout(r, 2500));
+            const { stdout: stateOut } = await execFileAsync('docker', [
+                'inspect', '--format', '{{.State.Status}}|{{.State.ExitCode}}', containerName,
+            ]);
+            const [state, exitCode] = stateOut.trim().split('|');
+            if (state !== 'running') {
+                throw new Error(`프리뷰 컨테이너가 시작 후 ${state} 상태 (exit: ${exitCode})`);
+            }
+
+            // ── 4. 스모크 체크 (본 배포와 동일한 감지/판정 헬퍼 재사용) ──
+            const listenPorts = nginxService.detectContainerListenPorts(containerName);
+            const smokePort = nginxService.selectListenPort(listenPorts, actualPort);
+            let containerIp = '';
+            try {
+                const { stdout: ipOut } = await execFileAsync('docker', [
+                    'inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', containerName,
+                ]);
+                containerIp = ipOut.trim();
+            } catch { /* fall through */ }
+            if (!containerIp) {
+                throw new Error('프리뷰 스모크 체크 실패: 컨테이너 IP 조회 실패');
+            }
+            const step = await smokeStep({
+                detectedPort: smokePort,
+                fallbackPort: actualPort,
+                host: containerIp,
+                path: '/',
+            });
+            if (!step.ok) {
+                const detail = step.result.lastStatus !== null ? `HTTP ${step.result.lastStatus}` : (step.result.lastError || '응답 없음');
+                throw new Error(`프리뷰 스모크 체크 실패 (${detail}) — nginx 전환을 중단합니다.`);
+            }
+
+            // ── 5. nginx conf (synthetic project 로 addProject 재사용) ──
+            // 프리뷰 conf 는 항상 Orbitron 생성물 — 수동 관리 가드는 addProject
+            // 내부 검사를 그대로 통과시킨다 (마커가 있으면 예외 → 프리뷰 실패).
+            await nginxService.addProject(synth, containerName);
+
+            // ── 6. 옛 프리뷰 컨테이너 정리 (synchronize 재배포의 블루-그린 꼬리) ──
+            await dockerService.cleanupOldContainers(previewSubdomain, containerName);
+
+            // 최종 상태 UPDATE 는 행 실존을 확인한다 (RETURNING): destroyPreview 는
+            // 프리뷰 락을 존중하지 않으므로 빌드→시작 사이 갭에서 destroy 가 먼저
+            // 완료되면 행이 이미 없다 — 그대로 성공 처리하면 방금 띄운 컨테이너와
+            // nginx conf 가 DB 에 보이지 않는 채(= TTL 스윕 대상도 아님) 영구
+            // 누수된다. 0행이면 지금 만든 리소스를 즉시 걷어낸다.
+            const updated = await db.queryOne(
+                `UPDATE preview_deployments SET status = 'running', container_id = $1, last_commit = $2, updated_at = NOW() WHERE id = $3 RETURNING id`,
+                [containerName, commitHash, rowId]
+            );
+            if (!updated) {
+                console.warn(`⚠️ Preview ${previewSubdomain} was destroyed mid-deploy — tearing down freshly started resources`);
+                await this._teardownPreview(previewSubdomain);
+                return { success: false, code: 'DESTROYED_MID_DEPLOY', error: 'Preview was destroyed while deploying', subdomain: previewSubdomain };
+            }
+            console.log(`✅ Preview ready: ${previewSubdomain} (container ${containerName}, port ${actualPort})`);
+
+            // ── 7. GitHub PR 코멘트 (best-effort — 실패해도 배포는 성공) ──
+            // project 원본의 env_vars 는 암호화 문자열이므로 토큰 탐색이 복호화된
+            // parentEnv 를 보도록 env_vars 만 치환해서 넘긴다.
+            this._postPreviewComment({ ...project, env_vars: parentEnv }, prNumber, previewSubdomain).catch(e => {
+                console.log(`⚠️ Preview PR comment skipped: ${e.message}`);
+            });
+
+            return { success: true, subdomain: previewSubdomain, containerName };
+        } catch (error) {
+            console.error(`❌ Preview deploy failed for ${previewSubdomain}:`, error.message);
+            if (rowId) {
+                await db.query(
+                    `UPDATE preview_deployments SET status = 'failed', updated_at = NOW() WHERE id = $1`, [rowId]
+                ).catch(() => { });
+            }
+            return { success: false, error: error.message, subdomain: previewSubdomain };
+        } finally {
+            this.activeDeployments.delete(lockKey);
+        }
+    }
+
+    // 프리뷰 파괴 (PR closed / TTL / 대시보드 삭제). 멱등 — 행이 이미 없어도
+    // (double-close webhook) 컨테이너/nginx/디렉토리 잔여물 정리를 시도한다.
+    async destroyPreview(project, prNumber) {
+        const row = await db.queryOne(
+            `SELECT * FROM preview_deployments WHERE project_id = $1 AND pr_number = $2`,
+            [project.id, prNumber]
+        );
+        let previewSubdomain = row?.subdomain;
+        if (!previewSubdomain) {
+            try {
+                previewSubdomain = previewRules.buildPreviewSubdomain(project.subdomain, prNumber);
+            } catch {
+                return { success: true, destroyed: false }; // 유효하지 않은 입력 — 정리할 것 없음
+            }
+        }
+        await this._teardownPreview(previewSubdomain);
+        if (row) {
+            await db.query(`DELETE FROM preview_deployments WHERE id = $1`, [row.id]);
+        }
+        console.log(`🗑️ Preview destroyed: ${previewSubdomain} (PR #${prNumber})`);
+        return { success: true, destroyed: !!row, subdomain: previewSubdomain };
+    }
+
+    // 프리뷰 리소스 물리 정리 (컨테이너 → 이미지 → nginx → 디렉토리). best-effort.
+    async _teardownPreview(previewSubdomain) {
+        // rm -rf 전 최종 안전 가드: pr-<n>- 프리픽스가 아닌 이름은 절대 정리하지
+        // 않는다 (실 프로젝트 서브도메인이 흘러들어오는 사고 차단).
+        if (!previewRules.isPreviewSubdomain(previewSubdomain)) {
+            console.warn(`⚠️ _teardownPreview: not a preview subdomain, refusing: ${previewSubdomain}`);
+            return;
+        }
+        await dockerService.cleanupOldContainers(previewSubdomain, '__none__').catch(() => { });
+        await dockerService.stopContainer(`orbitron-${previewSubdomain}`).catch(() => { });
+        await dockerService.removeImage(previewSubdomain).catch(() => { });
+        // removeProject 는 수동 관리 conf 를 스스로 보호한다 (프리뷰는 해당 없음)
+        await nginxService.removeProject(previewSubdomain).catch(() => { });
+        const previewDir = path.join(PREVIEWS_DIR, previewSubdomain);
+        if (fs.existsSync(previewDir)) {
+            fs.rmSync(previewDir, { recursive: true, force: true });
+        }
+        // startContainer 가 deployments/<sub>/_volumes 를 자동 생성한다 —
+        // 프리뷰 서브도메인 프리픽스 가드 통과가 확인된 이름만 정리
+        const strayDir = path.join(DEPLOYMENTS_DIR, previewSubdomain);
+        if (fs.existsSync(strayDir)) {
+            fs.rmSync(strayDir, { recursive: true, force: true });
+        }
+    }
+
+    // TTL 스윕: updated_at 기준 7일 지난 프리뷰 파괴. server.js 의 시간별
+    // 정리 루프에서 호출된다. 배포 중(락 보유)인 프리뷰는 건너뛴다.
+    async sweepExpiredPreviews(now = Date.now()) {
+        let rows;
+        try {
+            rows = await db.queryAll(`SELECT * FROM preview_deployments`);
+        } catch (e) {
+            console.error('Preview TTL sweep query failed:', e.message);
+            return 0;
+        }
+        const expired = previewRules.selectExpiredPreviews(rows, now);
+        let swept = 0;
+        for (const row of expired) {
+            if (this.activeDeployments.has(`preview:${row.subdomain}`)) continue;
+            try {
+                await this._teardownPreview(row.subdomain);
+                await db.query(`DELETE FROM preview_deployments WHERE id = $1`, [row.id]);
+                console.log(`🧹 Preview TTL sweep: destroyed ${row.subdomain} (PR #${row.pr_number}, last update ${row.updated_at})`);
+                swept++;
+            } catch (e) {
+                console.error(`Preview TTL sweep failed for ${row.subdomain}:`, e.message);
+            }
+        }
+        return swept;
+    }
+
+    // 프리뷰 성공 후 GitHub PR 코멘트 (best-effort, 10초 타임아웃).
+    // 토큰 탐색: previewRules.discoverGithubToken (project env → github_url
+    // 삽입 자격증명 → 서버 env). 없으면 로그만 남기고 조용히 스킵.
+    async _postPreviewComment(project, prNumber, previewSubdomain) {
+        const found = previewRules.discoverGithubToken(project);
+        if (!found) {
+            console.log(`ℹ️ Preview comment skipped for PR #${prNumber}: no GitHub token discoverable`);
+            return;
+        }
+        const ownerRepo = previewRules.parseOwnerRepo(project.github_url);
+        if (!ownerRepo) {
+            console.log(`ℹ️ Preview comment skipped for PR #${prNumber}: cannot parse owner/repo from github_url`);
+            return;
+        }
+        // 수용된 v1 제약: 터널은 프로젝트별 systemd 유닛 + 명시적 hostname ingress
+        // 라 pr-N 서브도메인은 아직 외부에서 도달 불가(내부 Host 헤더 라우팅만).
+        // 와일드카드 *.{TUNNEL_DOMAIN} DNS/ingress 가 추가되면 이 URL 이 그대로
+        // 살아나므로 코멘트 형식은 정식 URL 로 유지한다.
+        const body = `🔍 Preview: ${previewRules.previewUrl(previewSubdomain, process.env.TUNNEL_DOMAIN)}`;
+        const res = await fetch(`https://api.github.com/repos/${ownerRepo}/issues/${prNumber}/comments`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${found.token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'orbitron-preview',
+            },
+            body: JSON.stringify({ body }),
+            signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) {
+            throw new Error(`GitHub comment API ${res.status} (token source: ${found.source})`);
+        }
+        console.log(`💬 Preview comment posted on PR #${prNumber} (${ownerRepo})`);
+    }
+
     // Delete a project completely
     async deleteProject(project) {
+        // 활성 프리뷰 정리 (행은 FK CASCADE 로 지워지지만 컨테이너/nginx/디렉토리는
+        // 여기서 직접 걷어야 잔여물이 남지 않는다)
+        try {
+            const previews = await db.queryAll(
+                `SELECT subdomain FROM preview_deployments WHERE project_id = $1`, [project.id]
+            );
+            for (const p of previews) {
+                // per-preview 격리: 한 프리뷰의 실패(EACCES 등)가 나머지 정리를
+                // 건너뛰게 하면 안 된다
+                try {
+                    await this._teardownPreview(p.subdomain);
+                } catch (e) {
+                    console.error(`Preview teardown failed for ${p.subdomain}: ${e.message}`);
+                }
+            }
+        } catch (e) {
+            console.error(`Preview cleanup during project delete failed: ${e.message}`);
+        }
+
         await this.stop(project);
         await dockerService.removeImage(project.subdomain);
 
