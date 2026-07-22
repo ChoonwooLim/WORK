@@ -24,3 +24,27 @@ orbitron/node_modules/
 
 # External sub-project (managed in own repo: ChoonwooLim/TwinversePS2-Deploy)
 orbitron/deployments/twinverse-ps2/
+
+# --- Added 2026-07-22: runtime data / secrets / vendored repos ---
+# User-uploaded files (contracts, ID copies, business docs — personal data, never commit)
+media-files/uploads/
+
+# Independent git repo (1.4GB, has its own .git) — managed separately
+deskrpg/
+
+# Deployed app checkouts (cloned per-deploy by Orbitron, each has own .git)
+orbitron/deployments/
+
+# Runtime backups
+orbitron/backups/
+
+# One-off migration scripts containing live tokens
+orbitron/update_openclaw_token.js
+orbitron/scripts/_update_openclaw_token.js
+
+# cloudflared binaries (39MB each, auto-updated — do not version)
+orbitron/bin/cloudflared
+orbitron/bin/cloudflared.old.new
+
+# deskrpg runtime secrets (JWT_SECRET, DATABASE_URL)
+infrastructure/deskrpg/.env
