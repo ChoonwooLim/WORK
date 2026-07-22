@@ -48,3 +48,6 @@ orbitron/bin/cloudflared.old.new
 
 # deskrpg runtime secrets (JWT_SECRET, DATABASE_URL)
 infrastructure/deskrpg/.env
+
+# Claude Code worktrees (agent scratch)
+/.claude/worktrees/

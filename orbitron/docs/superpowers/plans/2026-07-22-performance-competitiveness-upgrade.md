@@ -251,7 +251,9 @@ PR 머지/클로즈 → 컨테이너·conf·DNS 정리 확인.
 ## Phase 4: 운영 보호 장치 (기존 대화에서 확인된 결함 보완)
 
 ### Task 4.1: 수동 nginx conf 보호 플래그
-- [ ] 완료
+- [x] 완료 (2026-07-22, merge d7e249d — 스펙 리뷰 + 품질 리뷰 2회전 통과. 스펙 대비 확장:
+  전 도메인 라우트 5곳에 인증서 발급/폐기 이전 409 사전 차단 추가, 소유권 스코프 누출 수정,
+  removeProject는 경고 후 파일 보존. 테스트 하네스(node:test) 이 태스크에서 선행 도입 — 11 tests)
 
 **Files:**
 - Modify: `orbitron/services/nginx.js` `addProject()` — conf 파일 첫 512바이트에
