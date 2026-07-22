@@ -8,9 +8,11 @@ const fs = require('fs');
 const PROJECTS_DIR = path.join(__dirname, '..', 'deployments');
 
 // BuildKit 캐시 마운트 상수 — 자동 생성 Dockerfile 템플릿의 패키지 설치 단계에 공통 사용
-// (Task 1.3 에서 sharing= 옵션 추가 시 여기 한 곳만 수정)
+// pip 는 wheel 캐시를 재사용 시 해시 재검증하지 않으므로 동시 빌드가 캐시를
+// 오염시킬 수 있음 → sharing=locked 로 직렬화 (Task 1.1 리뷰 이월).
+// npm(cacache)은 동시성 안전 → 기본 sharing=shared 유지.
 const NPM_CACHE_MOUNT = '--mount=type=cache,target=/root/.npm';
-const PIP_CACHE_MOUNT = '--mount=type=cache,target=/root/.cache/pip';
+const PIP_CACHE_MOUNT = '--mount=type=cache,target=/root/.cache/pip,sharing=locked';
 
 // 배포별 이미지 태그 보존 라벨 (Task 1.2) — 이 라벨이 붙은 이미지는
 // pruneImages() 의 24h 블랭킷 prune 에서 제외되고, 대신 프로젝트별

@@ -6,7 +6,8 @@
 // Pins:
 //   1. docker build 인자에 --progress=plain 포함 + DOCKER_BUILDKIT=1 env 강제
 //   2. 자동 생성 Dockerfile 템플릿의 npm/pip 설치 단계에 RUN --mount=type=cache
-//      (npm → /root/.npm, pip → /root/.cache/pip)
+//      (npm → /root/.npm, pip → /root/.cache/pip + sharing=locked — 동시 빌드
+//       wheel 캐시 오염 방지, Task 1.1 리뷰 이월)
 //   3. 사용자 정의 Dockerfile (orbitron.yaml build.dockerfile / "# CUSTOM") 은
 //      절대 자동 생성으로 대체되지 않음 (2026-04-26 규칙)
 //   4. 배포별 이미지 태그: orbitron-<sub>:d<deploymentId> 이중 태깅 + 보존 라벨,
@@ -48,7 +49,7 @@ function makeTmpProject(files) {
 }
 
 const NPM_MOUNT = '--mount=type=cache,target=/root/.npm';
-const PIP_MOUNT = '--mount=type=cache,target=/root/.cache/pip';
+const PIP_MOUNT = '--mount=type=cache,target=/root/.cache/pip,sharing=locked';
 
 // ── 1. Build args / env assembly ─────────────────────────────────────────────
 
