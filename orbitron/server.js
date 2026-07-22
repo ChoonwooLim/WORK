@@ -463,6 +463,20 @@ async function start() {
             } catch (e) {
                 console.error('⚠️ Health monitor start failed:', e.message);
             }
+
+            // Resource metrics (Task 2.3): sample docker stats every 60s into an
+            // in-memory 24h ring buffer; only 1-hour aggregates reach the DB
+            // (30-day retention). Kill-switch: METRICS=off (default ON).
+            try {
+                if (String(process.env.METRICS || '').toLowerCase() === 'off') {
+                    console.log('📊 Metrics collector disabled (METRICS=off)');
+                } else {
+                    require('./services/metrics').start();
+                    console.log('📊 Metrics collector started (60s interval)');
+                }
+            } catch (e) {
+                console.error('⚠️ Metrics collector start failed:', e.message);
+            }
         });
     } catch (error) {
         console.error('❌ Failed to start:', error.message);
@@ -477,6 +491,9 @@ function gracefulShutdown(signal) {
     console.log(`\n🛑 ${signal} received. Shutting down gracefully...`);
     try {
         require('./services/monitor').stop(); // Task 2.2: stop the health-check interval
+    } catch (e) { /* ignore — shutdown must proceed */ }
+    try {
+        require('./services/metrics').stop(); // Task 2.3: stop the metrics sampling interval
     } catch (e) { /* ignore — shutdown must proceed */ }
     const { pool } = require('./db/db');
     pool.end().then(() => {

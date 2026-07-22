@@ -721,6 +721,7 @@ function renderProjectOverview() {
       <button class="btn btn-success" onclick="openDeployOptions(${p.id})">▶ 배포/시작</button>
     </div>`}
     <div id="resource-monitor"></div>
+    <div id="metrics-section"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">상태</div>
@@ -817,6 +818,7 @@ function renderProjectOverview() {
       </div>
     </div>` : ''}`;
     if (p.status === 'running') loadResourceStats(p.id);
+    loadMetricsSparklines(p.id);
     loadMediaBackupStatus(p.id);
     loadProjectBackupStatus(p.id);
     if (p.type === 'db_postgres' || (p.env_vars && p.env_vars.DATABASE_URL)) loadDbBackupStatus(p.id);
@@ -2152,6 +2154,82 @@ async function loadResourceStats(projectId) {
           <div class="resource-card"><div class="resource-label">🌐 Network I/O</div><div class="resource-value" style="font-size:14px">${stats.netIO}</div></div>
         </div>`;
     } catch (e) { /* ignore */ }
+}
+
+// ============ 메트릭 스파크라인 (Task 2.3) ============
+// GET /api/projects/:id/metrics 로 24h(기본)/1h/7d 시계열을 받아 손으로 만든
+// 인라인 SVG 스파크라인(CPU%, RAM MiB) 2개를 그린다. 라이브러리 없음 — 값은
+// 전부 숫자라 이스케이프 불필요.
+let metricsRange = '24h';
+let metricsFetchSeq = 0; // stale-fetch 가드 — 최신 요청만 렌더링
+
+async function loadMetricsSparklines(projectId, range) {
+    if (range) metricsRange = range;
+    const seq = ++metricsFetchSeq;
+    const el = document.getElementById('metrics-section');
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/metrics?range=${metricsRange}`);
+        if (seq !== metricsFetchSeq) return; // 더 최신 요청이 대체 — 느린 응답 폐기
+        if (!res.ok) { el.innerHTML = ''; return; }
+        const data = await res.json();
+        if (seq !== metricsFetchSeq) return;
+
+        // 7d: 시간별 집계(avg)를 포인트로 변환한 뒤 미집계 tail 과 병합
+        const cpuPts = [], memPts = [];
+        (data.aggregates || []).forEach((a) => {
+            cpuPts.push({ ts: a.ts, v: a.cpu_avg || 0 });
+            memPts.push({ ts: a.ts, v: a.mem_avg || 0 });
+        });
+        (data.points || []).forEach((p) => {
+            cpuPts.push({ ts: p.ts, v: p.cpuPct || 0 });
+            memPts.push({ ts: p.ts, v: p.memMiB || 0 });
+        });
+        cpuPts.sort((a, b) => a.ts - b.ts);
+        memPts.sort((a, b) => a.ts - b.ts);
+
+        const toggles = ['1h', '24h', '7d'].map((r) =>
+            `<button class="btn btn-sm ${r === metricsRange ? 'btn-primary' : 'btn-ghost'}" onclick="loadMetricsSparklines(${projectId}, '${r}')">${r}</button>`
+        ).join('');
+
+        el.innerHTML = `
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <div style="font-size:14px;font-weight:600;color:var(--text-primary);">📈 리소스 추이 <span style="font-size:11px;font-weight:400;color:var(--text-muted);">(1분 주기 수집)</span></div>
+            <div style="display:flex;gap:4px;">${toggles}</div>
+          </div>
+          ${cpuPts.length < 2
+        ? `<div style="color:var(--text-muted);font-size:13px;padding:12px 0;">아직 표시할 메트릭이 충분하지 않습니다.</div>`
+        : sparklineSvg(cpuPts, { label: 'CPU', unit: '%', color: 'var(--accent)' })
+              + sparklineSvg(memPts, { label: 'RAM', unit: 'MiB', color: 'var(--purple)' })}
+        </div>`;
+    } catch (e) { /* 백그라운드 위젯 — 조용히 실패 */ }
+}
+
+// 단일 path 스파크라인 (~600×60) + min/max/현재값 라벨 — 숫자만 다루므로 안전
+function sparklineSvg(pts, opts) {
+    const W = 600, H = 60, PAD = 4;
+    const vals = pts.map((p) => p.v);
+    const min = Math.min(...vals), max = Math.max(...vals), cur = vals[vals.length - 1];
+    const t0 = pts[0].ts, spanT = Math.max(1, pts[pts.length - 1].ts - t0);
+    const spanV = max - min;
+    const d = pts.map((p, i) => {
+        const x = PAD + ((p.ts - t0) / spanT) * (W - PAD * 2);
+        // 평탄 시리즈(max === min)는 바닥이 아니라 중앙에 수평선으로
+        const y = spanV === 0 ? H / 2 : H - PAD - ((p.v - min) / spanV) * (H - PAD * 2);
+        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const fmt = (v) => (opts.unit === '%' ? `${v.toFixed(1)}%` : `${Math.round(v)} MiB`);
+    return `
+    <div style="margin-top:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:2px;">
+        <span>${opts.label} <span style="color:${opts.color};font-weight:600;">${fmt(cur)}</span></span>
+        <span>min ${fmt(min)} · max ${fmt(max)}</span>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:60px;display:block;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:6px;">
+        <path d="${d}" fill="none" stroke="${opts.color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      </svg>
+    </div>`;
 }
 
 async function loadDashboardResourceStats() {

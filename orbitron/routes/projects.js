@@ -402,6 +402,33 @@ router.get('/:id/stats', async (req, res) => {
     }
 });
 
+// GET /api/projects/:id/metrics?range=1h|24h|7d - 리소스 메트릭 시계열 (Task 2.3)
+// 1h/24h: MetricsCollector in-memory 링 버퍼 (per-minute 샘플, DB 미저장)
+// 7d: DB 시간별 집계 + 아직 집계되지 않은 버퍼 tail
+router.get('/:id/metrics', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+        const metrics = require('../services/metrics');
+        const range = metrics.parseRange(req.query.range);
+        if (!range) return res.status(400).json({ error: 'Invalid range. Use 1h, 24h or 7d.' });
+
+        if (range.key === '7d') {
+            // getAggregates 는 ts 를 EXTRACT(EPOCH) 기반 epoch ms 숫자로 반환 —
+            // DB 세션 tz / Node tz / pg 타입 파서 어디에도 의존하지 않음
+            return res.json({
+                range: range.key,
+                points: metrics.getUnaggregatedTail(project.subdomain),
+                aggregates: await metrics.getAggregates(project.id),
+            });
+        }
+        res.json({ range: range.key, points: metrics.getSeries(project.subdomain, range.ms) });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET /api/projects/:id/commits - Get recent 20 commits for deployment options
 router.get('/:id/commits', async (req, res) => {
     try {
