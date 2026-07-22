@@ -160,6 +160,7 @@ class Deployer extends EventEmitter {
             let actualPort = null;
             let isPixelStreaming = false;
             let isWorker = false;
+            let deployImageTag = null; // orbitron-<sub>:d<deploymentId> — 빌드 성공 시에만 설정 (Task 1.2)
 
             const isDatabase = project.type === 'db_postgres' || project.type === 'db_redis';
             const isVps = project.type === 'vps';
@@ -489,10 +490,14 @@ class Deployer extends EventEmitter {
                 this.emitProgress(project.id, 'build', 'Docker 이미지(또는 Compose) 빌드 중...');
                 logs += '\nBuilding Docker image (or pulling Compose)....\n';
                 try {
-                    const buildResult = await dockerService.buildImage(project);
+                    // deploymentId 는 빌드 전에 이미 생성됨 (위 INSERT) — 배포별 태그에 사용
+                    const buildResult = await dockerService.buildImage(project, deploymentId);
                     logs += buildResult.logs;
                     if (buildResult.isCompose) {
                         isCompose = true;
+                    }
+                    if (buildResult.deployTag) {
+                        deployImageTag = buildResult.deployTag;
                     }
                     logs += '\n--- Build complete ---\n';
                     this.emitProgress(project.id, 'build', 'Docker 빌드 완료');
@@ -822,10 +827,10 @@ class Deployer extends EventEmitter {
             logs += `✅ 배포 성공! (총 소요 시간: ${elapsed}초)\n`;
             logs += `   완료 시간: ${new Date().toLocaleString('ko-KR')}\n`;
 
-            // Final log save with 'success' status
+            // Final log save with 'success' status (+ 배포별 이미지 태그 기록 — 롤백용, Task 1.2)
             await db.query(
-                `UPDATE deployments SET status = 'success', logs = $1, finished_at = NOW() WHERE id = $2`,
-                [this._truncateLogs(logs), deploymentId]
+                `UPDATE deployments SET status = 'success', logs = $1, image_tag = $2, finished_at = NOW() WHERE id = $3`,
+                [this._truncateLogs(logs), deployImageTag, deploymentId]
             );
 
             // Clean up old Blue-Green containers AFTER successful routing
@@ -833,6 +838,12 @@ class Deployer extends EventEmitter {
                 logs += '\n🧹 이전 버전 컨테이너 정리 중...\n';
                 await dockerService.cleanupOldContainers(project.subdomain, containerName);
                 logs += '  ✅ 이전 컨테이너 정리 완료\n';
+            }
+
+            // Per-project deploy-tag retention: 최신 N개(기본 3) 배포 태그만 유지 (Task 1.2)
+            // 성공 배포 직후 해당 프로젝트만 대상 — 글로벌 prune(pruneImages, finally)과 분리
+            if (deployImageTag) {
+                dockerService.pruneDeployImages(project.subdomain).catch(() => { });
             }
 
             this.emitProgress(project.id, 'done', '배포가 성공적으로 완료되었습니다!', 'success');
