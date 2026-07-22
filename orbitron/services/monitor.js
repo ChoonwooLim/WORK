@@ -40,7 +40,7 @@ const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 //   (routes/projects.js 참고) SQL 로 거를 수 없어 JS 쪽에서 제외한다.
 // - building/stopped/failed 등은 SELECT 단계에서 이미 제외.
 const SELECT_TARGETS_SQL =
-    "SELECT id, name, port, container_id, status, env_vars FROM projects " +
+    "SELECT id, name, subdomain, port, container_id, status, env_vars FROM projects " +
     "WHERE status IN ('running', 'unhealthy') " +
     "AND (type IS NULL OR type NOT IN ('db_postgres', 'db_redis')) " +
     "AND port IS NOT NULL";
@@ -162,10 +162,13 @@ class Monitor {
         };
 
         if (alive) {
-            if (state.markedUnhealthy) {
+            // markedUnhealthy 는 in-memory 라 서버 재시작 시 소실 — DB 에
+            // 'unhealthy' 로 남아있는 행(row status)도 복원 대상으로 본다.
+            if (state.markedUnhealthy || project.status === 'unhealthy') {
                 await this._setStatus(project.id, 'running');
-                // 복구 알림: 쿨다운 면제, state 삭제로 outage 당 1회 보장
-                await this._alert(`✅ ${project.name} 복구됨`, `헬스체크 정상 응답 — status 를 'running' 으로 복원했습니다.`);
+                // 복구 알림: 쿨다운 면제, state 삭제 + status 복원으로 outage 당 1회 보장
+                await this._alert(`✅ ${project.name} 복구됨`,
+                    `${this._where(project)}\n헬스체크 정상 응답 — status 를 'running' 으로 복원했습니다.`);
             }
             this.states.delete(project.id);
             return;
@@ -185,7 +188,7 @@ class Monitor {
                 state.markedUnhealthy = true;
                 await this._maybeAlert(project, state,
                     `🚨 ${project.name} 응답 없음 (compose)`,
-                    `연속 ${state.failures}회 헬스체크 실패 — compose 스택은 자동 재시작하지 않습니다. 수동 확인이 필요합니다.\n마지막 오류: ${state.lastError || 'HTTP 응답 없음'}`);
+                    `${this._where(project)}\n연속 ${state.failures}회 헬스체크 실패 — compose 스택은 자동 재시작하지 않습니다. 수동 확인이 필요합니다.\n마지막 오류: ${state.lastError || 'HTTP 응답 없음'}`);
             }
             return;
         }
@@ -206,8 +209,13 @@ class Monitor {
             state.markedUnhealthy = true;
             await this._maybeAlert(project, state,
                 `🚨 ${project.name} 응답 없음`,
-                `연속 ${state.failures}회 헬스체크 실패 (자동 재시작 1회 시도 후에도 실패) — status='unhealthy'.\n마지막 오류: ${state.lastError || 'HTTP 응답 없음'}`);
+                `${this._where(project)}\n연속 ${state.failures}회 헬스체크 실패 (자동 재시작 1회 시도 후에도 실패) — status='unhealthy'.\n마지막 오류: ${state.lastError || 'HTTP 응답 없음'}`);
         }
+    }
+
+    // 알림 본문 공통 헤더 — 어떤 프로젝트/어디를 프로브했는지 한 줄로 식별
+    _where(project) {
+        return `프로젝트: ${project.subdomain || project.name} (port ${project.port})`;
     }
 
     // running↔unhealthy 전이만 허용 — building/stopped 등은 재가드로 절대 덮지 않음

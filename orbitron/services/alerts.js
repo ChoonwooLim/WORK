@@ -10,6 +10,9 @@
 // - zero-dependency: Node >= 24 global fetch + AbortSignal.timeout 사용.
 
 const TELEGRAM_TIMEOUT_MS = 10000;
+// Telegram sendMessage 는 text 4096자 제한 — 초과 시 요청 전체가 400 으로
+// 실패하므로 여유를 두고 4000자에서 자른다 (긴 오류 로그가 알림을 죽이면 안 됨).
+const TELEGRAM_MAX_TEXT = 4000;
 
 function isConfigured() {
     return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
@@ -22,7 +25,8 @@ function isConfigured() {
  * @returns {Promise<boolean>}
  */
 async function sendAlert(title, body) {
-    const text = `${title}\n\n${body}`;
+    let text = `${title}\n\n${body}`;
+    if (text.length > TELEGRAM_MAX_TEXT) text = `${text.slice(0, TELEGRAM_MAX_TEXT - 1)}…`;
     try {
         if (!isConfigured()) {
             console.warn(`[alerts] telegram 미설정 — 콘솔 폴백: ${text}`);
@@ -36,7 +40,11 @@ async function sendAlert(title, body) {
             signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS),
         });
         if (!res.ok) {
-            console.error(`[alerts] telegram 전송 실패: HTTP ${res.status}`);
+            // 응답 본문에 Telegram 의 실제 오류("chat not found" 등)가 담기므로
+            // 설정 오류를 로그 한 줄로 진단할 수 있게 같이 남긴다 (실패해도 무시).
+            let detail = '';
+            try { detail = String(await res.text()).slice(0, 500); } catch { /* ignore */ }
+            console.error(`[alerts] telegram 전송 실패: HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
             return false;
         }
         return true;
@@ -46,4 +54,4 @@ async function sendAlert(title, body) {
     }
 }
 
-module.exports = { sendAlert, isConfigured, TELEGRAM_TIMEOUT_MS };
+module.exports = { sendAlert, isConfigured, TELEGRAM_TIMEOUT_MS, TELEGRAM_MAX_TEXT };

@@ -28,8 +28,8 @@ const MIN30 = 30 * 60 * 1000;
 
 function project(overrides = {}) {
     return {
-        id: 1, name: 'webapp', port: 3100, container_id: 'orbitron-webapp-abc123',
-        status: 'running', env_vars: {},
+        id: 1, name: 'webapp', subdomain: 'webapp-sub', port: 3100,
+        container_id: 'orbitron-webapp-abc123', status: 'running', env_vars: {},
         ...overrides,
     };
 }
@@ -161,6 +161,8 @@ test('compose-manual project: no restart, unhealthy + alert on 3rd failure', asy
     assert.strictEqual(h.alertCalls.length, 1);
     assert.match(h.alertCalls[0].title, /iiff/);
     assert.match(h.alertCalls[0].body, /자동 재시작하지 않습니다/);
+    assert.match(h.alertCalls[0].body, /webapp-sub/); // subdomain 포함
+    assert.match(h.alertCalls[0].body, /port 3100/); // port 포함
     await failTicks(h, 10); // 계속 실패해도 재시작 금지 + 쿨다운으로 재알림 억제
     assert.deepStrictEqual(h.restarts, []);
     assert.strictEqual(h.alertCalls.length, 1);
@@ -179,6 +181,8 @@ test('6 consecutive failures mark unhealthy with last error in the alert', async
     assert.strictEqual(h.alertCalls.length, 1);
     assert.match(h.alertCalls[0].title, /webapp/);
     assert.match(h.alertCalls[0].body, /ECONNREFUSED/); // 마지막 오류 포함
+    assert.match(h.alertCalls[0].body, /webapp-sub/); // subdomain 포함
+    assert.match(h.alertCalls[0].body, /port 3100/); // port 포함
 });
 
 // ── 6. 알림 쿨다운 ──────────────────────────────────────────────────────────
@@ -240,6 +244,23 @@ test('the SELECT excludes db types, requires a port, and includes unhealthy for 
     assert.match(sql, /status IN \('running', 'unhealthy'\)/);
     assert.match(sql, /type NOT IN \('db_postgres', 'db_redis'\)/);
     assert.match(sql, /port IS NOT NULL/);
+    assert.match(sql, /subdomain/); // 알림 본문용
+});
+
+test('a project persisted as unhealthy (e.g. across a server restart) is restored on a healthy probe', async () => {
+    // 서버 재시작으로 in-memory state(markedUnhealthy)는 사라졌지만 DB 행은
+    // 'unhealthy' 인 상황 — row status 만으로도 복원 + 복구 알림이 나가야 한다.
+    const h = harness({ projects: [project({ status: 'unhealthy' })] });
+    await h.monitor.tick();
+    assert.strictEqual(h.updates.length, 1);
+    assert.deepStrictEqual(h.updates[0].params, ['running', 1]);
+    assert.strictEqual(h.alertCalls.length, 1);
+    assert.match(h.alertCalls[0].title, /복구됨/);
+    // 복원 후(운영에선 UPDATE 로 행이 running 이 됨) 더 이상 알림 없음
+    h.projects = [project({ status: 'running' })];
+    await h.monitor.tick();
+    assert.strictEqual(h.alertCalls.length, 1);
+    assert.strictEqual(h.updates.length, 1);
 });
 
 // ── 10. pixel_streaming 제외 ────────────────────────────────────────────────
@@ -339,6 +360,55 @@ test('alerts: configured sendAlert POSTs plain text to the Telegram API (fetch s
         assert.strictEqual(payload.parse_mode, undefined); // plain text — 이스케이프 버그 방지
     } finally {
         global.fetch = origFetch;
+    }
+});
+
+test('alerts: text is truncated to the Telegram limit (long lastError must not kill the alert)', async (t) => {
+    process.env.TELEGRAM_BOT_TOKEN = 'tok';
+    process.env.TELEGRAM_CHAT_ID = 'chat';
+    t.after(() => {
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.TELEGRAM_CHAT_ID;
+    });
+    const fetches = [];
+    const origFetch = global.fetch;
+    global.fetch = async (url, opts) => { fetches.push({ url, opts }); return { ok: true, status: 200 }; };
+    try {
+        const ok = await alerts.sendAlert('제목', 'x'.repeat(10000));
+        assert.strictEqual(ok, true);
+        const text = JSON.parse(fetches[0].opts.body).text;
+        assert.strictEqual(text.length, alerts.TELEGRAM_MAX_TEXT); // 4000 (< 4096 한도)
+        assert.ok(text.endsWith('…'));
+        assert.ok(text.startsWith('제목\n\n'));
+    } finally {
+        global.fetch = origFetch;
+    }
+});
+
+test('alerts: non-ok response logs the Telegram error body for diagnosis', async (t) => {
+    process.env.TELEGRAM_BOT_TOKEN = 'tok';
+    process.env.TELEGRAM_CHAT_ID = 'chat';
+    t.after(() => {
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.TELEGRAM_CHAT_ID;
+    });
+    const origFetch = global.fetch;
+    const origErr = console.error;
+    const errors = [];
+    console.error = (...args) => errors.push(args.join(' '));
+    global.fetch = async () => ({
+        ok: false, status: 400,
+        text: async () => '{"ok":false,"description":"Bad Request: chat not found"}',
+    });
+    try {
+        const ok = await alerts.sendAlert('t', 'b');
+        assert.strictEqual(ok, false);
+        assert.strictEqual(errors.length, 1);
+        assert.match(errors[0], /HTTP 400/);
+        assert.match(errors[0], /chat not found/);
+    } finally {
+        global.fetch = origFetch;
+        console.error = origErr;
     }
 });
 
