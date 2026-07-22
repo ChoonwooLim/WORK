@@ -106,6 +106,13 @@ test('external hosts (e.g. cloud-hosted DBs) are never rewritten', () => {
     assert.strictEqual(managedDatabaseUrl(current, TARGET), current);
 });
 
+test('postgres URLs default to port 5432 when omitted', () => {
+    // Current omits the port, target says :5432 explicitly → treated as equal.
+    const current = 'postgresql://u:p@orbitron-myapp-db/mydb';
+    assert.strictEqual(shouldReplaceManagedDatabaseUrl(current, TARGET), false);
+    assert.strictEqual(managedDatabaseUrl(current, TARGET), current);
+});
+
 test('redis URLs default to port 6379 when omitted', () => {
     // Current omits the port, target says :6379 explicitly → treated as equal.
     const target = 'redis://orbitron-myapp-redis:6379/0';

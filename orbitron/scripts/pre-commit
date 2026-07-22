@@ -10,6 +10,8 @@
 
 set -u
 
+command -v npm >/dev/null 2>&1 || { echo "pre-commit: npm not found — cannot run checks" >&2; exit 1; }
+
 repo_root="$(git rev-parse --show-toplevel)" || exit 1
 orbitron_dir="$repo_root/orbitron"
 

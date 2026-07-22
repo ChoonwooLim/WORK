@@ -7,8 +7,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test test/*.test.js",
-    "lint": "eslint services/ routes/ db/ server.js",
-    "lint:fix": "eslint services/ routes/ db/ server.js --fix",
+    "lint": "eslint services/ routes/ db/ server.js test/",
+    "lint:fix": "eslint services/ routes/ db/ server.js test/ --fix",
     "preflight": "npm run lint -- --quiet"
   },
   "keywords": [],
