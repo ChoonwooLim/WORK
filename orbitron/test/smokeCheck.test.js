@@ -10,10 +10,13 @@
 //   4. timeoutMs 가 checkHttp 에 그대로 전달됨 (기본값 포함) — 실제 타이머 없음
 //   5. 재시도 간격 = intervalMs, sleep 호출 횟수 = 시도 횟수 - 1 (주입 sleep)
 //   6. 결과 형태: { ok, lastStatus, lastError, attempts }
-//   7. URL = http://127.0.0.1:<port><path>
+//   7. URL = http://<host>:<port><path> (host 기본 127.0.0.1, 배포 경로는
+//      컨테이너 IP 를 host 로 전달 — nginx 프록시 대상과 동일 타깃)
 //   8. onAttempt 진행 콜백 — 호출 내용 + 콜백 throw 가 체크를 깨지 않음
 //   9. resolveHealthPath: 유효/무효('/'미시작·공백)→기본값+정확한 경고,
 //      미지정→기본값·경고 없음, health_path / health.path / services.web 우선순위
+//  10. nginx.js 의 pure 감지 헬퍼: parseListenPorts(0.0.0.0 LISTEN 만) /
+//      selectListenPort(기대 포트 우선, 없으면 첫 감지, 전무하면 null)
 //
 // 실제 네트워크/타이머 없음 — checkHttp/sleep 전부 주입.
 
@@ -119,10 +122,18 @@ test('5xx 와 네트워크 오류 혼재 → 마지막 status/error 모두 보�
     assert.match(res.lastError, /ECONNREFUSED/);
 });
 
-test('URL 형식: http://127.0.0.1:<port><path>', async () => {
+test('URL 형식: 기본 host 는 127.0.0.1', async () => {
     const h = harness([200]);
     await smokeCheck(4321, '/healthz', h.opts);
     assert.strictEqual(h.calls[0].url, 'http://127.0.0.1:4321/healthz');
+});
+
+test('URL 형식: host 옵션 = 컨테이너 IP 타깃 (배포 스모크 체크 경로)', async () => {
+    // 배포 흐름은 host-mapped 포트가 아니라 컨테이너 IP + 감지된 실제 리슨
+    // 포트를 넘긴다 — nginx 가 프록시할 대상과 동일한 타깃 구성 핀.
+    const h = harness([200]);
+    await smokeCheck(8000, '/healthz', { ...h.opts, host: '172.18.0.5' });
+    assert.strictEqual(h.calls[0].url, 'http://172.18.0.5:8000/healthz');
 });
 
 test('timeoutMs 가 checkHttp 로 전달됨 (명시값 + 기본값) — 실제 타이머 미사용', async () => {
@@ -213,4 +224,41 @@ test('resolveHealthPath: 문자열 아닌 값(숫자 등) → 기본값 + 경고
     const r = resolveHealthPath({ health_path: 42 });
     assert.strictEqual(r.path, '/');
     assert.match(r.warning, /잘못된 health_path/);
+});
+
+// ── nginx.js 리슨 포트 감지의 pure 부분 (스모크 타깃 구성이 공유) ─────────
+// detectContainerListenPorts(docker exec 폴링)와 컨테이너 IP inspect 는
+// 부수효과라 여기서 테스트하지 않는다 — parse/select 가 판정 로직 전부를 진다.
+
+const { parseListenPorts, selectListenPort } = require('../services/nginx');
+
+const PROC_NET_TCP_SAMPLE = [
+    '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode',
+    '   0: 00000000:1F40 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000000000000000 100 0 0 10 0',
+    '   1: 0100007F:0BB8 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12346 1 0000000000000000 100 0 0 10 0',
+    '   2: 00000000:1F41 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1000        0 12347 1 0000000000000000 100 0 0 10 0',
+].join('\n');
+
+test('parseListenPorts: 0.0.0.0 LISTEN(0A)만 추출 — 루프백 바인딩/비 LISTEN 제외', () => {
+    const ports = parseListenPorts(PROC_NET_TCP_SAMPLE);
+    // 0x1F40 = 8000 (0.0.0.0 LISTEN ✓), 0x0BB8 = 3000 (127.0.0.1 바인딩 ✗),
+    // 0x1F41 = 8001 (state 01 = ESTABLISHED ✗)
+    assert.deepStrictEqual([...ports], [8000]);
+});
+
+test('parseListenPorts: 빈/이상 입력 → 빈 Set', () => {
+    assert.strictEqual(parseListenPorts('').size, 0);
+    assert.strictEqual(parseListenPorts('garbage\nlines').size, 0);
+});
+
+test('selectListenPort: 기대 포트가 열려 있으면 그대로', () => {
+    assert.strictEqual(selectListenPort(new Set([3000, 8000]), 3000), 3000);
+});
+
+test('selectListenPort: 기대 포트 미리슨 → 첫 감지 포트 (하드코딩 CMD 구제)', () => {
+    assert.strictEqual(selectListenPort(new Set([8000]), 3576), 8000);
+});
+
+test('selectListenPort: 아무것도 리슨하지 않으면 null (스모크 체크는 이걸 실패로 판정)', () => {
+    assert.strictEqual(selectListenPort(new Set(), 3000), null);
 });

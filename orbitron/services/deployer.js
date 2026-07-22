@@ -710,8 +710,13 @@ class Deployer extends EventEmitter {
                     // 대상: 단일 웹 컨테이너 경로만 (compose 는 단일 포트가 없어 제외;
                     // VPS/DB/worker/pixel-streaming 은 이 분기에 도달하지 않음).
                     // 롤백 배포(rollbackImageTag)도 같은 경로를 지나므로 동일하게 검사된다.
-                    // 검사 주소는 monitor.js 관례와 동일한 host-mapped 포트
-                    // (docker run -p <port>:<port> — 127.0.0.1:<actualPort>).
+                    //
+                    // 프로브 타깃 = nginx 가 프록시할 대상과 '정확히 동일': 컨테이너 IP
+                    // + /proc/net/tcp 감지(nginx.js 와 같은 헬퍼)로 찾은 실제 리슨 포트.
+                    // host-mapped 포트(127.0.0.1:<actualPort>)는 쓰지 않는다 — PORT env
+                    // 를 무시하고 내부 포트에 하드코딩된 앱은 host 포트로 도달 불가지만
+                    // nginx 감지가 구제하므로, host 포트 프로브는 멀쩡한 배포를 실패시킨다
+                    // (monitor.js 를 같은 이유로 nginx 경유 프로브로 고친 실장애 참고).
                     if (!isCompose) {
                         // health_path: orbitron.yaml 오버라이드 (기본 '/').
                         // 롤백 모드에서도 projectDir 의 yaml 을 읽는다 — 소스와 이미지가
@@ -728,9 +733,48 @@ class Deployer extends EventEmitter {
                             }
                         }
 
+                        // 1) 실제 리슨 포트 감지 (nginx generateConfig 와 동일 헬퍼/예산 12초)
+                        this.emitProgress(project.id, 'container', '🩺 스모크 체크: 리슨 포트 감지 중...');
+                        const listenPorts = nginxService.detectContainerListenPorts(containerName);
+                        const smokePort = nginxService.selectListenPort(listenPorts, actualPort);
+                        if (smokePort === null) {
+                            logs += `\n❌ 스모크 체크 실패: 컨테이너가 12초 안에 어떤 포트도 LISTEN 하지 않았습니다 — nginx 가 프록시할 대상이 없습니다.\n`;
+                            try {
+                                const { stdout: cLogs } = await execAsync(`docker logs ${containerName} --tail 30 2>&1`);
+                                logs += `\n--- 컨테이너 로그 (마지막 30줄) ---\n${cLogs}\n`;
+                            } catch { }
+                            await saveLogs();
+                            throw new Error(
+                                '스모크 체크 실패: 컨테이너가 리슨 포트를 열지 않았습니다 (12초 대기) — nginx 전환을 중단했습니다. ' +
+                                '/ Smoke check failed: container never opened a listening port (12s wait) — nginx switch aborted.'
+                            );
+                        }
+                        if (smokePort !== actualPort) {
+                            logs += `\n  ℹ️ 리슨 포트 감지: 기대 포트 ${actualPort} 대신 ${smokePort} 에서 LISTEN 중 (하드코딩 CMD 가능성 — nginx 도 같은 포트로 프록시합니다)\n`;
+                        }
+
+                        // 2) 컨테이너 IP (Linux 호스트는 docker bridge IP 로 직접 라우팅 가능)
+                        let containerIp = '';
+                        try {
+                            const { stdout: ipOut } = await execFileAsync('docker', [
+                                'inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', containerName,
+                            ]);
+                            containerIp = ipOut.trim();
+                        } catch { /* 아래 공통 실패 처리 */ }
+                        if (!containerIp) {
+                            logs += `\n❌ 스모크 체크 실패: 컨테이너 IP 를 확인할 수 없습니다 (네트워크 미연결?) — nginx 도 도달할 수 없는 상태입니다.\n`;
+                            await saveLogs();
+                            throw new Error(
+                                '스모크 체크 실패: 컨테이너 IP 조회 실패 — nginx 전환을 중단했습니다. ' +
+                                '/ Smoke check failed: could not resolve the container IP — nginx switch aborted.'
+                            );
+                        }
+
+                        // 3) HTTP 프로브 (5xx/무응답 = 실패, 4xx = 통과)
                         this.emitProgress(project.id, 'container', `🩺 스모크 체크 중 (GET ${healthPath})...`);
-                        logs += `\n🩺 스모크 체크: http://127.0.0.1:${actualPort}${healthPath} (5xx/무응답 = 실패, 4xx = 통과)\n`;
-                        const smokeResult = await smokeCheck(actualPort, healthPath, {
+                        logs += `\n🩺 스모크 체크: http://${containerIp}:${smokePort}${healthPath} (5xx/무응답 = 실패, 4xx = 통과)\n`;
+                        const smokeResult = await smokeCheck(smokePort, healthPath, {
+                            host: containerIp,
                             onAttempt: ({ attempt, total, status, error }) => {
                                 logs += `🩺 스모크 체크: GET ${healthPath} → ${status !== null ? `HTTP ${status}` : error} (시도 ${attempt}/${total})\n`;
                             },

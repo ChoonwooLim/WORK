@@ -44,7 +44,11 @@ function defaultSleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// GET http://127.0.0.1:<port><path> 를 최대 retries 회 시도.
+// GET http://<host>:<port><path> 를 최대 retries 회 시도 (host 기본 127.0.0.1).
+// 배포 스모크 체크는 host = 컨테이너 IP, port = /proc/net/tcp 로 감지된 실제
+// 리슨 포트를 넘긴다 (nginx 가 프록시할 대상과 정확히 동일한 타깃 —
+// host-mapped 포트는 PORT env 를 무시하는 하드코딩 앱에서 도달 불가하므로
+// 프로브 대상이 아니다).
 // 반환: { ok, lastStatus, lastError, attempts }
 //   - lastStatus: 마지막으로 받은 HTTP status (응답이 한 번도 없었으면 null)
 //   - lastError:  마지막 네트워크 오류 메시지 (없으면 null) — 성공 시에도
@@ -54,6 +58,7 @@ function defaultSleep(ms) {
 // 콜백의 예외가 체크 자체를 깨지 않도록 격리한다.
 async function smokeCheck(port, path = HEALTH_PATH_DEFAULT, options = {}) {
     const {
+        host = '127.0.0.1',
         timeoutMs = SMOKE_DEFAULTS.timeoutMs,
         retries = SMOKE_DEFAULTS.retries,
         intervalMs = SMOKE_DEFAULTS.intervalMs,
@@ -62,7 +67,7 @@ async function smokeCheck(port, path = HEALTH_PATH_DEFAULT, options = {}) {
         onAttempt = null,
     } = options;
 
-    const url = `http://127.0.0.1:${port}${path}`;
+    const url = `http://${host}:${port}${path}`;
     const total = Math.max(1, retries);
     let lastStatus = null;
     let lastError = null;
