@@ -24,8 +24,9 @@ const { UsageError, AuthError, ApiError, exitCodeFor, EXIT } = require('../cli/l
 const { normalizeGitUrl, resolveProject } = require('../cli/lib/resolve');
 const { formatTable, colorEnabled, colorize, colorizeStatus, visibleWidth } = require('../cli/lib/format');
 const { pollDeployment } = require('../cli/lib/poll');
-const { readConfig, writeConfig, clearConfig, normalizeServerUrl } = require('../cli/lib/config');
+const { readConfig, writeConfig, clearConfig, normalizeServerUrl, isInsecureServerUrl } = require('../cli/lib/config');
 const { ApiClient } = require('../cli/lib/api');
+const { HANDLERS } = require('../cli/lib/commands');
 
 // ── 1. Arg parsing ───────────────────────────────────────────────────────────
 
@@ -303,6 +304,77 @@ test('config: normalizeServerUrl — 스킴 보정/슬래시 제거', () => {
     assert.strictEqual(normalizeServerUrl('orbitron.twinverse.org'), 'https://orbitron.twinverse.org');
     assert.strictEqual(normalizeServerUrl('http://localhost:4000/'), 'http://localhost:4000');
     assert.strictEqual(normalizeServerUrl('https://x.example//'), 'https://x.example');
+});
+
+test('config: isInsecureServerUrl — 비-localhost http 만 경고 대상', () => {
+    assert.strictEqual(isInsecureServerUrl('http://orbitron.example.com'), true);
+    assert.strictEqual(isInsecureServerUrl('http://192.168.219.117:4000'), true);
+    assert.strictEqual(isInsecureServerUrl('https://orbitron.example.com'), false);
+    assert.strictEqual(isInsecureServerUrl('http://localhost:4000'), false);
+    assert.strictEqual(isInsecureServerUrl('http://127.0.0.1:4000'), false);
+    assert.strictEqual(isInsecureServerUrl('http://[::1]:4000'), false);
+    assert.strictEqual(isInsecureServerUrl('http://app.localhost:4000'), false);
+    assert.strictEqual(isInsecureServerUrl('not a url'), false);
+});
+
+// ── 5b. previews rm 확인 프롬프트 (파괴적 작업 — y/N) ────────────────────────
+
+// HANDLERS.previews 를 주입 컨텍스트로 직접 실행 — 네트워크/서버 없음
+function previewsRmContext({ answer, deletions, questions }) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbitronrm-'));
+    const configFile = path.join(dir, '.orbitronrc');
+    writeConfig(configFile, { server: 'http://fake', token: 'opat_' + 'a'.repeat(40) });
+    const out = { buf: '', write(s) { this.buf += s; } };
+    return {
+        dir,
+        out,
+        ctx: {
+            parsed: { command: 'previews', action: 'rm', project: 'myapp', pr: 7 },
+            env: { NO_COLOR: '1' },
+            stdout: out,
+            stderr: out,
+            configFile,
+            isTTY: false,
+            makeClient: () => ({
+                projects: async () => [{ id: 1, name: 'My App', subdomain: 'myapp' }],
+                deletePreview: async (id, pr) => { deletions.push([id, pr]); return { success: true }; },
+            }),
+            ask: async (q) => { questions.push(q); return answer; },
+            getGitRemote: () => null,
+            cwd: '/tmp',
+        },
+    };
+}
+
+test('previews rm: y 응답 → 삭제, 프롬프트에 프로젝트/PR 번호 포함', async () => {
+    const deletions = []; const questions = [];
+    const { dir, ctx } = previewsRmContext({ answer: 'y', deletions, questions });
+    try {
+        const code = await HANDLERS.previews(ctx);
+        assert.strictEqual(code, EXIT.OK);
+        assert.deepStrictEqual(deletions, [[1, 7]]);
+        assert.strictEqual(questions.length, 1);
+        assert.match(questions[0], /myapp/);
+        assert.match(questions[0], /#7/);
+        assert.match(questions[0], /\[y\/N\]/);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('previews rm: 기본값(빈 입력)/n 응답 → 삭제 안 함, exit 0', async () => {
+    for (const answer of ['', 'n', 'N', 'nope']) {
+        const deletions = []; const questions = [];
+        const { dir, ctx, out } = previewsRmContext({ answer, deletions, questions });
+        try {
+            const code = await HANDLERS.previews(ctx);
+            assert.strictEqual(code, EXIT.OK);
+            assert.deepStrictEqual(deletions, []);
+            assert.match(out.buf, /취소|Cancelled/);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
 });
 
 // ── 6. Exit-code mapping ─────────────────────────────────────────────────────

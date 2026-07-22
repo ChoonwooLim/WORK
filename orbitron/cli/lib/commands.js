@@ -10,7 +10,7 @@ const { execFileSync } = require('node:child_process');
 
 const { ApiClient } = require('./api');
 const { UsageError, AuthError, ApiError, EXIT } = require('./errors');
-const { readConfig, writeConfig, clearConfig, normalizeServerUrl, DEFAULT_SERVER } = require('./config');
+const { readConfig, writeConfig, clearConfig, normalizeServerUrl, isInsecureServerUrl, DEFAULT_SERVER } = require('./config');
 const { formatTable, colorEnabled, colorizeStatus, colorize } = require('./format');
 const { resolveProject } = require('./resolve');
 const { pollDeployment } = require('./poll');
@@ -117,6 +117,11 @@ async function cmdLogin(ctx) {
     const server = normalizeServerUrl(ctx.parsed.server || existing.server || DEFAULT_SERVER);
 
     ctx.stdout.write(`서버 / Server: ${server}\n`);
+    if (isInsecureServerUrl(server)) {
+        // 경고만 하고 진행 (localhost/127.0.0.1 은 조용히 허용)
+        ctx.stderr.write('경고: http:// 는 암호화되지 않아 비밀번호와 토큰이 평문으로 전송됩니다. 가능하면 https:// 를 사용하세요.\n');
+        ctx.stderr.write('Warning: plain http:// sends your password and token unencrypted. Use https:// if possible.\n');
+    }
     const email = await ctx.ask('Email: ');
     if (!email) throw new UsageError('이메일을 입력하세요. / Email is required.');
     const password = await ctx.askHidden('Password: ');
@@ -233,6 +238,14 @@ async function cmdPreviews(ctx) {
     const project = await findProject(ctx, client, ctx.parsed.project);
 
     if (ctx.parsed.action === 'rm') {
+        // 파괴적 작업 — 롤백과 동일한 y/N 확인 (non-TTY stdin 도 동일하게 한 줄 읽음)
+        const confirm = await ctx.ask(
+            `${project.name} (${project.subdomain}) 의 프리뷰 PR #${ctx.parsed.pr} 을 삭제할까요? / Delete preview PR #${ctx.parsed.pr} of ${project.subdomain}? [y/N]: `
+        );
+        if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
+            ctx.stdout.write('취소했습니다. / Cancelled.\n');
+            return EXIT.OK;
+        }
         await client.deletePreview(project.id, ctx.parsed.pr);
         ctx.stdout.write(`프리뷰 삭제 완료 / Preview removed: PR #${ctx.parsed.pr}\n`);
         return EXIT.OK;

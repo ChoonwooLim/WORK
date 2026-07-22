@@ -61,8 +61,16 @@ orbitron logs myapp --tail 100                           # 컨테이너 로그
 - `ORBITRON_CONFIG` 환경변수로 경로를 바꿀 수 있습니다 (주로 테스트용).
 - 색상 출력은 [`NO_COLOR`](https://no-color.org) 환경변수를 존중하며, TTY 가 아니면 자동으로 꺼집니다.
 
+## 보안 / Security
+
+- PAT(개인 액세스 토큰)는 `POST /api/auth/tokens` 로 발급되고 서버에는 SHA-256 해시만 저장됩니다.
+  구버전 서버(PAT 미지원)에서는 자동으로 JWT 저장으로 폴백합니다 (7일 후 재로그인 필요).
+- **PAT 는 v1 에서 만료(`expires_at`)가 없습니다.** 더 이상 쓰지 않는 토큰은 `orbitron logout`
+  또는 API(`DELETE /api/auth/tokens/:id`)로 직접 폐기하세요. /
+  PATs do not expire in v1 — revoke them via `orbitron logout` or the API when no longer needed.
+- `--server` 에 localhost 가 아닌 `http://` 주소를 주면 비밀번호/토큰이 평문으로 전송된다는
+  경고를 출력합니다 (차단하지는 않음). 가능하면 `https://` 를 사용하세요.
+
 ## 참고 / Notes
 
 - 로그 실시간 팔로우(`-f`)는 v1 미지원 — 서버에 컨테이너 로그 SSE 엔드포인트가 아직 없습니다.
-- PAT(개인 액세스 토큰)는 `POST /api/auth/tokens` 로 발급되고 서버에는 SHA-256 해시만 저장됩니다.
-  구버전 서버(PAT 미지원)에서는 자동으로 JWT 저장으로 폴백합니다 (7일 후 재로그인 필요).

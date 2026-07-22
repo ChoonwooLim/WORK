@@ -45,4 +45,19 @@ function normalizeServerUrl(url) {
     return u.replace(/\/+$/, '');
 }
 
-module.exports = { DEFAULT_SERVER, configPath, readConfig, writeConfig, clearConfig, normalizeServerUrl };
+// 평문 http:// 로 비밀번호/토큰이 나가는 경우 감지 (경고용 — 차단 아님).
+// localhost/127.0.0.1/::1/*.localhost 는 조용히 허용.
+function isInsecureServerUrl(url) {
+    let u;
+    try {
+        u = new URL(url);
+    } catch (e) {
+        return false;
+    }
+    if (u.protocol !== 'http:') return false;
+    const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, ''); // [::1] → ::1
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost')) return false;
+    return true;
+}
+
+module.exports = { DEFAULT_SERVER, configPath, readConfig, writeConfig, clearConfig, normalizeServerUrl, isInsecureServerUrl };
