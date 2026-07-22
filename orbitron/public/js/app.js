@@ -976,6 +976,15 @@ function renderSettings() {
       </div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <label style="font-size:15px;font-weight:600;">🔍 PR 미리보기 배포</label>
+      <div class="form-hint">GitHub Pull Request(opened/synchronize/reopened)마다 pr-&lt;번호&gt;-${escapeHtml(p.subdomain || '')} 임시 환경을 자동 배포합니다. PR 닫힘 또는 7일 경과 시 자동 삭제. (같은 저장소 브랜치 PR만 — fork 제외, DB는 본 프로젝트와 공유)</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+        <label class="toggle-switch"><input type="checkbox" id="set-preview-deploys" ${p.preview_deploys === true ? 'checked' : ''}><span class="toggle-slider"></span></label>
+        <span style="font-size:14px;color:var(--text-secondary);">${p.preview_deploys === true ? 'PR 미리보기 활성' : 'PR 미리보기 꺼짐'}</span>
+      </div>
+      <div id="preview-list" style="margin-top:12px;"></div>
+    </div>
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
       <label style="font-size:15px;font-weight:600;">🤖 AI 에러 분석 에이전트</label>
       <div class="form-hint" style="margin-bottom:8px;">배포 실패 시 에러 로그를 분석할 OpenClaw 에이전트를 선택하세요.</div>
       <div class="setting-group" style="margin-bottom:12px;">
@@ -1010,6 +1019,54 @@ function renderSettings() {
     } else if (typeof loadPublicIpHint === 'function') {
         loadPublicIpHint(p.id);
     }
+
+    // Async: active PR previews list (Task 3.1)
+    loadPreviews(p.id);
+}
+
+// ── Task 3.1: PR 프리뷰 목록/삭제 ───────────────────────────────────────────
+async function loadPreviews(projectId) {
+    const box = document.getElementById('preview-list');
+    if (!box) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/previews`);
+        if (!res.ok) return;
+        const previews = await res.json();
+        if (!Array.isArray(previews) || previews.length === 0) {
+            box.innerHTML = '';
+            return;
+        }
+        const statusBadge = (s) => {
+            const color = s === 'running' ? 'var(--success)' : (s === 'failed' ? 'var(--danger)' : 'var(--warning)');
+            return `<span style="color:${color};font-size:12px;">● ${escapeHtml(s || '')}</span>`;
+        };
+        box.innerHTML = `
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">활성 미리보기 ${previews.length}개</div>
+          ${previews.map(pv => `
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+              <span style="font-weight:600;">PR #${parseInt(pv.pr_number, 10)}</span>
+              <a href="https://${escapeHtml(pv.subdomain)}.${escapeHtml((window.TUNNEL_DOMAIN || 'twinverse.org'))}" target="_blank" rel="noopener" style="flex:1;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(pv.subdomain)}</a>
+              ${statusBadge(pv.status)}
+              <button class="btn btn-sm btn-danger" onclick="deletePreview(${projectId}, ${parseInt(pv.pr_number, 10)})">삭제</button>
+            </div>`).join('')}
+        `;
+    } catch (e) { /* preview list is best-effort UI */ }
+}
+
+async function deletePreview(projectId, prNumber) {
+    if (!confirm(`PR #${prNumber} 미리보기를 삭제할까요?`)) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/previews/${prNumber}`, { method: 'DELETE' });
+        if (res.ok) {
+            toast('미리보기가 삭제되었습니다.', 'success');
+        } else {
+            const err = await res.json().catch(() => ({}));
+            toast(err.error || '미리보기 삭제 실패', 'error');
+        }
+    } catch (e) {
+        toast('미리보기 삭제 실패', 'error');
+    }
+    loadPreviews(projectId);
 }
 
 async function testOpenclawConnection() {
@@ -1496,6 +1553,7 @@ async function saveEnvVars() {
 async function saveSettings() {
     try {
         const auto_deploy = document.getElementById('set-autodeploy')?.checked ?? true;
+        const preview_deploys = document.getElementById('set-preview-deploys')?.checked ?? false;
         const ai_model = document.getElementById('set-ai-model')?.value || '';
 
         const webhook_url = document.getElementById('set-webhook-url')?.value?.trim() || null;
@@ -1507,6 +1565,7 @@ async function saveSettings() {
             build_command: document.getElementById('set-build').value,
             start_command: document.getElementById('set-start').value,
             auto_deploy,
+            preview_deploys,
             ai_model,
             webhook_url
         };
@@ -1516,6 +1575,7 @@ async function saveSettings() {
             body: JSON.stringify(payload)
         });
         currentProject.auto_deploy = auto_deploy;
+        currentProject.preview_deploys = preview_deploys;
         currentProject.ai_model = ai_model;
         currentProject.name = document.getElementById('set-name').value;
         toast('설정이 저장되었습니다!', 'success');
