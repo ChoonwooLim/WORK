@@ -269,7 +269,12 @@ API 응답 < 50ms, 차트 표시 확인.
 PR 머지/클로즈 → 컨테이너·conf·DNS 정리 확인.
 
 ### Task 3.2: Orbitron CLI (`npx orbitron-cli`)
-- [ ] 완료
+- [x] 완료 (2026-07-22 — orbitron/cli 무의존 독립 패키지(Node 내장만). login(PAT 발급+마스킹
+  +http 경고)/logout(PAT 폐기)/status(한글 폭 정렬 테이블)/deploy(git remote 자동 매칭, 안전한
+  베이스라인 추적 — 추적 불가 시 거짓 성공 방지)/logs/rollback(선택+확인)/previews(rm 확인).
+  JWT 7일 만료 → PAT(opat_, SHA-256 해시만 저장, 발급/폐기 rate-limit) 도입, JWT 경로 무변경.
+  종료코드 0/1/2/3. 설치: cd orbitron/cli && npm i -g . 테스트 39개 추가(총 266). PAT
+  마이그레이션 프로덕션 적용. 표준 리뷰에서 CI 거짓 그린·PAT 무제한 발급·CJK 정렬 등 수정)
 
 **Files:**
 - Create: `orbitron/cli/` — 독립 npm 패키지 (bin: `orbitron`)
