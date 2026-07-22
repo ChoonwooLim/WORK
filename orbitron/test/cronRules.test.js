@@ -250,6 +250,14 @@ test('nextRunAfter: Feb-29 skips non-leap years (from 2026 → 2028-02-29)', () 
     assert.deepStrictEqual(next, new Date(2028, 1, 29, 0, 0, 0, 0));
 });
 
+test('nextRunAfter: Feb-29 across the 2100 century non-leap gap (2097 → 2104)', () => {
+    // 2100 은 100 의 배수이되 400 의 배수가 아니라 비윤년 — 2096 다음 2/29 는
+    // 2104 (8년 간격). 4년 탐색 상한이었다면 null 이 됐을 회귀 케이스.
+    const p = parseCronExpression('0 0 29 2 *');
+    const next = nextRunAfter(p, new Date(2097, 0, 1, 0, 0));
+    assert.deepStrictEqual(next, new Date(2104, 1, 29, 0, 0, 0, 0));
+});
+
 test('nextRunAfter: impossible date (Feb 30) → null', () => {
     const p = parseCronExpression('0 0 30 2 *');
     assert.strictEqual(nextRunAfter(p, new Date(2026, 0, 1)), null);

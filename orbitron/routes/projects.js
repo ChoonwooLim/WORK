@@ -462,7 +462,8 @@ router.get('/:id/logs/search', async (req, res) => {
             containerName, req.query.lines || logSearch.DEFAULT_SEARCH_LINES);
 
         const { matches, truncated } = logSearch.searchLogText(logs, q);
-        res.json({ q, matches, truncated });
+        // cap: 클라이언트(대시보드/CLI)가 잘림 문구에 사용 — 서버 상수가 단일 진실
+        res.json({ q, matches, truncated, cap: logSearch.MAX_MATCHES });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

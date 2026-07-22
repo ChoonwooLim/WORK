@@ -841,7 +841,7 @@ async function loadCronJobs(projectId) {
         if (!res.ok) throw new Error(data.error || 'load failed');
         renderCronSection(projectId, data.jobs || []);
     } catch (e) {
-        el.innerHTML = '';
+        el.innerHTML = '<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;font-size:13px;color:var(--text-muted);">⏰ 예약 작업을 불러오지 못했습니다.</div>';
     }
 }
 
@@ -1979,6 +1979,7 @@ async function refreshLogs() {
 // ── 로그 검색 (Task 3.3) ────────────────────────────────────────────────────
 
 let logSearchTimer = null;
+let logSearchSeq = 0; // stale-fetch 가드 — 최신 검색 요청만 렌더링 (metricsFetchSeq 패턴)
 
 function onLogSearchInput() {
     clearTimeout(logSearchTimer);
@@ -2019,15 +2020,18 @@ async function runLogSearch() {
     const countEl = document.getElementById('log-search-count');
     const logEl = document.getElementById('log-content');
     if (!q.trim()) return;
+    const seq = ++logSearchSeq;
     try {
         const res = await fetch(`${API}/projects/${currentProject.id}/logs/search?q=${encodeURIComponent(q)}&lines=2000`);
+        if (seq !== logSearchSeq) return; // 더 최신 검색이 대체 — 느린 응답 폐기
         const data = await res.json();
+        if (seq !== logSearchSeq) return;
         if (!res.ok) {
             countEl.textContent = '';
             logEl.textContent = `❌ ${data.error || '검색 실패'}`;
             return;
         }
-        countEl.textContent = `${data.matches.length}건${data.truncated ? '+ (500개 초과 잘림)' : ''}`;
+        countEl.textContent = `${data.matches.length}건${data.truncated ? `+ (${data.cap || 500}개 초과 잘림)` : ''}`;
         if (data.matches.length === 0) {
             logEl.textContent = `'${q}' 와 일치하는 로그가 없습니다.`;
             return;
@@ -2036,6 +2040,7 @@ async function runLogSearch() {
             `<div style="display:flex;gap:10px;"><span style="color:var(--text-muted);min-width:44px;text-align:right;user-select:none;">${m.line}</span><span style="white-space:pre-wrap;word-break:break-all;">${highlightLogMatch(m.text, q)}</span></div>`
         ).join('');
     } catch (err) {
+        if (seq !== logSearchSeq) return; // stale 요청의 오류로 최신 결과를 덮지 않음
         countEl.textContent = '';
         logEl.textContent = '로그 검색에 실패했습니다.';
     }

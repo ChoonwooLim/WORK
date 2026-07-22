@@ -211,7 +211,8 @@ async function cmdLogs(ctx) {
         for (const m of matches) {
             ctx.stdout.write(`${m.line}: ${m.text}\n`);
         }
-        ctx.stderr.write(`${matches.length}건 일치${res && res.truncated ? ' (500건 초과 — 잘림)' : ''} / ${matches.length} match(es)${res && res.truncated ? ' (truncated at 500)' : ''}\n`);
+        const cap = (res && res.cap) || 500;
+        ctx.stderr.write(`${matches.length}건 일치${res && res.truncated ? ` (${cap}건 초과 — 잘림)` : ''} / ${matches.length} match(es)${res && res.truncated ? ` (truncated at ${cap})` : ''}\n`);
         return EXIT.OK;
     }
 

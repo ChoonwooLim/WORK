@@ -21,9 +21,10 @@
 
 const MAX_COMMAND_LENGTH = 2000;
 const MAX_JOBS_PER_PROJECT = 10;
-// nextRunAfter 탐색 상한: 윤년 2/29 (`0 0 29 2 *`) 도 최악 4년 안에는 오므로
-// 4년 + 이틀. 그 안에 없으면 (2/30 등 불가능 일자) null.
-const NEXT_RUN_SEARCH_DAYS = 4 * 366 + 2;
+// nextRunAfter 탐색 상한: 윤년 2/29 (`0 0 29 2 *`) 의 최악 간격은 4년이 아니라
+// 세기 비윤년(2100 등, 100 의 배수이되 400 의 배수가 아닌 해) 주변의 8년이다
+// (예: 2096 다음 2/29 는 2104). 8년 + 이틀 안에 없으면 (2/30 등 불가능 일자) null.
+const NEXT_RUN_SEARCH_DAYS = 8 * 366 + 2;
 
 const FIELD_SPECS = [
     { key: 'minute', min: 0, max: 59 },
