@@ -62,48 +62,10 @@ class DockerService {
 
         const imageName = `orbitron-${project.subdomain}`;
 
-        // Check if a custom Dockerfile should be used:
-        //   1. Orbitron.yaml 에 build.dockerfile 명시 → 사용자 Dockerfile 존중 (자동 감지 비활성)
-        //   2. Dockerfile 첫 줄 "# CUSTOM" → 레거시 호환
+        // Check if a custom Dockerfile should be used (resolveCustomDockerfile 참조)
         const dockerfilePath = path.join(projectDir, 'Dockerfile');
-        let useCustom = false;
-
-        // Priority 1: Orbitron.yaml build.dockerfile 명시 확인
-        const yamlCandidates = ['orbitron.yaml', 'Orbitron.yaml', 'orbitron.yml', 'Orbitron.yml'];
-        for (const yName of yamlCandidates) {
-            const yPath = path.join(projectDir, yName);
-            if (fs.existsSync(yPath)) {
-                try {
-                    const yaml = require('js-yaml');
-                    const parsed = yaml.load(fs.readFileSync(yPath, 'utf8'));
-                    const explicitDockerfile = parsed?.build?.dockerfile;
-                    if (explicitDockerfile) {
-                        const explicitPath = path.join(projectDir, explicitDockerfile);
-                        if (fs.existsSync(explicitPath)) {
-                            // 명시된 Dockerfile 을 빌드 위치로 복사 (이름이 다를 수 있으므로)
-                            if (explicitPath !== dockerfilePath) {
-                                fs.copyFileSync(explicitPath, dockerfilePath);
-                            }
-                            useCustom = true;
-                            detailLogs += `  📋 build.dockerfile 명시: ${explicitDockerfile} → 자동 감지 비활성\n`;
-                        } else {
-                            detailLogs += `  ⚠️ build.dockerfile "${explicitDockerfile}" 파일 없음 → 자동 감지 폴백\n`;
-                        }
-                    }
-                } catch (e) {
-                    detailLogs += `  ⚠️ Orbitron YAML 파싱 오류: ${e.message}\n`;
-                }
-                break;
-            }
-        }
-
-        // Priority 2: Legacy "# CUSTOM" marker
-        if (!useCustom && fs.existsSync(dockerfilePath)) {
-            const firstLine = fs.readFileSync(dockerfilePath, 'utf-8').split('\n')[0].trim();
-            if (firstLine.startsWith('# CUSTOM')) {
-                useCustom = true;
-            }
-        }
+        const { useCustom, logs: customLogs } = this.resolveCustomDockerfile(projectDir);
+        detailLogs += customLogs;
         if (!useCustom) {
             const detected = this.detectProjectType(projectDir, project);
             detailLogs += `  자동 감지 타입: ${detected.type}${detected.subdir ? ` (서브디렉토리: ${detected.subdir})` : ''}\n`;
@@ -144,15 +106,14 @@ class DockerService {
         }
 
         detailLogs += `  이미지 이름: ${imageName}\n`;
-        const buildArgs = ['build'];
-        if (project.env_vars?.DOCKER_NO_CACHE === 'true') buildArgs.push('--no-cache');
-        buildArgs.push('-t', imageName, projectDir);
-        
+        const buildArgs = this.assembleBuildArgs(project, imageName, projectDir);
+
         detailLogs += `  실행 명령: docker ${buildArgs.join(' ')}\n`;
         detailLogs += `${'─'.repeat(60)}\n`;
 
         return new Promise((resolve, reject) => {
-            execFile('docker', buildArgs, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+            // BuildKit 출력은 stderr 로 나옴 — 아래 콜백이 stdout+stderr 모두 detailLogs 에 합산하므로 대시보드 로그 유지됨
+            execFile('docker', buildArgs, { maxBuffer: 1024 * 1024 * 10, env: this.buildKitEnv() }, (error, stdout, stderr) => {
                 const elapsed = ((Date.now() - buildStart) / 1000).toFixed(1);
                 if (error) {
                     detailLogs += stdout + stderr;
@@ -171,6 +132,67 @@ class DockerService {
                 }
             });
         });
+    }
+
+    // 사용자 정의 Dockerfile 사용 여부 판단:
+    //   1. Orbitron.yaml 에 build.dockerfile 명시 → 사용자 Dockerfile 존중 (자동 감지 비활성, 2026-04-26 규칙)
+    //   2. Dockerfile 첫 줄 "# CUSTOM" → 레거시 호환
+    // useCustom=true 이면 자동 생성 템플릿을 절대 만들지 않음 (사용자 파일 수정 금지)
+    resolveCustomDockerfile(projectDir) {
+        const dockerfilePath = path.join(projectDir, 'Dockerfile');
+        let useCustom = false;
+        let logs = '';
+
+        // Priority 1: Orbitron.yaml build.dockerfile 명시 확인
+        const yamlCandidates = ['orbitron.yaml', 'Orbitron.yaml', 'orbitron.yml', 'Orbitron.yml'];
+        for (const yName of yamlCandidates) {
+            const yPath = path.join(projectDir, yName);
+            if (fs.existsSync(yPath)) {
+                try {
+                    const yaml = require('js-yaml');
+                    const parsed = yaml.load(fs.readFileSync(yPath, 'utf8'));
+                    const explicitDockerfile = parsed?.build?.dockerfile;
+                    if (explicitDockerfile) {
+                        const explicitPath = path.join(projectDir, explicitDockerfile);
+                        if (fs.existsSync(explicitPath)) {
+                            // 명시된 Dockerfile 을 빌드 위치로 복사 (이름이 다를 수 있으므로)
+                            if (explicitPath !== dockerfilePath) {
+                                fs.copyFileSync(explicitPath, dockerfilePath);
+                            }
+                            useCustom = true;
+                            logs += `  📋 build.dockerfile 명시: ${explicitDockerfile} → 자동 감지 비활성\n`;
+                        } else {
+                            logs += `  ⚠️ build.dockerfile "${explicitDockerfile}" 파일 없음 → 자동 감지 폴백\n`;
+                        }
+                    }
+                } catch (e) {
+                    logs += `  ⚠️ Orbitron YAML 파싱 오류: ${e.message}\n`;
+                }
+                break;
+            }
+        }
+
+        // Priority 2: Legacy "# CUSTOM" marker
+        if (!useCustom && fs.existsSync(dockerfilePath)) {
+            const firstLine = fs.readFileSync(dockerfilePath, 'utf-8').split('\n')[0].trim();
+            if (firstLine.startsWith('# CUSTOM')) {
+                useCustom = true;
+            }
+        }
+        return { useCustom, logs };
+    }
+
+    // docker build 인자 조립 — --progress=plain 으로 BuildKit 로그 형식 고정 (대시보드/AI 오류 분석기 파싱 안정화)
+    assembleBuildArgs(project, imageName, projectDir) {
+        const buildArgs = ['build', '--progress=plain'];
+        if (project.env_vars?.DOCKER_NO_CACHE === 'true') buildArgs.push('--no-cache');
+        buildArgs.push('-t', imageName, projectDir);
+        return buildArgs;
+    }
+
+    // BuildKit 명시 활성화 — 데몬 기본값과 무관하게 항상 동일한 빌더 사용 (RUN --mount 캐시 지원 보장)
+    buildKitEnv() {
+        return { ...process.env, DOCKER_BUILDKIT: '1' };
     }
 
     // Detect project type and generate appropriate Dockerfile
@@ -510,7 +532,7 @@ if os.path.isdir(STATIC) and os.path.isfile(os.path.join(STATIC, "index.html")):
 FROM node:20-slim AS ${stageName}
 WORKDIR /build
 COPY ${ex.path}/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY ${ex.path}/ ./
 ENV VITE_API_URL=""
 RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
@@ -526,7 +548,7 @@ RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY ${fe.path}/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY ${fe.path}/ ./
 ENV VITE_API_URL=""
 RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
@@ -536,7 +558,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 ${pgInstall}COPY ${be.path}/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 COPY ${be.path}/ ./
 COPY _orbitron_spa.py ./
@@ -554,14 +576,14 @@ CMD ["sh", "-c", "uvicorn ${startModule} --host 0.0.0.0 --port \${PORT:-${port}}
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY ${fe.path}/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY ${fe.path}/ ./
 RUN npm run build && find dist -name '*.js' -exec sed -i 's|http://localhost:[0-9]*||g' {} +
 
 FROM node:20-slim
 WORKDIR /app
 COPY ${be.path}/package*.json ./
-RUN npm install --production
+RUN --mount=type=cache,target=/root/.npm npm install --production
 COPY ${be.path}/ ./
 COPY --from=frontend-build /build/dist /app/public
 
@@ -652,7 +674,7 @@ CMD [ "bash", "-c", "./${startScript} -RenderOffscreen -PixelStreamingURL=ws://1
 WORKDIR /app
 RUN apk add --no-cache openssl openssl-dev${extraApk ? extraApk : ''}
 COPY ${copyFrom}package*.json ./
-RUN npm install --legacy-peer-deps --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps --ignore-scripts
 COPY ${copyFrom} ./
 RUN npx prisma generate 2>/dev/null || true
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -677,7 +699,7 @@ CMD sh -c "npx prisma db push --skip-generate 2>/dev/null || true; npx next star
         }
 
         if (type === 'node') {
-            const workdirCopy = subdir ? `COPY ${subdir}/package*.json ./\nRUN ${project.build_command || 'npm install'}\nCOPY ${subdir}/ .` : `COPY package*.json ./\nRUN ${project.build_command || 'npm install'}\nCOPY . .`;
+            const workdirCopy = subdir ? `COPY ${subdir}/package*.json ./\nRUN --mount=type=cache,target=/root/.npm ${project.build_command || 'npm install'}\nCOPY ${subdir}/ .` : `COPY package*.json ./\nRUN --mount=type=cache,target=/root/.npm ${project.build_command || 'npm install'}\nCOPY . .`;
             return `FROM node:20-alpine
 WORKDIR /app
 ${workdirCopy}
@@ -1118,7 +1140,7 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
         try { await fs.promises.mkdir(buildDir, { recursive: true }); } catch { }
         const dockerfilePath = path.join(buildDir, 'Dockerfile');
         await fs.promises.writeFile(dockerfilePath, dockerfile);
-        await execAsync(`docker build -t ${imageTag} ${buildDir}`, { maxBuffer: 1024 * 1024 * 10 });
+        await execAsync(`docker build --progress=plain -t ${imageTag} ${buildDir}`, { maxBuffer: 1024 * 1024 * 10, env: this.buildKitEnv() });
 
         // Port conflict resolution for SSH
         let sshPort = port;
