@@ -142,7 +142,7 @@ function detectContainerListenPorts(targetContainer, { budgetMs = 12000 } = {}) 
             });
             listenPorts = parseListenPorts(out);
             if (listenPorts.size > 0) break;  // app has started listening
-        } catch (e) { /* container not exec-able yet */ }
+        } catch { /* container not exec-able yet */ }
         // Sleep 500ms before retry — external sleep (sync, no CPU spin).
         try { execFileSync('sleep', ['0.5'], { stdio: 'ignore' }); } catch { /* keep going */ }
     }
