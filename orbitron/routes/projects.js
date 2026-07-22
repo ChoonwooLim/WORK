@@ -180,7 +180,7 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url, preview_deploys } = req.body;
         if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
@@ -208,8 +208,8 @@ router.put('/:id', async (req, res) => {
 
         const encryptedEnvVars = env_vars ? encryptForJsonb(env_vars) : null;
 
-        const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
-        const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, req.params.id];
+        const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $14' : 'WHERE id = $14 AND user_id = $15';
+        const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, preview_deploys !== undefined ? preview_deploys : null, req.params.id];
         if (req.user.role !== 'admin' && req.user.role !== 'superadmin') queryParams.push(req.user.userId);
 
         const project = await db.queryOne(
@@ -226,6 +226,7 @@ router.put('/:id', async (req, res) => {
         custom_domain = COALESCE($10, custom_domain),
         ai_model = COALESCE($11, ai_model),
         webhook_url = COALESCE($12, webhook_url),
+        preview_deploys = COALESCE($13, preview_deploys),
         updated_at = NOW()
        ${whereClause} RETURNING *`,
             queryParams
@@ -1204,6 +1205,40 @@ router.post('/knowledge', async (req, res) => {
             source: 'manual'
         });
         res.json({ success: true, id });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Task 3.1: PR 프리뷰 배포 조회/삭제 ──────────────────────────────────────
+
+// GET /api/projects/:id/previews - 이 프로젝트의 활성 프리뷰 목록 (소유권 검사)
+router.get('/:id/previews', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        const previews = await db.queryAll(
+            `SELECT id, pr_number, branch, subdomain, container_id, status, last_commit, created_at, updated_at
+             FROM preview_deployments WHERE project_id = $1 ORDER BY pr_number DESC`,
+            [project.id]
+        );
+        res.json(previews);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/projects/:id/previews/:prNumber - 프리뷰 수동 파괴 (소유권 검사, 멱등)
+router.delete('/:id/previews/:prNumber', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        const prNumber = parseInt(req.params.prNumber, 10);
+        if (!Number.isInteger(prNumber) || prNumber < 1) {
+            return res.status(400).json({ error: 'Invalid PR number' });
+        }
+        const result = await deployer.destroyPreview(project, prNumber);
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

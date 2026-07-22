@@ -243,6 +243,16 @@ async function start() {
             } catch (e) {
                 console.error('Hourly cleanup failed:', e.message);
             }
+            // PR 프리뷰 TTL 스윕 (Task 3.1): updated_at 기준 7일 지난 프리뷰 파괴.
+            // 매시 실행이지만 스윕 자체는 싼 SELECT + 만료분만 정리라 부담 없음.
+            try {
+                const swept = await deployer.sweepExpiredPreviews();
+                if (swept > 0) {
+                    console.log(`🧹 Preview TTL sweep: destroyed ${swept} expired preview(s)`);
+                }
+            } catch (e) {
+                console.error('Preview TTL sweep failed:', e.message);
+            }
         }, 60 * 60 * 1000); // 1 hour
 
         // Auto-create admin user from .env if not exists
