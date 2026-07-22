@@ -29,8 +29,8 @@ orbitron/deployments/twinverse-ps2/
 # User-uploaded files (contracts, ID copies, business docs — personal data, never commit)
 media-files/uploads/
 
-# Independent git repo (1.4GB, has its own .git) — managed separately
-deskrpg/
+# Independent git repo (1.4GB, has its own .git) — managed separately (root only)
+/deskrpg/
 
 # Deployed app checkouts (cloned per-deploy by Orbitron, each has own .git)
 orbitron/deployments/
