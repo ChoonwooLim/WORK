@@ -52,6 +52,20 @@ class ManualConfProtectedError extends Error {
     }
 }
 
+// ── 정적 자산 캐시 헤더 ──────────────────────────────────────────────
+// 생성된 conf의 static-assets location은 `add_header Cache-Control $orbitron_static_cc;`
+// 를 내보낸다. 값은 infrastructure/nginx/conf.d/00-orbitron-cache.conf 의
+// http-컨텍스트 map이 결정: 업스트림이 Cache-Control을 안 보낸 경우에만
+// 기본값(public 1일)을 부여하고, 업스트림이 보낸 값(private/no-store/immutable 등)은
+// 그대로 통과시킨다 — 빈 add_header 값이면 nginx가 헤더 자체를 생략하기 때문.
+// Cache-Control은 브라우저와 Cloudflare 엣지 TTL 양쪽을 결정한다 (origin cache control).
+// stale-while-revalidate는 브라우저 전용 — Cloudflare 엣지는 무시한다.
+// html/htm/json/xml/txt는 절대 넣지 않는다 — SPA index.html이 캐시되면
+// 재배포 후에도 유저가 옛 앱을 보게 된다 (배포 신선도 계약).
+// 확장자 목록은 아래 상수, 기본 TTL 튜닝은 00-orbitron-cache.conf 가 유일한 지점.
+const STATIC_ASSET_EXT_REGEX = String.raw`\.(js|mjs|css|png|jpg|jpeg|gif|webp|avif|svg|ico|woff|woff2|ttf|map)$`;
+const STATIC_CACHE_VAR = '$orbitron_static_cc';
+
 // Subdomain must be DNS-label-safe: used as filename + Docker name + shell cwd.
 // Anything outside [a-z0-9-] could enable path traversal or shell metachars.
 const SAFE_SUBDOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -105,6 +119,22 @@ class NginxService {
         proxy_connect_timeout 60s;`;
     }
 
+    // Static-asset location: same proxy body as `location /` (resolver+$upstream
+    // pattern — regression-guard compatible, DNS 재해석도 동일하게 동작) 위에
+    // 캐시 헤더 한 줄만 얹는다. add_header는 ngx_http_headers_module 지시어라
+    // proxy_* 지시어와 같은 location에서 문제없이 공존한다.
+    // 값($orbitron_static_cc = STATIC_CACHE_VAR)은 00-orbitron-cache.conf의 map이 결정:
+    // 업스트림이 침묵할 때만 기본값, 업스트림이 보낸 Cache-Control은 그대로 통과.
+    // `location /` 앞 배치는 가독성 관례일 뿐 — 실제 우선순위는 nginx 매칭 규칙이
+    // 결정한다 (~* 정규식이 일반 접두사 location보다 우선, `^~` ACME에는 진다).
+    _staticAssetsBlock(upstreamHost, upstreamPort) {
+        return `    # Static assets: browser + Cloudflare edge caching (HTML은 절대 캐시 금지)
+    location ~* ${STATIC_ASSET_EXT_REGEX} {
+${this._proxyPassBlock(upstreamHost, upstreamPort)}
+        add_header Cache-Control ${STATIC_CACHE_VAR};
+    }`;
+    }
+
     // Parse project.custom_domain into an array of hostnames. Supports a single domain
     // string ("app.example.com") OR a comma/space/newline-separated list for projects
     // that want multiple hostnames served by the same cert + server block
@@ -141,6 +171,8 @@ server {
         default_type "text/plain";
         try_files $uri =404;
     }
+
+${this._staticAssetsBlock(upstreamHost, upstreamPort)}
 
     location / {
 ${this._proxyPassBlock(upstreamHost, upstreamPort)}
@@ -294,6 +326,8 @@ server {
         try_files $uri =404;
     }
 
+${this._staticAssetsBlock(upstreamHost, upstreamPort)}
+
     location / {
 ${this._proxyPassBlock(upstreamHost, upstreamPort)}
     }
@@ -314,6 +348,8 @@ server {
         default_type "text/plain";
         try_files $uri =404;
     }
+
+${this._staticAssetsBlock(upstreamHost, upstreamPort)}
 
     location / {
 ${this._proxyPassBlock(upstreamHost, upstreamPort)}
@@ -390,3 +426,5 @@ module.exports = new NginxService();
 module.exports.isManuallyManaged = isManuallyManaged;
 module.exports.isProjectConfProtected = isProjectConfProtected;
 module.exports.ManualConfProtectedError = ManualConfProtectedError;
+module.exports.STATIC_ASSET_EXT_REGEX = STATIC_ASSET_EXT_REGEX;
+module.exports.STATIC_CACHE_VAR = STATIC_CACHE_VAR;
