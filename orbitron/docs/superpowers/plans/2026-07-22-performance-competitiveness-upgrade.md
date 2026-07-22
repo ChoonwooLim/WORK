@@ -104,7 +104,11 @@ nginx, node:test (신규 도입), BuildKit (신규 활성화)
 deployments.image_tag 채워짐, 4번째 배포 시 가장 오래된 태그만 정리됨.
 
 ### Task 1.3: 빌드 동시성 제어 (빌드 큐)
-- [ ] 완료
+- [x] 완료 (2026-07-22 — services/buildQueue.js 무의존 FIFO 세마포어(MAX_CONCURRENT_BUILDS
+  기본 2), buildImage 구간만 withSlot 래핑, 'queued' 배포 상태 엔드투엔드(DB·시작 시 stale
+  queued/building 스윕·대시보드 배지). pip 캐시 sharing=locked 이월분 반영. 테스트 9개 추가(총 61).
+  후속 후보: 운영 env 변수 문서화(MAX_CONCURRENT_BUILDS·DEPLOY_IMAGE_RETENTION), 5분 미만
+  고아 행은 다음번 재시작에서만 회복되는 창)
 
 **Files:**
 - Create: `orbitron/services/buildQueue.js` — 동시 빌드 상한(기본 2, env
