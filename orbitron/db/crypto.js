@@ -61,7 +61,24 @@ function decrypt(text) {
     }
 }
 
+/**
+ * env_vars 객체를 JSON 직렬화 → 암호화 → JSONB 컬럼용 문자열로 변환.
+ * PostgreSQL JSONB 컬럼에 직접 바인딩할 수 있는 값을 반환한다.
+ *
+ * 기존에 호출자마다 '"' + encrypt(JSON.stringify(obj)) + '"' 패턴을
+ * 수동으로 작성하다 래핑 누락 버그가 발생했으므로, 반드시 이 함수를 사용할 것.
+ *
+ * @param {object} obj 저장할 객체 (보통 env_vars)
+ * @returns {string|null} JSONB 컬럼에 바인딩 가능한 문자열, 또는 null
+ */
+function encryptForJsonb(obj) {
+    const encrypted = encrypt(JSON.stringify(obj || {}));
+    if (!encrypted) return null;
+    return '"' + encrypted + '"';
+}
+
 module.exports = {
     encrypt,
-    decrypt
+    decrypt,
+    encryptForJsonb
 };
