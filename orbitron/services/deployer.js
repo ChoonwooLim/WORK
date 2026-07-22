@@ -6,6 +6,7 @@ const fs = require('fs');
 const EventEmitter = require('events');
 const db = require('../db/db');
 const dockerService = require('./docker');
+const buildQueue = require('./buildQueue');
 const nginxService = require('./nginx');
 const tunnelService = require('./tunnel');
 const mediaBackup = require('./mediaBackup');
@@ -490,8 +491,25 @@ class Deployer extends EventEmitter {
                 this.emitProgress(project.id, 'build', 'Docker 이미지(또는 Compose) 빌드 중...');
                 logs += '\nBuilding Docker image (or pulling Compose)....\n';
                 try {
+                    // ── 동시 빌드 제한 큐 (Task 1.3) ──
+                    // 슬롯이 없으면 배포 레코드를 'queued' 로 두고 FIFO 대기.
+                    // (per-project 락은 deploy() 진입 시 이미 확보된 상태 — 순서 유지)
+                    const preStats = buildQueue.stats();
+                    const mustWait = preStats.active >= preStats.limit;
+                    if (mustWait) {
+                        logs += `⏳ 빌드 슬롯 대기 중 (앞에 ${preStats.queued}건, 동시 빌드 제한 ${preStats.limit}건)...\n`;
+                        this.emitProgress(project.id, 'build', `빌드 슬롯 대기 중 (앞에 ${preStats.queued}건)...`);
+                        await saveLogs('queued');
+                    }
                     // deploymentId 는 빌드 전에 이미 생성됨 (위 INSERT) — 배포별 태그에 사용
-                    const buildResult = await dockerService.buildImage(project, deploymentId);
+                    const buildResult = await buildQueue.withSlot(`${project.subdomain}#${deploymentId}`, async () => {
+                        if (mustWait) {
+                            logs += `🎫 빌드 슬롯 획득 — 빌드를 시작합니다.\n`;
+                            this.emitProgress(project.id, 'build', 'Docker 이미지(또는 Compose) 빌드 중...');
+                            await saveLogs('building'); // 대기 해제: 'queued' → 'building' 복원
+                        }
+                        return dockerService.buildImage(project, deploymentId);
+                    });
                     logs += buildResult.logs;
                     if (buildResult.isCompose) {
                         isCompose = true;
