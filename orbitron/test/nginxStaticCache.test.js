@@ -3,7 +3,13 @@
 // Contract:
 //   - Every HTTP-proxying server block gets EXACTLY ONE static-assets regex
 //     location, placed BEFORE `location /`, containing the same resolver+variable
-//     proxy body (regression-guard compatible) plus `expires` + Cache-Control.
+//     proxy body (regression-guard compatible) plus ONE Cache-Control add_header
+//     that references the $orbitron_static_cc map variable — NO expires directive,
+//     NO literal max-age in generated confs.
+//   - The map lives in infrastructure/nginx/conf.d/00-orbitron-cache.conf
+//     (hand-managed, # orbitron:manual): upstream sent no Cache-Control → default
+//     public 1d; upstream sent ANY Cache-Control (private/no-store/immutable/…)
+//     → empty map value → nginx omits add_header → upstream header passes through.
 //   - `location /` stays byte-identical (HTML/SPA responses must never be cached).
 //   - The asset extension list must NOT include html/htm/json/xml/txt.
 //   - The ACME challenge location keeps `^~` (prefix-priority) so it beats the
@@ -30,7 +36,7 @@ process.env.NGINX_CONF_DIR = tmpConfDir;
 process.env.LE_CONFIG_DIR = tmpLeDir;
 
 const nginxService = require('../services/nginx');
-const { STATIC_ASSET_EXT_REGEX, STATIC_CACHE_EXPIRES, STATIC_CACHE_CONTROL } = nginxService;
+const { STATIC_ASSET_EXT_REGEX, STATIC_CACHE_VAR } = nginxService;
 
 test.after(() => {
     fs.rmSync(tmpConfDir, { recursive: true, force: true });
@@ -67,15 +73,46 @@ function fakeCert(domain) {
 }
 
 const STATIC_LOCATION_LINE = `location ~* ${STATIC_ASSET_EXT_REGEX} {`;
-const EXPIRES_LINE = `        expires ${STATIC_CACHE_EXPIRES};`;
-const CACHE_CONTROL_LINE = `        add_header Cache-Control "${STATIC_CACHE_CONTROL}";`;
+const CACHE_CONTROL_LINE = `        add_header Cache-Control ${STATIC_CACHE_VAR};`;
 
-// ── the extension list itself ───────────────────────────────────────
+// The hand-managed http-context map that defines $orbitron_static_cc, resolved
+// relative to the nginx.js module dir the same way NGINX_CONF_DIR's default is.
+const CACHE_MAP_CONF = path.join(
+    __dirname, '..', '..', 'infrastructure', 'nginx', 'conf.d', '00-orbitron-cache.conf'
+);
 
-test('static asset regex: consts exported, exact cache values', () => {
+// ── consts + the shared map file ────────────────────────────────────
+
+test('consts exported: extension regex + map variable name', () => {
     assert.strictEqual(typeof STATIC_ASSET_EXT_REGEX, 'string');
-    assert.strictEqual(STATIC_CACHE_EXPIRES, '7d');
-    assert.strictEqual(STATIC_CACHE_CONTROL, 'public, max-age=604800, stale-while-revalidate=86400');
+    assert.strictEqual(STATIC_CACHE_VAR, '$orbitron_static_cc');
+});
+
+test('00-orbitron-cache.conf: manual marker first line, map with 1d default-when-silent', () => {
+    const content = fs.readFileSync(CACHE_MAP_CONF, 'utf-8');
+    const lines = content.split('\n');
+
+    // Hand-managed contract: marker must open the file (within first 512 bytes
+    // for isManuallyManaged — line 1 satisfies that trivially).
+    assert.ok(lines[0].startsWith('# orbitron:manual'), 'first line must be the # orbitron:manual marker');
+    assert.strictEqual(nginxService.isManuallyManaged(CACHE_MAP_CONF), true, 'Orbitron must treat the map conf as protected');
+
+    // http-context map keyed on the UPSTREAM Cache-Control header, defining the
+    // exact variable the generated confs reference.
+    assert.ok(
+        content.includes(`map $upstream_http_cache_control ${STATIC_CACHE_VAR} {`),
+        'map block must define the STATIC_CACHE_VAR variable from $upstream_http_cache_control'
+    );
+
+    // Default applies ONLY when upstream sent nothing ('' key) — 1 day public.
+    const emptyKeyLine = lines.find(l => l.trim().startsWith(`''`));
+    assert.ok(emptyKeyLine, `map must have a '' (upstream-silent) entry`);
+    assert.ok(emptyKeyLine.includes('max-age=86400'), 'upstream-silent default must be 1 day (max-age=86400)');
+    assert.ok(emptyKeyLine.includes('public'), 'upstream-silent default must be public');
+
+    // Any upstream-sent Cache-Control → empty value → nginx omits add_header
+    // → upstream header (private/no-store/immutable/…) passes through untouched.
+    assert.ok(/default\s+'';/.test(content), `map default must be '' (pass upstream Cache-Control through)`);
 });
 
 test('static asset regex: html/htm/json/xml/txt are NOT cacheable extensions', () => {
@@ -127,18 +164,18 @@ test('plain project: static block reuses resolver+$upstream proxy body (guard-co
     assert.ok(config.includes('proxy_pass http://$upstream'), 'addProject guard #2 must pass');
 });
 
-test('plain project: exact expires + Cache-Control lines inside the static block only', () => {
+test('plain project: exact Cache-Control add_header via map variable — no expires, no literal max-age', () => {
     const config = nginxService.generateConfig(plainProject());
 
-    assert.ok(config.includes(EXPIRES_LINE), 'exact `expires 7d;` line required');
-    assert.ok(config.includes(CACHE_CONTROL_LINE), 'exact Cache-Control line required');
-    assert.strictEqual(countOccurrences(config, 'expires '), 1);
-    assert.strictEqual(countOccurrences(config, 'Cache-Control'), 1);
+    assert.ok(config.includes(CACHE_CONTROL_LINE), 'exact `add_header Cache-Control $orbitron_static_cc;` line required');
+    assert.strictEqual(countOccurrences(config, 'Cache-Control'), 1, 'exactly one Cache-Control reference');
 
-    // Both lines live INSIDE the static block, before location /.
-    const rootIdx = config.indexOf('location / {');
-    assert.ok(config.indexOf(EXPIRES_LINE) < rootIdx);
-    assert.ok(config.indexOf(CACHE_CONTROL_LINE) < rootIdx);
+    // Cache VALUES live only in 00-orbitron-cache.conf — never in generated confs.
+    assert.ok(!config.includes('expires'), 'no expires directive (it would override upstream Cache-Control)');
+    assert.ok(!config.includes('max-age'), 'no literal max-age in generated conf (single tuning point is the map conf)');
+
+    // The add_header lives INSIDE the static block, before location /.
+    assert.ok(config.indexOf(CACHE_CONTROL_LINE) < config.indexOf('location / {'));
 });
 
 test('plain project: location / stays byte-identical (HTML/SPA never cached)', () => {
@@ -151,7 +188,7 @@ test('plain project: location / stays byte-identical (HTML/SPA never cached)', (
     // And nothing after location / carries cache headers.
     const tail = config.slice(config.indexOf('location / {'));
     assert.ok(!tail.includes('Cache-Control'), 'no Cache-Control at/after location /');
-    assert.ok(!tail.includes('expires '), 'no expires at/after location /');
+    assert.ok(!tail.includes('expires'), 'no expires at/after location /');
 });
 
 test('plain project: ACME challenge location keeps ^~ prefix-priority (beats regex locations)', () => {
@@ -185,8 +222,8 @@ test('custom domain with cert: HTTP and HTTPS blocks each get one static locatio
         assert.strictEqual(countOccurrences(block, 'location ~*'), 1, `server block #${i} has exactly one static location`);
         assert.ok(block.includes(STATIC_LOCATION_LINE), `server block #${i} regex matches the const`);
         assert.ok(block.indexOf(STATIC_LOCATION_LINE) < block.indexOf('location / {'), `server block #${i}: static before location /`);
-        assert.ok(block.includes(EXPIRES_LINE), `server block #${i} exact expires line`);
         assert.ok(block.includes(CACHE_CONTROL_LINE), `server block #${i} exact Cache-Control line`);
+        assert.ok(!block.includes('expires') && !block.includes('max-age'), `server block #${i}: no expires / literal max-age`);
         assert.ok(block.includes('location ^~ /.well-known/acme-challenge/'), `server block #${i} keeps ^~ ACME location`);
         // location / itself stays cache-free in every block.
         const tail = block.slice(block.indexOf('location / {'));
