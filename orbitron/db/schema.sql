@@ -185,3 +185,19 @@ CREATE TABLE IF NOT EXISTS personal_access_tokens (
     created_at TIMESTAMP DEFAULT NOW(),
     last_used_at TIMESTAMP
 );
+
+-- Scheduled cron jobs (Task 3.3 — per-project, run via docker exec by services/cron.js)
+CREATE TABLE IF NOT EXISTS scheduled_jobs (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    schedule VARCHAR(100) NOT NULL,
+    command TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT true,
+    last_run_at TIMESTAMP,
+    last_status VARCHAR(20),
+    last_output TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(project_id, name)
+);
