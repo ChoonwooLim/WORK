@@ -175,3 +175,13 @@ CREATE TABLE IF NOT EXISTS bug_fixes (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Personal Access Tokens (Task 3.2 — Orbitron CLI 장기 토큰, SHA-256 해시만 저장)
+CREATE TABLE IF NOT EXISTS personal_access_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_used_at TIMESTAMP
+);

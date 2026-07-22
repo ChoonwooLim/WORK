@@ -92,4 +92,61 @@ router.post('/login', authLimiter, async (req, res) => {
     }
 });
 
+// ── Personal Access Tokens (Task 3.2 — Orbitron CLI) ──
+// 이 라우터는 인증 없이 마운트되므로 (server.js: app.use('/api/auth', ...))
+// PAT 라우트에만 authMiddleware 를 개별 적용한다. JWT 또는 기존 PAT 로 인증.
+const authMiddleware = require('../middleware/auth');
+const patRules = require('../services/patRules');
+
+// POST /api/auth/tokens — PAT 발급. 토큰 원문은 이 응답에서 딱 한 번 노출.
+// authLimiter 필수: 탈취된 7일 JWT 로 만료 없는 PAT 를 조용히 무한 발급하는 것을 막는다.
+router.post('/tokens', authLimiter, authMiddleware, async (req, res) => {
+    try {
+        const name = patRules.sanitizePatName(req.body && req.body.name);
+        const token = patRules.generatePatToken();
+        const row = await db.queryOne(
+            'INSERT INTO personal_access_tokens (user_id, name, token_hash) VALUES ($1, $2, $3) RETURNING id, name, created_at',
+            [req.user.userId, name, patRules.hashPatToken(token)]
+        );
+        res.status(201).json({ id: row.id, name: row.name, token, created_at: row.created_at, success: true });
+    } catch (error) {
+        console.error('PAT issue error:', error.message);
+        res.status(500).json({ error: '토큰 발급 중 오류가 발생했습니다.', success: false });
+    }
+});
+
+// GET /api/auth/tokens — 내 PAT 목록 (해시/원문 미포함)
+router.get('/tokens', authMiddleware, async (req, res) => {
+    try {
+        const tokens = await db.queryAll(
+            'SELECT id, name, created_at, last_used_at FROM personal_access_tokens WHERE user_id = $1 ORDER BY created_at DESC',
+            [req.user.userId]
+        );
+        res.json(tokens);
+    } catch (error) {
+        console.error('PAT list error:', error.message);
+        res.status(500).json({ error: '토큰 목록 조회 중 오류가 발생했습니다.', success: false });
+    }
+});
+
+// DELETE /api/auth/tokens/:id — PAT 폐기 (본인 소유만, 행 삭제)
+router.delete('/tokens/:id', authLimiter, authMiddleware, async (req, res) => {
+    try {
+        if (!/^\d+$/.test(req.params.id)) {
+            return res.status(404).json({ error: '토큰을 찾을 수 없습니다.', success: false });
+        }
+        const deleted = await db.queryOne(
+            'DELETE FROM personal_access_tokens WHERE id = $1 AND user_id = $2 RETURNING id',
+            [req.params.id, req.user.userId]
+        );
+        if (!deleted) {
+            return res.status(404).json({ error: '토큰을 찾을 수 없습니다.', success: false });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('PAT revoke error:', error.message);
+        res.status(500).json({ error: '토큰 폐기 중 오류가 발생했습니다.', success: false });
+    }
+});
+
 module.exports = router;
