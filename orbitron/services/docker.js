@@ -12,6 +12,12 @@ const PROJECTS_DIR = path.join(__dirname, '..', 'deployments');
 const NPM_CACHE_MOUNT = '--mount=type=cache,target=/root/.npm';
 const PIP_CACHE_MOUNT = '--mount=type=cache,target=/root/.cache/pip';
 
+// 배포별 이미지 태그 보존 라벨 (Task 1.2) — 이 라벨이 붙은 이미지는
+// pruneImages() 의 24h 블랭킷 prune 에서 제외되고, 대신 프로젝트별
+// retention(pruneDeployImages)이 최신 N개만 남기고 태그를 제거한다.
+const DEPLOY_IMAGE_LABEL = 'orbitron.deploy-image=true';
+const DEFAULT_DEPLOY_IMAGE_RETENTION = 3;
+
 // Ensure deployments directory exists
 if (!fs.existsSync(PROJECTS_DIR)) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
@@ -32,7 +38,8 @@ function sanitizeSubdomain(subdomain) {
 
 class DockerService {
     // Build a Docker image for a project (or skip if Compose)
-    async buildImage(project) {
+    // deploymentId (선택): 있으면 orbitron-<sub>:d<id> 배포 태그를 추가로 부여 (Task 1.2 롤백 기반)
+    async buildImage(project, deploymentId = null) {
         sanitizeSubdomain(project.subdomain);
         const projectDir = path.join(PROJECTS_DIR, project.subdomain);
         const buildStart = Date.now();
@@ -110,8 +117,11 @@ class DockerService {
             if (exposeMatch) detailLogs += `  노출 포트: ${exposeMatch[1]}\n`;
         }
 
+        const deployTag = deploymentId ? this.formatDeployTag(imageName, deploymentId) : null;
+
         detailLogs += `  이미지 이름: ${imageName}\n`;
-        const buildArgs = this.assembleBuildArgs(project, imageName, projectDir);
+        if (deployTag) detailLogs += `  배포 태그: ${deployTag}\n`;
+        const buildArgs = this.assembleBuildArgs(project, imageName, projectDir, deployTag);
 
         detailLogs += `  실행 명령: docker ${buildArgs.join(' ')}\n`;
         detailLogs += `${'─'.repeat(60)}\n`;
@@ -132,7 +142,7 @@ class DockerService {
                         if (!e && sizeOut.trim()) detailLogs += `\n📦 이미지 크기: ${sizeOut.trim()}`;
                         detailLogs += `\n✅ 빌드 완료 (${elapsed}초 소요)\n`;
                         detailLogs += `${'─'.repeat(60)}\n`;
-                        resolve({ imageName, logs: detailLogs });
+                        resolve({ imageName, deployTag, logs: detailLogs });
                     });
                 }
             });
@@ -188,11 +198,70 @@ class DockerService {
     }
 
     // docker build 인자 조립 — --progress=plain 으로 BuildKit 로그 형식 고정 (대시보드/AI 오류 분석기 파싱 안정화)
-    assembleBuildArgs(project, imageName, projectDir) {
+    // deployTag (선택): 배포별 태그 orbitron-<sub>:d<deploymentId> 를 추가로 붙이고
+    // 보존 라벨을 부여한다 (없으면 기존 동작과 완전 동일 — 하위 호환).
+    assembleBuildArgs(project, imageName, projectDir, deployTag = null) {
         const buildArgs = ['build', '--progress=plain'];
         if (project.env_vars?.DOCKER_NO_CACHE === 'true') buildArgs.push('--no-cache');
-        buildArgs.push('-t', imageName, projectDir);
+        buildArgs.push('-t', imageName);
+        if (deployTag) buildArgs.push('-t', deployTag, '--label', DEPLOY_IMAGE_LABEL);
+        buildArgs.push(projectDir);
         return buildArgs;
+    }
+
+    // 배포별 이미지 태그 포맷: orbitron-<sub>:d<deploymentId> (Task 1.2)
+    // 유효하지 않은 id(양의 정수가 아님)면 null — 호출부는 태그 없이 빌드한다.
+    formatDeployTag(imageName, deploymentId) {
+        const id = parseInt(deploymentId, 10);
+        if (!Number.isInteger(id) || id < 1 || String(id) !== String(deploymentId).trim()) return null;
+        return `${imageName}:d${id}`;
+    }
+
+    // 배포 이미지 보존 개수 — env DEPLOY_IMAGE_RETENTION, 검증 실패 시 기본 3
+    deployImageRetention(rawValue = process.env.DEPLOY_IMAGE_RETENTION) {
+        const n = parseInt(rawValue, 10);
+        if (Number.isNaN(n) || n < 1) return DEFAULT_DEPLOY_IMAGE_RETENTION;
+        return n;
+    }
+
+    // 순수 함수: 배포 태그 목록에서 최신 keep 개를 제외한 제거 대상 반환.
+    // :d<숫자> 형태만 대상 — latest/기타 태그는 절대 건드리지 않음.
+    // 반드시 숫자 정렬 (사전순이면 d9 > d10 으로 오판).
+    selectDeployTagsToRemove(tags, keep) {
+        const parsed = [];
+        for (const tag of tags) {
+            const m = /:d(\d+)$/.exec(tag);
+            if (m) parsed.push({ tag, id: parseInt(m[1], 10) });
+        }
+        parsed.sort((a, b) => b.id - a.id);
+        return parsed.slice(keep).map(p => p.tag);
+    }
+
+    // 프로젝트별 배포 태그 retention — 최신 N개만 남기고 docker rmi 로 태그 해제.
+    // 태그만 제거: 블롭은 참조 태그가 없어지면 dangling 이 되어 pruneImages() 의
+    // `docker image prune -f` 가 회수한다. 성공 배포 직후 해당 프로젝트에 대해서만
+    // 호출되므로 작업량이 유한하다 (글로벌 타이머 불필요).
+    async pruneDeployImages(subdomain) {
+        try {
+            sanitizeSubdomain(subdomain);
+            const keep = this.deployImageRetention();
+            const { stdout } = await execFileAsync(
+                'docker', ['images', `orbitron-${subdomain}`, '--format', '{{.Repository}}:{{.Tag}}']
+            );
+            const tags = stdout.trim().split('\n').filter(Boolean);
+            const toRemove = this.selectDeployTagsToRemove(tags, keep);
+            let removed = 0;
+            for (const tag of toRemove) {
+                try {
+                    await execFileAsync('docker', ['rmi', tag]); // untag only — running containers keep their blob
+                    console.log(`🧹 Removed old deploy tag: ${tag}`);
+                    removed++;
+                } catch { /* tag already gone or in use — best effort */ }
+            }
+            return { removed };
+        } catch (e) {
+            return { removed: 0, error: e.message };
+        }
     }
 
     // BuildKit 명시 활성화 — 데몬 기본값과 무관하게 항상 동일한 빌더 사용 (RUN --mount 캐시 지원 보장)
@@ -1329,10 +1398,12 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
     // Prune dangling + old unused images to free up space
     async pruneImages() {
         try {
-            // Remove dangling images
+            // Remove dangling images (untagged blobs — includes blobs released by pruneDeployImages)
             await execAsync('docker image prune -f');
-            // Remove images older than 24h that are not in use
-            await execAsync('docker image prune -a -f --filter "until=24h"');
+            // Remove images older than 24h that are not in use.
+            // label!= 필터: 배포 태그 이미지(orbitron.deploy-image)는 제외 —
+            // 이들은 pruneDeployImages() 의 프로젝트별 retention 이 관리한다.
+            await execAsync(`docker image prune -a -f --filter "until=24h" --filter "label!=${DEPLOY_IMAGE_LABEL}"`);
             console.log('🧹 Cleaned up unused Docker images');
         } catch (e) {
             // ignore — prune is best-effort
