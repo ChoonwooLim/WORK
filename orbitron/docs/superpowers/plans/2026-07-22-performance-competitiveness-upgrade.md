@@ -291,7 +291,13 @@ PR 머지/클로즈 → 컨테이너·conf·DNS 정리 확인.
 **검증:** 외부 PC에서 `npx` 설치 → login → deploy → logs -f 전체 플로우.
 
 ### Task 3.3: 로그 검색 + cron job
-- [ ] 완료
+- [x] 완료 (2026-07-22 — 로그 검색: GET /:id/logs/search(대소문자 무시 substring, 사용자 regex
+  금지, 500건 캡), 대시보드 검색창(escapeHtml→<mark> 순서, stale-fetch 가드) + CLI --grep.
+  cron: 5필드 Vixie 파서(dom/dow star-bit OR, 세기 윤년까지 nextRunAfter, 테스트 35개),
+  CronRunner(분 정렬 tick, ≤5분 캐치업, 중복 실행 가드, tick당 2워커, docker exec argv 안전,
+  60s SIGKILL, 실패 시 텔레그램 알림), CRUD+수동 실행 라우트(프로젝트당 10개), 대시보드 섹션,
+  CLI cron 명령. 마이그레이션 프로덕션 적용, ⏰ 러너 기동 확인. 테스트 63개 추가(총 328).
+  후속 칩: server.js 백그라운드 루프 lifecycle 레지스트리 통합)
 
 **Files:**
 - 로그 검색: `GET /api/projects/:id/logs/search?q=` — `docker logs` 출력
@@ -373,3 +379,11 @@ Phase 4는 독립 — 언제든 선행 가능 (4.1은 즉시 착수 권장: 현�
 ## 진행 로그
 
 - 2026-07-22: 마스터 플랜 작성 (성능 기준선 실측 포함)
+- 2026-07-22: **전체 13개 태스크 완주** (Phase 0·1·2·3·4 전부). 테스트 0 → 328개,
+  모든 태스크 스펙+품질 2단계 서브에이전트 리뷰 통과, 운영 반영·실측 검증 완료.
+  마이그레이션 4건 적용(image_tag, metrics, preview_deployments, personal_access_tokens,
+  scheduled_jobs). 리뷰가 병합 전 차단한 주요 결함: nginx conf 프라이버시 회귀(1.4),
+  fetch Host 헤더 제거로 인한 함대 전체 오판(4.2), LE 인증서 선소모 순서 결함(4.1),
+  CI 거짓 그린(3.2), 형제 프리뷰 파괴(3.1). 운영 사고 1건(모니터 프로브, 13:06) 발생·
+  수습·근본 수정·교훈 기록. 남은 후속 칩 4건: 배포 이력 API 소유권, 상태 맵 중복 정리,
+  webhook 서명 필수화, 루프 lifecycle 레지스트리.
