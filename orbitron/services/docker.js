@@ -227,24 +227,37 @@ class DockerService {
         return n;
     }
 
-    // 순수 함수: 배포 태그 목록에서 최신 keep 개를 제외한 제거 대상 반환.
+    // 순수 함수: 배포 태그 목록에서 제거 대상 반환.
     // :d<숫자> 형태만 대상 — latest/기타 태그는 절대 건드리지 않음.
     // 반드시 숫자 정렬 (사전순이면 d9 > d10 으로 오판).
-    selectDeployTagsToRemove(tags, keep) {
+    //
+    // keepTags (Task 2.1, 선택): 보존 태그 명시 목록(비어있지 않은 배열)이 주어지면
+    // 위치 기반 최신-N 규칙 대신 "목록에 없는 모든 d-태그 제거"로 동작한다.
+    // 호출부(deployer)가 DB에서 "최신 N개 성공 배포 태그 + 현재 프로덕션 태그"를
+    // 조립해 넘긴다 — 롤백으로 옛 d-태그가 다시 프로덕션이 된 경우에도 그 태그가
+    // id 순 정렬에서 밀려 삭제되는 사고를 방지하고, 실패 배포가 남긴 태그는
+    // 최신이어도 정리된다. 빈 배열/null 이면 안전하게 기존 위치 규칙으로 폴백
+    // (버그로 빈 keep-list 가 오면 전체 태그 삭제로 이어지는 것을 차단).
+    selectDeployTagsToRemove(tags, keep, keepTags = null) {
         const parsed = [];
         for (const tag of tags) {
             const m = /:d(\d+)$/.exec(tag);
             if (m) parsed.push({ tag, id: parseInt(m[1], 10) });
         }
         parsed.sort((a, b) => b.id - a.id);
+        if (Array.isArray(keepTags) && keepTags.length > 0) {
+            const keepSet = new Set(keepTags);
+            return parsed.filter(p => !keepSet.has(p.tag)).map(p => p.tag);
+        }
         return parsed.slice(keep).map(p => p.tag);
     }
 
-    // 프로젝트별 배포 태그 retention — 최신 N개만 남기고 docker rmi 로 태그 해제.
+    // 프로젝트별 배포 태그 retention — 보존 대상 외 태그를 docker rmi 로 해제.
     // 태그만 제거: 블롭은 참조 태그가 없어지면 dangling 이 되어 pruneImages() 의
     // `docker image prune -f` 가 회수한다. 성공 배포 직후 해당 프로젝트에 대해서만
     // 호출되므로 작업량이 유한하다 (글로벌 타이머 불필요).
-    async pruneDeployImages(subdomain) {
+    // keepTags: deployer 가 조립한 보존 목록 (selectDeployTagsToRemove 참조).
+    async pruneDeployImages(subdomain, keepTags = null) {
         try {
             sanitizeSubdomain(subdomain);
             const keep = this.deployImageRetention();
@@ -252,7 +265,7 @@ class DockerService {
                 'docker', ['images', `orbitron-${subdomain}`, '--format', '{{.Repository}}:{{.Tag}}']
             );
             const tags = stdout.trim().split('\n').filter(Boolean);
-            const toRemove = this.selectDeployTagsToRemove(tags, keep);
+            const toRemove = this.selectDeployTagsToRemove(tags, keep, keepTags);
             let removed = 0;
             for (const tag of toRemove) {
                 try {
@@ -1388,11 +1401,25 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
         }
     }
 
-    // Remove image asynchronously
+    // Remove image asynchronously — 프로젝트 삭제 경로에서 호출.
+    // Task 2.1: un-suffixed(latest) 태그뿐 아니라 배포별 :d<id> 태그도 모두 제거
+    // (pruneDeployImages 와 동일한 repo 목록 조회 재사용, best-effort).
     async removeImage(subdomain) {
         try {
             sanitizeSubdomain(subdomain);
-            await execAsync(`docker rmi orbitron-${subdomain} 2>/dev/null`);
+            const { stdout } = await execFileAsync(
+                'docker', ['images', `orbitron-${subdomain}`, '--format', '{{.Repository}}:{{.Tag}}']
+            );
+            const tags = stdout.trim().split('\n').filter(Boolean);
+            for (const tag of tags) {
+                try {
+                    await execFileAsync('docker', ['rmi', tag]);
+                } catch { /* tag in use or already gone — best effort */ }
+            }
+            // Legacy fallback: 목록 조회가 비어도 un-suffixed 이름은 한 번 더 시도
+            if (tags.length === 0) {
+                await execAsync(`docker rmi orbitron-${subdomain} 2>/dev/null`);
+            }
         } catch (e) {
             // Image doesn't exist
         }

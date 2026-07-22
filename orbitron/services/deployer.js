@@ -1,6 +1,7 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 const path = require('path');
 const fs = require('fs');
 const EventEmitter = require('events');
@@ -18,6 +19,7 @@ const projectAnalyzer = require('./projectAnalyzer');
 const notifier = require('./notifier');
 const { managedDatabaseUrl } = require('./envUtils');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
+const { assessRollbackEligibility, formatRollbackCommitMessage, buildKeepTagList } = require('./rollbackRules');
 const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
@@ -68,10 +70,15 @@ class Deployer extends EventEmitter {
     }
 
     // Full deploy pipeline
-    async deploy(project, commitHash = null, commitMessage = null) {
+    // options (Task 2.1 롤백): { rollbackImageTag, rollbackOfDeploymentId, deploymentId }
+    // 롤백도 이 진입점을 통과하므로 per-project activeDeployments 락이 배포/롤백
+    // 동시 실행을 동일하게 차단한다.
+    async deploy(project, commitHash = null, commitMessage = null, options = {}) {
         if (this.activeDeployments.has(project.id)) {
             console.log(`⚠️ Deployment already in progress for ${project.name}`);
-            return { success: false, error: 'Deployment already in progress' };
+            // code 는 안정적 계약 (rollbackTo 락 레이스 감지, Task 2.2 자동 롤백이 의존)
+            // — 사람용 error 메시지는 바뀌어도 code 는 유지할 것.
+            return { success: false, code: 'DEPLOY_IN_PROGRESS', error: 'Deployment already in progress' };
         }
         this.activeDeployments.add(project.id);
 
@@ -82,7 +89,7 @@ class Deployer extends EventEmitter {
         });
 
         return Promise.race([
-            this._doDeploy(project, commitHash, commitMessage),
+            this._doDeploy(project, commitHash, commitMessage, options),
             timeoutPromise
         ]).then((result) => {
             clearTimeout(timeoutHandle);
@@ -103,8 +110,11 @@ class Deployer extends EventEmitter {
         return truncated + '\n\n... [로그가 512KB를 초과하여 잘렸습니다] ...\n';
     }
 
-    async _doDeploy(project, commitHash = null, commitMessage = null) {
+    async _doDeploy(project, commitHash = null, commitMessage = null, options = {}) {
         const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
+        // ⏪ 롤백 모드 (Task 2.1): 저장된 배포 이미지 태그로 소스/빌드 단계 없이 배포.
+        // 컨테이너 시작~nginx 스왑~정리 머신은 아래 기존 흐름을 그대로 재사용한다.
+        const rollbackImageTag = options.rollbackImageTag || null;
         let deploymentId;
         let logs = '';
         const startTime = Date.now();
@@ -123,13 +133,17 @@ class Deployer extends EventEmitter {
         };
 
         try {
-            // Create deployment record
-            const deployment = await db.queryOne(
-                `INSERT INTO deployments (project_id, commit_hash, commit_message, status)
+            // Create deployment record (롤백은 rollbackTo() 가 202 응답용으로 미리 생성한 행 재사용)
+            if (options.deploymentId) {
+                deploymentId = options.deploymentId;
+            } else {
+                const deployment = await db.queryOne(
+                    `INSERT INTO deployments (project_id, commit_hash, commit_message, status)
          VALUES ($1, $2, $3, 'building') RETURNING id`,
-                [project.id, commitHash, commitMessage]
-            );
-            deploymentId = deployment.id;
+                    [project.id, commitHash, commitMessage]
+                );
+                deploymentId = deployment.id;
+            }
             logs += `📋 배포 시작: ${new Date().toLocaleString('ko-KR')}\n`;
             logs += `   프로젝트: ${project.name} (${project.subdomain})\n`;
             logs += `   커밋: ${commitHash || '최신'}\n`;
@@ -210,6 +224,27 @@ class Deployer extends EventEmitter {
                 this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (내부 네트워크 통신)');
                 this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (프라이빗 네트워크)');
             } else {
+                if (rollbackImageTag) {
+                // ═══════════════════════════════════════════════════════════
+                // ⏪ 원클릭 롤백 (Task 2.1): 소스 가져오기·분석·빌드 전체 생략.
+                // 전략 (a) retag: 저장된 :d<id> 태그를 un-suffixed 프로덕션
+                // 이미지(orbitron-<sub>)로 재지정한 뒤, 이 if/else 아래의
+                // 공용 컨테이너 시작/nginx 스왑/정리 흐름을 그대로 태운다.
+                // un-suffixed 이름을 유일한 실행 이미지로 가정하는 모든 기존
+                // 경로(startContainer, Feature 8 previousImageId, 서버 복구,
+                // 워커/픽셀스트리밍 시작)가 수정 없이 일관성을 유지한다.
+                // ═══════════════════════════════════════════════════════════
+                this.emitProgress(project.id, 'clone', '⏪ 롤백: 소스 가져오기 건너뜀 (저장된 이미지 재사용)');
+                logs += `\n⏪ 롤백 모드: 배포 #${options.rollbackOfDeploymentId || '?'} 의 이미지(${rollbackImageTag})를 재사용합니다.\n`;
+                this.emitProgress(project.id, 'build', '⏪ 롤백: 빌드 건너뜀 — 이미지 태그 전환 중...');
+                await execFileAsync('docker', ['tag', rollbackImageTag, `orbitron-${project.subdomain}`]);
+                logs += `🏷 docker tag ${rollbackImageTag} orbitron-${project.subdomain}\n`;
+                // 새 배포 행의 image_tag = 실제로 실행되는 이미지의 d-태그
+                deployImageTag = rollbackImageTag;
+                this.emitProgress(project.id, 'build', '롤백 이미지 준비 완료');
+                await saveLogs();
+                } else {
+                // ── 소스 기반 배포 경로 (기존 흐름 그대로 — 들여쓰기 의도적 유지) ──
                 // Step 1: Clone or pull (skip for upload projects)
                 if (project.source_type === 'upload') {
                     this.emitProgress(project.id, 'clone', '업로드된 소스 코드 사용 중...');
@@ -535,6 +570,7 @@ class Deployer extends EventEmitter {
                         throw buildError;
                     }
                 }
+                } // ── end 소스 기반 배포 경로 (rollbackImageTag ? retag : clone+build) ──
 
                 isPixelStreaming = project.env_vars && project.env_vars.PROJECT_TYPE === 'pixel_streaming';
                 isWorker = project.type === 'worker';
@@ -762,15 +798,23 @@ class Deployer extends EventEmitter {
             }
 
             // Auto backup project to DATA drive
-            try {
-                const backupResult = projectBackup.backupProject(project);
-                logs += `\n📦 프로젝트 백업: ${backupResult.copiedCount}개 파일 복사 (${backupResult.totalSizeFormatted}) → ${backupResult.backupDir}\n`;
-            } catch (e) {
-                logs += `\n⚠️ 프로젝트 백업 건너뜀: ${e.message}\n`;
+            // (롤백 시 생략: 소스 트리는 롤백 대상 이미지보다 최신일 수 있어 무의미)
+            if (!rollbackImageTag) {
+                try {
+                    const backupResult = projectBackup.backupProject(project);
+                    logs += `\n📦 프로젝트 백업: ${backupResult.copiedCount}개 파일 복사 (${backupResult.totalSizeFormatted}) → ${backupResult.backupDir}\n`;
+                } catch (e) {
+                    logs += `\n⚠️ 프로젝트 백업 건너뜀: ${e.message}\n`;
+                }
             }
 
             // ── PostDeploy Hooks: run custom post-deployment commands ──
-            const yamlPathForHooks = findOrbitronYaml(projectDir);
+            // (롤백 시 생략: 훅은 현재 체크아웃된 소스 기준으로 동작 — 롤백된
+            //  이미지와 소스가 어긋난 상태에서 실행하면 오히려 해가 된다)
+            if (rollbackImageTag) {
+                logs += '\n🪝 PostDeploy 훅 건너뜀 (롤백 모드 — 소스와 이미지 버전 불일치 가능)\n';
+            }
+            const yamlPathForHooks = rollbackImageTag ? null : findOrbitronYaml(projectDir);
             if (yamlPathForHooks) {
                 try {
                     const hookYaml = yaml.load(fs.readFileSync(yamlPathForHooks, 'utf8'));
@@ -858,10 +902,13 @@ class Deployer extends EventEmitter {
                 logs += '  ✅ 이전 컨테이너 정리 완료\n';
             }
 
-            // Per-project deploy-tag retention: 최신 N개(기본 3) 배포 태그만 유지 (Task 1.2)
-            // 성공 배포 직후 해당 프로젝트만 대상 — 글로벌 prune(pruneImages, finally)과 분리
+            // Per-project deploy-tag retention (Task 1.2 → 2.1 keep-list 강화):
+            // 보존 목록 = DB 기준 최신 N개 '성공' 배포의 image_tag + 방금 실행된 태그.
+            // 목록 밖의 d-태그(실패 배포 잔여물, N 초과 옛 태그)만 해제된다.
+            // 롤백 직후에도 안전: 방금 success 로 기록된 롤백 행이 OLD d-태그를
+            // 가리키므로 keep-list 에 포함 → id 순 정렬에 밀려 삭제되지 않는다.
             if (deployImageTag) {
-                dockerService.pruneDeployImages(project.subdomain).catch(() => { });
+                this._pruneDeployImagesWithKeepList(project, deployImageTag).catch(() => { });
             }
 
             this.emitProgress(project.id, 'done', '배포가 성공적으로 완료되었습니다!', 'success');
@@ -887,7 +934,9 @@ class Deployer extends EventEmitter {
 
             // MANUAL_CONF_PROTECTED는 코드 결함이 아니라 의도된 보호 — AI가 고칠 수
             // 없는 에러이므로 자동 복구 재시도를 건너뛰고 바로 실패 처리한다.
-            if (!isAutoRepairRetry && error.code !== 'MANUAL_CONF_PROTECTED' && fs.existsSync(projectDir)) {
+            // 롤백 실패도 소스 코드 결함이 아님(이미지/컨테이너/인프라 문제) —
+            // AI가 현재 소스를 패치해 재배포하면 롤백 의도 자체를 뒤집으므로 생략.
+            if (!isAutoRepairRetry && !rollbackImageTag && error.code !== 'MANUAL_CONF_PROTECTED' && fs.existsSync(projectDir)) {
                 this.emitProgress(project.id, 'done', '🤖 AI 자동 복구 시도 중...', 'running');
                 logs += '\n🤖 [AI Auto-Repair] 자동 복구를 시도합니다...\n';
 
@@ -1050,6 +1099,94 @@ class Deployer extends EventEmitter {
             // Run Docker image prune in background to prevent disk space exhaustion
             dockerService.pruneImages().catch(() => { });
         }
+    }
+
+    // ── Task 2.1: prune keep-list 조립 ──────────────────────────────────────
+    // DB에서 이 프로젝트의 '성공' 배포가 참조하는 최신 N개 **서로 다른** image_tag
+    // 를 뽑아 현재 태그와 합친 보존 목록을 만들어 pruneDeployImages 에 넘긴다.
+    // DISTINCT ON: 롤백 행과 원본 배포 행이 같은 태그를 공유하므로, 단순
+    // 최신-N-행 조회는 중복 태그로 인해 N개 미만의 이미지만 보호할 수 있다 —
+    // 태그별 최신 출현 id 기준으로 중복을 접은 뒤 N개를 취한다.
+    // keep-list 를 deployer 에서 조립하는 이유: docker.js 가 db 를 정식 의존하게
+    // 만들지 않기 위해 (현재 cleanupOldContainers 의 lazy require 뿐) —
+    // pruneDeployImages 는 docker 전용 + 순수 함수 조합으로 유지된다.
+    async _pruneDeployImagesWithKeepList(project, currentTag) {
+        let keepTags;
+        try {
+            const keepN = dockerService.deployImageRetention();
+            const rows = await db.queryAll(
+                `SELECT image_tag FROM (
+                     SELECT DISTINCT ON (image_tag) image_tag, id
+                     FROM deployments
+                     WHERE project_id = $1 AND status = 'success' AND image_tag IS NOT NULL
+                     ORDER BY image_tag, id DESC
+                 ) t ORDER BY id DESC LIMIT $2`,
+                [project.id, keepN]
+            );
+            keepTags = buildKeepTagList(rows, currentTag);
+        } catch (e) {
+            // DB 조회 실패 → prune 자체를 건너뛴다. 위치 기반(최신 N id) 폴백은
+            // 롤백 이후 안전하지 않다: 프로덕션이 가리키는 OLD d-태그가 id 순
+            // 정렬에 밀려 삭제될 수 있다. prune 은 다음 성공 배포에서 다시
+            // 시도되므로 건너뛰어도 태그가 일시적으로 더 남을 뿐 손실이 없다.
+            console.warn(`⚠️ Deploy-tag prune skipped for ${project.subdomain} (keep-list DB query failed): ${e.message}`);
+            return { removed: 0, skipped: true };
+        }
+        return dockerService.pruneDeployImages(project.subdomain, keepTags);
+    }
+
+    // ── Task 2.1: 원클릭 롤백 진입점 ────────────────────────────────────────
+    // 성공했던 배포의 저장 이미지(:d<id>)로 빌드 없이 재배포한다.
+    // 검증(자격/이미지 실존/락)을 동기적으로 마친 뒤 새 배포 행을 만들어
+    // 그 id 를 즉시 반환하고, 실제 배포는 백그라운드에서 deploy() 를 통해
+    // 실행된다 (per-project 락 포함, 일반 배포와 동일한 흐름).
+    // 반환: { success: true, deploymentId } 또는 { success: false, code, error }
+    async rollbackTo(project, targetDeployment) {
+        const eligibility = assessRollbackEligibility(project, targetDeployment);
+        if (!eligibility.ok) return { success: false, code: eligibility.code, error: eligibility.error };
+
+        // 이미지 실존 확인 — retention 이 태그를 이미 정리했을 수 있다
+        try {
+            await execFileAsync('docker', ['image', 'inspect', targetDeployment.image_tag]);
+        } catch {
+            return {
+                success: false, code: 'IMAGE_GONE',
+                error: `롤백 대상 이미지(${targetDeployment.image_tag})가 이미 정리되어 없습니다 (retention 은 최신 ${dockerService.deployImageRetention()}개만 보존). / The target image has been pruned and is no longer available.`,
+            };
+        }
+
+        if (this.activeDeployments.has(project.id)) {
+            return {
+                success: false, code: 'DEPLOY_IN_PROGRESS',
+                error: '이미 이 프로젝트의 배포가 진행 중입니다. 완료 후 다시 시도하세요. / A deployment is already in progress for this project.',
+            };
+        }
+
+        const commitMessage = formatRollbackCommitMessage(targetDeployment);
+        const row = await db.queryOne(
+            `INSERT INTO deployments (project_id, commit_hash, commit_message, status)
+             VALUES ($1, $2, $3, 'building') RETURNING id`,
+            [project.id, targetDeployment.commit_hash, commitMessage]
+        );
+
+        this.deploy(project, targetDeployment.commit_hash, commitMessage, {
+            rollbackImageTag: targetDeployment.image_tag,
+            rollbackOfDeploymentId: targetDeployment.id,
+            deploymentId: row.id,
+        }).then((result) => {
+            // 락 경쟁에서 밀린 경우(위 has() 체크와 deploy() 진입 사이 레이스):
+            // deploy() 는 미리 만든 행을 만지지 않으므로 여기서 failed 처리
+            if (result && !result.success && result.code === 'DEPLOY_IN_PROGRESS') {
+                db.query(
+                    `UPDATE deployments SET status = 'failed', logs = $1, finished_at = NOW() WHERE id = $2`,
+                    ['⏪ 롤백 취소: 다른 배포가 먼저 시작되었습니다. / Rollback cancelled: another deployment started first.', row.id]
+                ).catch(() => { });
+            }
+        }).catch((err) => {
+            console.error(`Rollback deploy error for ${project.name}:`, err);
+        });
+
+        return { success: true, deploymentId: row.id };
     }
 
     // Clone or pull repo (with optional commitHash for rollback)

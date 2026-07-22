@@ -1797,9 +1797,19 @@ async function loadDeployments() {
             document.getElementById('deployments-content').innerHTML = '<p style="color:var(--text-secondary);">배포 이력이 없습니다.</p>';
             return;
         }
+        // 최신 성공 배포는 이미 프로덕션 — 이미지 롤백 버튼 대상에서 제외
+        const newestSuccessId = (deployments.find(x => x.status === 'success') || {}).id;
         document.getElementById('deployments-content').innerHTML = deployments.map(d => {
             const duration = d.finished_at && d.started_at ? formatDuration(new Date(d.finished_at) - new Date(d.started_at)) : '---';
             const logSize = d.log_size ? `(${(d.log_size / 1024).toFixed(1)}KB)` : '';
+            // 이미지 태그가 있는 성공 배포 → 빌드 없는 원클릭 이미지 롤백 (Task 2.1)
+            // 태그가 없는 옛 성공 배포 → 기존 커밋 기반(재빌드) 롤백으로 폴백
+            let rollbackBtn = '';
+            if (d.status === 'success' && d.image_tag && d.id !== newestSuccessId) {
+                rollbackBtn = `<button class="btn btn-sm btn-ghost btn-rollback" onclick="rollbackToImage(${d.id})" title="저장된 이미지로 즉시 롤백 (빌드 없음)">⏪ 롤백</button>`;
+            } else if (d.status === 'success' && d.commit_hash && !d.image_tag) {
+                rollbackBtn = `<button class="btn btn-sm btn-ghost btn-rollback" onclick="rollbackTo(${d.id})" title="해당 커밋으로 재빌드 롤백">↩ 롤백</button>`;
+            }
             return `
       <div class="deploy-item">
         <span class="deploy-status ${d.status}">${statusLabel(d.status)}</span>
@@ -1808,7 +1818,7 @@ async function loadDeployments() {
           <div class="deploy-time">${timeAgo(d.started_at)} · ⏱ ${duration}</div>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="viewDeployLog(${currentProject.id}, ${d.id})" title="배포 로그 보기">📋 로그 ${logSize}</button>
-        ${d.status === 'success' && d.commit_hash ? `<button class="btn btn-sm btn-ghost btn-rollback" onclick="rollbackTo(${d.id})">↩ 롤백</button>` : ''}
+        ${rollbackBtn}
       </div>`;
         }).join('');
     } catch (error) {
@@ -2981,6 +2991,21 @@ async function rollbackTo(deploymentId) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ deployment_id: deploymentId })
         });
+    } catch (e) { toast('롤백 실패: ' + e.message, 'error'); }
+}
+
+// ⏪ 원클릭 이미지 롤백 (Task 2.1) — 빌드 없이 저장된 배포 이미지로 전환
+async function rollbackToImage(deploymentId) {
+    if (!confirm(`배포 #${deploymentId} 의 저장된 이미지로 즉시 롤백하시겠습니까?\n(빌드 없이 해당 이미지로 전환합니다)`)) return;
+    try {
+        const res = await fetch(`${API}/deployments/${deploymentId}/rollback`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            toast(`롤백 불가: ${data.error || 'HTTP ' + res.status}`, 'error');
+            return;
+        }
+        toast(`⏪ 롤백 시작 (새 배포 #${data.deployment_id})`, 'info');
+        openDeployModal(currentProject.id);
     } catch (e) { toast('롤백 실패: ' + e.message, 'error'); }
 }
 
