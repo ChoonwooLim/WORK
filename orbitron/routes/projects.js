@@ -440,6 +440,35 @@ router.get('/:id/metrics', async (req, res) => {
     }
 });
 
+// GET /api/projects/:id/logs/search?q=<text>&lines=<N> - 컨테이너 로그 검색 (Task 3.3)
+// docker logs tail(기본 2000줄, dockerService 가 5000줄 캡)에서 q 를 포함하는
+// 줄만 반환. q 는 plain substring (대소문자 무시) — 사용자 입력을 정규식으로
+// 절대 해석하지 않는다 (services/logSearch.js). 매치 500개 캡 + truncated.
+router.get('/:id/logs/search', async (req, res) => {
+    try {
+        const project = await getProjectForUser(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+        const logSearch = require('../services/logSearch');
+        const q = req.query.q;
+        const valid = logSearch.validateQuery(q);
+        if (!valid.ok) return res.status(400).json({ error: valid.error });
+
+        // 라이브 로그 엔드포인트(routes/deployments.js GET /:projectId/logs)와
+        // 동일한 조회 경로 재사용 — 같은 컨테이너 이름 규칙 + 같은 캡.
+        const dockerService = require('../services/docker');
+        const containerName = `orbitron-${project.subdomain}`;
+        const logs = await dockerService.getContainerLogs(
+            containerName, req.query.lines || logSearch.DEFAULT_SEARCH_LINES);
+
+        const { matches, truncated } = logSearch.searchLogText(logs, q);
+        // cap: 클라이언트(대시보드/CLI)가 잘림 문구에 사용 — 서버 상수가 단일 진실
+        res.json({ q, matches, truncated, cap: logSearch.MAX_MATCHES });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET /api/projects/:id/commits - Get recent 20 commits for deployment options
 router.get('/:id/commits', async (req, res) => {
     try {

@@ -247,9 +247,15 @@
         <div id="overview-content"></div>
       </div>
       <div class="page" id="page-project-logs">
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="font-size:14px;color:var(--text-secondary)">컨테이너 로그</span>
-          <button class="btn btn-sm btn-ghost" onclick="refreshLogs()">🔄 새로고침</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;">
+          <span style="font-size:14px;color:var(--text-secondary);white-space:nowrap;">컨테이너 로그</span>
+          <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
+            <input type="text" id="log-search-input" placeholder="🔍 로그 검색 (부분 문자열)"
+              oninput="onLogSearchInput()"
+              style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);">
+            <span id="log-search-count" style="font-size:12px;color:var(--text-muted);white-space:nowrap;"></span>
+            <button class="btn btn-sm btn-ghost" onclick="refreshLogs()">🔄 새로고침</button>
+          </div>
         </div>
         <div class="log-viewer" id="log-content">로딩 중...</div>
       </div>

@@ -82,6 +82,7 @@ app.use('/api/pixel-streaming', require('./routes/pixelStreaming'));
 app.use('/api/admin', authMiddleware, require('./middleware/adminAuth'), require('./routes/admin'));
 app.use('/api/issues', authMiddleware, viewerGuard, require('./routes/issues'));
 app.use('/api/projects', authMiddleware, viewerGuard, require('./routes/domains'));
+app.use('/api/projects', authMiddleware, viewerGuard, require('./routes/cron'));
 app.use('/api/system', authMiddleware, viewerGuard, require('./routes/system'));
 
 // Health check
@@ -493,6 +494,20 @@ async function start() {
             } catch (e) {
                 console.error('⚠️ Metrics collector start failed:', e.message);
             }
+
+            // Scheduled cron jobs (Task 3.3): evaluate scheduled_jobs every
+            // minute (tick aligned to the minute boundary) and run them via
+            // docker exec inside project containers. Kill-switch: CRON_JOBS=off.
+            try {
+                if (String(process.env.CRON_JOBS || '').toLowerCase() === 'off') {
+                    console.log('⏰ Cron runner disabled (CRON_JOBS=off)');
+                } else {
+                    require('./services/cron').start();
+                    console.log('⏰ Cron runner started (minute-aligned, 60s interval)');
+                }
+            } catch (e) {
+                console.error('⚠️ Cron runner start failed:', e.message);
+            }
         });
     } catch (error) {
         console.error('❌ Failed to start:', error.message);
@@ -510,6 +525,9 @@ function gracefulShutdown(signal) {
     } catch (e) { /* ignore — shutdown must proceed */ }
     try {
         require('./services/metrics').stop(); // Task 2.3: stop the metrics sampling interval
+    } catch (e) { /* ignore — shutdown must proceed */ }
+    try {
+        require('./services/cron').stop(); // Task 3.3: stop the cron scheduler timers
     } catch (e) { /* ignore — shutdown must proceed */ }
     const { pool } = require('./db/db');
     pool.end().then(() => {

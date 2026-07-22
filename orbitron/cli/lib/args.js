@@ -12,9 +12,10 @@ const COMMANDS = {
     logout: { options: {}, positionals: [] },
     status: { options: {}, positionals: [] },
     deploy: { options: { project: { type: 'string' } }, positionals: [] },
-    logs: { options: { tail: { type: 'string' } }, positionals: [['project', true]] },
+    logs: { options: { tail: { type: 'string' }, grep: { type: 'string' } }, positionals: [['project', true]] },
     rollback: { options: {}, positionals: [['project', true]] },
     previews: { options: {}, positionals: null }, // 가변 — 아래에서 직접 처리
+    cron: { options: {}, positionals: null },     // 가변 — 아래에서 직접 처리
     help: { options: {}, positionals: [['topic', false]] },
 };
 
@@ -68,6 +69,20 @@ function parseCliArgs(argv) {
         return { command: 'previews', action: 'list', project: positionals[0] };
     }
 
+    // cron: `cron <project>` | `cron run <project> <name>`
+    if (command === 'cron') {
+        if (positionals[0] === 'run') {
+            if (positionals.length !== 3) {
+                throw new UsageError('사용법: orbitron cron run <project> <name> / Usage: orbitron cron run <project> <name>');
+            }
+            return { command: 'cron', action: 'run', project: positionals[1], name: positionals[2] };
+        }
+        if (positionals.length !== 1) {
+            throw new UsageError('사용법: orbitron cron <project> / Usage: orbitron cron <project>');
+        }
+        return { command: 'cron', action: 'list', project: positionals[0] };
+    }
+
     // 고정 positional 검증
     const wanted = spec.positionals;
     const required = wanted.filter(([, req]) => req).length;
@@ -81,7 +96,16 @@ function parseCliArgs(argv) {
 
     if (command === 'login') result.server = values.server || null;
     if (command === 'deploy') result.project = values.project || null;
-    if (command === 'logs') result.tail = values.tail !== undefined ? parsePositiveInt(values.tail, '--tail') : 200;
+    if (command === 'logs') {
+        result.tail = values.tail !== undefined ? parsePositiveInt(values.tail, '--tail') : 200;
+        // grep 은 지정됐을 때만 키를 만든다 (기존 결과 형태 불변 — 테스트 핀)
+        if (values.grep !== undefined) {
+            if (values.grep.length === 0) {
+                throw new UsageError('--grep 값은 비어 있을 수 없습니다. / --grep requires a non-empty value.');
+            }
+            result.grep = values.grep;
+        }
+    }
 
     return result;
 }

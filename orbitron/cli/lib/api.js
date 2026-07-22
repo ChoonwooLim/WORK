@@ -58,6 +58,11 @@ class ApiClient {
     deployments(projectId) { return this.request('GET', `/api/deployments/${projectId}`); }
     rollback(deploymentId) { return this.request('POST', `/api/deployments/${deploymentId}/rollback`, {}); }
     containerLogs(projectId, lines) { return this.request('GET', `/api/deployments/${projectId}/logs?lines=${encodeURIComponent(lines)}`); }
+    searchLogs(projectId, q, lines) { return this.request('GET', `/api/projects/${projectId}/logs/search?q=${encodeURIComponent(q)}&lines=${encodeURIComponent(lines)}`); }
+
+    // ── Cron jobs (Task 3.3) ──
+    cronJobs(projectId) { return this.request('GET', `/api/projects/${projectId}/cron`); }
+    cronRun(projectId, jobId) { return this.request('POST', `/api/projects/${projectId}/cron/${jobId}/run`, {}); }
 }
 
 module.exports = { ApiClient };

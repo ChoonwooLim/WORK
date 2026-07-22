@@ -203,8 +203,53 @@ async function cmdDeploy(ctx) {
 async function cmdLogs(ctx) {
     const { client } = requireAuth(ctx);
     const project = await findProject(ctx, client, ctx.parsed.project);
+
+    // --grep: 서버 측 검색 (Task 3.3) — plain substring, 대소문자 무시
+    if (ctx.parsed.grep !== undefined) {
+        const res = await client.searchLogs(project.id, ctx.parsed.grep, ctx.parsed.tail);
+        const matches = (res && res.matches) || [];
+        for (const m of matches) {
+            ctx.stdout.write(`${m.line}: ${m.text}\n`);
+        }
+        const cap = (res && res.cap) || 500;
+        ctx.stderr.write(`${matches.length}건 일치${res && res.truncated ? ` (${cap}건 초과 — 잘림)` : ''} / ${matches.length} match(es)${res && res.truncated ? ` (truncated at ${cap})` : ''}\n`);
+        return EXIT.OK;
+    }
+
     const res = await client.containerLogs(project.id, ctx.parsed.tail);
     ctx.stdout.write((res && res.logs ? res.logs : '') + '\n');
+    return EXIT.OK;
+}
+
+async function cmdCron(ctx) {
+    const { client } = requireAuth(ctx);
+    const project = await findProject(ctx, client, ctx.parsed.project);
+    const res = await client.cronJobs(project.id);
+    const jobs = (res && res.jobs) || [];
+
+    if (ctx.parsed.action === 'run') {
+        const job = jobs.find((j) => j.name === ctx.parsed.name);
+        if (!job) {
+            throw new UsageError(`'${ctx.parsed.name}' 이름의 예약 작업이 없습니다. / No cron job named '${ctx.parsed.name}'. ('orbitron cron ${project.subdomain || project.name}' 로 목록 확인)`);
+        }
+        ctx.stdout.write(`실행 중 / Running: ${job.name} (${job.command})\n`);
+        const result = await client.cronRun(project.id, job.id); // ApiError 는 main 에서 처리
+        ctx.stdout.write(`상태 / Status: ${result.status}\n`);
+        if (result.output) ctx.stdout.write(result.output + (result.output.endsWith('\n') ? '' : '\n'));
+        return result.status === 'success' || result.status === 'skipped' ? EXIT.OK : EXIT.API;
+    }
+
+    if (jobs.length === 0) {
+        ctx.stdout.write('예약 작업이 없습니다. / No cron jobs.\n');
+        return EXIT.OK;
+    }
+    const color = colorEnabled(ctx.env, ctx.isTTY);
+    const rows = jobs.map((j) => [
+        j.name, j.schedule, j.enabled ? 'on' : 'off',
+        colorizeStatus(j.last_status || '-', color),
+        j.next_run_at ? j.next_run_at.replace('T', ' ').slice(0, 16) : '-',
+    ]);
+    ctx.stdout.write(formatTable(['NAME', 'SCHEDULE', 'ENABLED', 'LAST', 'NEXT RUN (UTC)'], rows, { color }) + '\n');
     return EXIT.OK;
 }
 
@@ -290,6 +335,7 @@ const HANDLERS = {
     logs: cmdLogs,
     rollback: cmdRollback,
     previews: cmdPreviews,
+    cron: cmdCron,
     help: cmdHelp,
     version: cmdVersion,
 };
