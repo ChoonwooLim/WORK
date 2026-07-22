@@ -51,6 +51,12 @@ class Deployer extends EventEmitter {
         this.latestProgress = new Map(); // Tracks the latest event per project for late-joining UI clients
     }
 
+    // 배포/롤백 진행 중 여부 공개 조회 (Task 2.2 헬스 모니터가 사용 —
+    // 배포 중인 프로젝트는 프로브/자동 재시작 대상에서 제외해야 함)
+    isDeploying(projectId) {
+        return this.activeDeployments.has(projectId);
+    }
+
     // Emit a deploy progress event
     emitProgress(projectId, stepId, message, status = 'running') {
         const step = DEPLOY_STEPS.find(s => s.id === stepId);
