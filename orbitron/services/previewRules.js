@@ -117,6 +117,12 @@ function parseOwnerRepo(url) {
     return `${m[1]}/${m[2]}`;
 }
 
+// 프리뷰 외부 URL (순수). 'twinverse.org' 폴백은 이 한 곳에만 존재한다 —
+// 호출부(코멘트 헬퍼, previews API)는 process.env.TUNNEL_DOMAIN 을 넘긴다.
+function previewUrl(subdomain, domain) {
+    return `https://${subdomain}.${domain || 'twinverse.org'}`;
+}
+
 // 프리뷰 호스트 포트 출발점 (PR 번호로 결정적 분산; 충돌은 startContainer 가 해소)
 function previewBasePort(prNumber) {
     const n = Math.abs(parseInt(prNumber, 10) || 0);
@@ -166,6 +172,7 @@ module.exports = {
     extractTokenFromGitUrl,
     discoverGithubToken,
     parseOwnerRepo,
+    previewUrl,
     previewBasePort,
     isPreviewSubdomain,
     isReservedPreviewNamespace,

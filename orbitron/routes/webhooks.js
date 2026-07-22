@@ -70,6 +70,10 @@ router.post('/github', async (req, res) => {
         const signature = req.headers['x-hub-signature-256'];
 
         // Verify signature if secret is set (applies to ALL events — push and pull_request)
+        // ⚠️ 알려진 후속 과제: 서명 "헤더가 없는" 요청은 검증을 그냥 통과한다
+        // (기존 push 경로 동작을 그대로 미러링). 헤더 부재 시 거부로 강화하는
+        // 것은 기존 무서명 웹훅 사용자를 깨뜨릴 수 있어 별도 라운드에서 다룬다 —
+        // 이번 라운드에서는 동작을 바꾸지 않는다.
         if (WEBHOOK_SECRET && signature) {
             if (!req.rawBody) return res.status(400).json({ error: 'Raw body required for signature verification' });
             const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);

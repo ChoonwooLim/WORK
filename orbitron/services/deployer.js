@@ -1322,7 +1322,17 @@ class Deployer extends EventEmitter {
             fs.mkdirSync(projectDir, { recursive: true });
             try {
                 const { stdout, stderr } = await execAsync(`git clone -b ${project.branch} ${project.github_url} ${projectDir}`, { maxBuffer: 1024 * 1024 * 10 });
-                return `Git clone:\n${stdout}${stderr}`;
+                let extra = '';
+                // 첫 클론에서도 요청된 커밋으로 고정: 클론은 브랜치 HEAD 를 받으므로
+                // webhook 의 커밋 해시와 어긋날 수 있다 (해시는 호출부에서 이미
+                // 화이트리스트 검증됨 — deployPreview 의 isSafeCommitHash / 롤백 경로).
+                if (commitHash) {
+                    const { stdout: rOut, stderr: rErr } = await execAsync(
+                        `cd ${projectDir} && git reset --hard ${commitHash}`, { maxBuffer: 1024 * 1024 * 10 }
+                    );
+                    extra = `\nGit reset to ${commitHash.substring(0, 7)}:\n${rOut}${rErr}`;
+                }
+                return `Git clone:\n${stdout}${stderr}${extra}`;
             } catch (error) {
                 throw new Error(`Git clone failed: ${error.stderr || error.message}`);
             }
@@ -1444,7 +1454,7 @@ class Deployer extends EventEmitter {
                 try {
                     const decrypted = decrypt(project.env_vars);
                     parentEnv = decrypted ? JSON.parse(decrypted) : {};
-                } catch (e) {
+                } catch {
                     console.error(`Preview: failed to decrypt env_vars for project ${project.id}`);
                 }
             } else if (typeof project.env_vars === 'object' && project.env_vars !== null) {
@@ -1453,9 +1463,14 @@ class Deployer extends EventEmitter {
 
             // ⚠️ v1 캐비앳: 프리뷰는 부모 프로젝트의 DATABASE_URL 등을 그대로
             // 물려받는다 — 프리뷰 컨테이너의 쓰기가 부모의 "실제" DB 에 반영된다.
-            // (프리뷰별 DB 클론은 v2 과제. 여기서는 PORT 만 프리뷰용으로 덮어쓴다)
+            // (프리뷰별 DB 클론은 v2 과제)
+            // PORT 는 여기서 미리 넣지 않는다: startContainer 가 lsof 충돌 해소
+            // "이후"의 최종 포트로 PORT 를 자동 주입하므로, 미리 basePort 를
+            // 박아두면 충돌 시 env 와 호스트 매핑이 어긋난다. (부모 env 에 PORT 가
+            // 명시돼 있으면 그 값이 유지되고, nginx/스모크는 어차피 감지된 실제
+            // 리슨 포트로 라우팅한다)
             const basePort = previewRules.previewBasePort(prNumber);
-            const previewEnv = { ...parentEnv, PORT: String(basePort) };
+            const previewEnv = { ...parentEnv };
 
             // synthetic project: 배포 기계(빌드/컨테이너/nginx)가 요구하는 필드만
             // 부모에서 복사. id 를 지워 어떤 경로도 projects 행을 UPDATE 못 하게 한다.
@@ -1537,10 +1552,20 @@ class Deployer extends EventEmitter {
             // ── 6. 옛 프리뷰 컨테이너 정리 (synchronize 재배포의 블루-그린 꼬리) ──
             await dockerService.cleanupOldContainers(previewSubdomain, containerName);
 
-            await db.query(
-                `UPDATE preview_deployments SET status = 'running', container_id = $1, last_commit = $2, updated_at = NOW() WHERE id = $3`,
+            // 최종 상태 UPDATE 는 행 실존을 확인한다 (RETURNING): destroyPreview 는
+            // 프리뷰 락을 존중하지 않으므로 빌드→시작 사이 갭에서 destroy 가 먼저
+            // 완료되면 행이 이미 없다 — 그대로 성공 처리하면 방금 띄운 컨테이너와
+            // nginx conf 가 DB 에 보이지 않는 채(= TTL 스윕 대상도 아님) 영구
+            // 누수된다. 0행이면 지금 만든 리소스를 즉시 걷어낸다.
+            const updated = await db.queryOne(
+                `UPDATE preview_deployments SET status = 'running', container_id = $1, last_commit = $2, updated_at = NOW() WHERE id = $3 RETURNING id`,
                 [containerName, commitHash, rowId]
             );
+            if (!updated) {
+                console.warn(`⚠️ Preview ${previewSubdomain} was destroyed mid-deploy — tearing down freshly started resources`);
+                await this._teardownPreview(previewSubdomain);
+                return { success: false, code: 'DESTROYED_MID_DEPLOY', error: 'Preview was destroyed while deploying', subdomain: previewSubdomain };
+            }
             console.log(`✅ Preview ready: ${previewSubdomain} (container ${containerName}, port ${actualPort})`);
 
             // ── 7. GitHub PR 코멘트 (best-effort — 실패해도 배포는 성공) ──
@@ -1652,12 +1677,11 @@ class Deployer extends EventEmitter {
             console.log(`ℹ️ Preview comment skipped for PR #${prNumber}: cannot parse owner/repo from github_url`);
             return;
         }
-        const tunnelDomain = process.env.TUNNEL_DOMAIN || 'twinverse.org';
         // 수용된 v1 제약: 터널은 프로젝트별 systemd 유닛 + 명시적 hostname ingress
         // 라 pr-N 서브도메인은 아직 외부에서 도달 불가(내부 Host 헤더 라우팅만).
         // 와일드카드 *.{TUNNEL_DOMAIN} DNS/ingress 가 추가되면 이 URL 이 그대로
         // 살아나므로 코멘트 형식은 정식 URL 로 유지한다.
-        const body = `🔍 Preview: https://${previewSubdomain}.${tunnelDomain}`;
+        const body = `🔍 Preview: ${previewRules.previewUrl(previewSubdomain, process.env.TUNNEL_DOMAIN)}`;
         const res = await fetch(`https://api.github.com/repos/${ownerRepo}/issues/${prNumber}/comments`, {
             method: 'POST',
             headers: {
@@ -1684,7 +1708,13 @@ class Deployer extends EventEmitter {
                 `SELECT subdomain FROM preview_deployments WHERE project_id = $1`, [project.id]
             );
             for (const p of previews) {
-                await this._teardownPreview(p.subdomain);
+                // per-preview 격리: 한 프리뷰의 실패(EACCES 등)가 나머지 정리를
+                // 건너뛰게 하면 안 된다
+                try {
+                    await this._teardownPreview(p.subdomain);
+                } catch (e) {
+                    console.error(`Preview teardown failed for ${p.subdomain}: ${e.message}`);
+                }
             }
         } catch (e) {
             console.error(`Preview cleanup during project delete failed: ${e.message}`);

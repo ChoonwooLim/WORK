@@ -1306,6 +1306,17 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
         }
     }
 
+    // 순수 함수: 정리 대상 컨테이너 선정. keepContainerName 과, protectedPrefixes
+    // 에 속한(정확히 일치 또는 '<prefix>-' 로 시작) 이름은 제외한다.
+    // (Task 3.1 리뷰 핀: 프리픽스 형제 프로젝트/프리뷰 보호가 이 한 곳에 모임 —
+    //  test/previewRules.test.js 가 병합 보호 로직을 핀)
+    selectContainersToCleanup(containers, keepContainerName, protectedPrefixes) {
+        return (containers || []).filter(name => {
+            if (name === keepContainerName) return false;
+            return !(protectedPrefixes || []).some(prefix => name === prefix || name.startsWith(prefix + '-'));
+        });
+    }
+
     // Clean up old containers belonging to this project (except the active one)
     // Uses `docker rm -f` to guarantee removal even for stuck Created/Restarting states
     async cleanupOldContainers(subdomain, keepContainerName) {
@@ -1329,14 +1340,23 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
                 }
             } catch (e) { /* DB unavailable — skip protection */ }
 
-            for (const name of containers) {
-                if (name === keepContainerName) continue;
-                // CRITICAL: Never delete containers belonging to OTHER projects
-                const isProtected = protectedPrefixes.some(prefix => name === prefix || name.startsWith(prefix + '-'));
-                if (isProtected) {
-                    console.log(`⏭️ Skipping container from different project: ${name}`);
-                    continue;
+            // Task 3.1: 프리뷰 형제도 보호해야 한다. 프리픽스 관계의 프로젝트 쌍
+            // (myapp / myapp-x)은 프리픽스 관계의 프리뷰(pr-5-myapp / pr-5-myapp-x)
+            // 를 만들고, 위의 projects 조회는 previews 를 절대 모른다 — 이 조회가
+            // 없으면 pr-5-myapp 정리 grep 이 pr-5-myapp-x 의 살아있는 컨테이너를
+            // docker rm -f 한다.
+            try {
+                const db = require('../db/db');
+                const siblingPreviews = await db.query(
+                    "SELECT subdomain FROM preview_deployments WHERE subdomain LIKE $1 AND subdomain != $2",
+                    [subdomain + '-%', subdomain]
+                );
+                for (const row of siblingPreviews.rows) {
+                    protectedPrefixes.push(`orbitron-${row.subdomain}`);
                 }
+            } catch (e) { /* DB unavailable — skip protection */ }
+
+            for (const name of this.selectContainersToCleanup(containers, keepContainerName, protectedPrefixes)) {
                 console.log(`🧹 Force-removing old container: ${name}`);
                 // Force-remove to handle stuck Created/Restarting states
                 await execAsync(`docker rm -f ${name} 2>/dev/null || true`);

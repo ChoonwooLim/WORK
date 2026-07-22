@@ -1045,7 +1045,7 @@ async function loadPreviews(projectId) {
           ${previews.map(pv => `
             <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
               <span style="font-weight:600;">PR #${parseInt(pv.pr_number, 10)}</span>
-              <a href="https://${escapeHtml(pv.subdomain)}.${escapeHtml((window.TUNNEL_DOMAIN || 'twinverse.org'))}" target="_blank" rel="noopener" style="flex:1;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(pv.subdomain)}</a>
+              <a href="${escapeHtml(pv.url || '#')}" target="_blank" rel="noopener" style="flex:1;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(pv.subdomain)}</a>
               ${statusBadge(pv.status)}
               <button class="btn btn-sm btn-danger" onclick="deletePreview(${projectId}, ${parseInt(pv.pr_number, 10)})">삭제</button>
             </div>`).join('')}

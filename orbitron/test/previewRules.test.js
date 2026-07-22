@@ -255,6 +255,51 @@ test('previewBasePort: within 5100-5899 range, deterministic, distinct from 3000
     }
 });
 
+// ── previewUrl (도메인 폴백은 previewRules 한 곳에만) ───────────────────────
+
+test('previewUrl: uses given domain, falls back to twinverse.org only when absent', () => {
+    assert.strictEqual(rules.previewUrl('pr-5-myapp', 'example.org'), 'https://pr-5-myapp.example.org');
+    assert.strictEqual(rules.previewUrl('pr-5-myapp', undefined), 'https://pr-5-myapp.twinverse.org');
+    assert.strictEqual(rules.previewUrl('pr-5-myapp', ''), 'https://pr-5-myapp.twinverse.org');
+});
+
+// ── docker.selectContainersToCleanup (병합 보호 로직 핀) ────────────────────
+// cleanupOldContainers 는 projects + preview_deployments 양쪽에서 형제
+// 프리픽스를 모아 이 순수 함수로 정리 대상을 거른다. 시나리오: 프로젝트
+// myapp / myapp-x 의 PR 5 프리뷰는 pr-5-myapp / pr-5-myapp-x — pr-5-myapp
+// 정리 grep(^orbitron-pr-5-myapp-)이 형제 프리뷰 컨테이너를 집더라도
+// 보호 프리픽스가 있으면 살아남아야 한다.
+
+const docker = require('../services/docker');
+
+test('cleanup selection: keep target and protected sibling-preview containers survive', () => {
+    const containers = [
+        'orbitron-pr-5-myapp-abc',      // old blue-green of the preview being cleaned
+        'orbitron-pr-5-myapp-def',      // the container to keep
+        'orbitron-pr-5-myapp-x-live',   // sibling preview (project myapp-x, PR 5) — protected
+    ];
+    const out = docker.selectContainersToCleanup(
+        containers, 'orbitron-pr-5-myapp-def', ['orbitron-pr-5-myapp-x']
+    );
+    assert.deepStrictEqual(out, ['orbitron-pr-5-myapp-abc']);
+});
+
+test('cleanup selection: protected prefix matches exact name and prefix- forms', () => {
+    const out = docker.selectContainersToCleanup(
+        ['orbitron-myapp-db', 'orbitron-myapp-db-old', 'orbitron-myapp-a1'],
+        '__none__', ['orbitron-myapp-db']
+    );
+    assert.deepStrictEqual(out, ['orbitron-myapp-a1']);
+});
+
+test('cleanup selection: no protection list → everything except keep is removed', () => {
+    const out = docker.selectContainersToCleanup(
+        ['orbitron-x-1', 'orbitron-x-2'], 'orbitron-x-2', []
+    );
+    assert.deepStrictEqual(out, ['orbitron-x-1']);
+    assert.deepStrictEqual(docker.selectContainersToCleanup([], '__none__', null), []);
+});
+
 // ── isPreviewSubdomain guard ────────────────────────────────────────────────
 
 // ── Reserved preview namespace (routes/projects.js 생성/수정 400 가드) ──────

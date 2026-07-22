@@ -1236,7 +1236,9 @@ router.get('/:id/previews', async (req, res) => {
              FROM preview_deployments WHERE project_id = $1 ORDER BY pr_number DESC`,
             [project.id]
         );
-        res.json(previews);
+        // url 은 서버가 previewRules.previewUrl 로 계산해 내려준다 —
+        // 도메인 폴백('twinverse.org')이 프론트에 하드코딩되지 않게.
+        res.json(previews.map(p => ({ ...p, url: previewRules.previewUrl(p.subdomain, process.env.TUNNEL_DOMAIN) })));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
