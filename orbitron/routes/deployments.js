@@ -33,6 +33,10 @@ router.get('/:projectId', async (req, res) => {
 // 409: nginx conf 수동 관리 프로젝트, 또는 배포/롤백 이미 진행 중
 router.post('/:id/rollback', async (req, res) => {
     try {
+        // 숫자 아닌 id 는 Postgres 캐스트 에러(500) 대신 404 로 처리
+        if (!/^\d+$/.test(req.params.id)) {
+            return res.status(404).json({ error: '배포 기록을 찾을 수 없습니다. / Deployment not found.' });
+        }
         const deployment = await db.queryOne('SELECT * FROM deployments WHERE id = $1', [req.params.id]);
         if (!deployment) {
             return res.status(404).json({ error: '배포 기록을 찾을 수 없습니다. / Deployment not found.' });
