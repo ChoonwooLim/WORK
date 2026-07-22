@@ -338,12 +338,13 @@ async function start() {
                 // Recover stale 'queued'/'building' DEPLOYMENT rows (Task 1.3):
                 // the build queue is in-memory, so a process crash/restart strands
                 // deployment records at 'queued' (and interrupted builds at
-                // 'building') forever. At startup no build can still be in flight
-                // → mark rows older than 5 minutes as 'failed'.
+                // 'building') forever. The server is already accepting deploys
+                // when this runs — the 5-minute age filter is what protects
+                // fresh in-flight rows. Mark older rows as 'failed'.
                 try {
                     const staleDeploys = await db.query(
                         "UPDATE deployments SET status = 'failed', finished_at = NOW(), " +
-                        "logs = COALESCE(logs, '') || E'\\n❌ 서버 재시작으로 빌드 대기열이 초기화되어 배포가 중단되었습니다.\\n' " +
+                        "logs = COALESCE(logs, '') || E'\\n❌ 서버 재시작으로 빌드 대기열이 초기화되어 배포가 중단되었습니다. 필요 시 다시 배포해 주세요.\\n' " +
                         "WHERE status IN ('queued', 'building') AND started_at < NOW() - INTERVAL '5 minutes' RETURNING id"
                     );
                     const staleCount = (staleDeploys.rows || []).length;
