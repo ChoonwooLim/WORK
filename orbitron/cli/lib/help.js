@@ -12,9 +12,12 @@ const GENERAL = `Orbitron CLI — 셀프호스팅 PaaS 명령줄 도구 / self-h
   status                       프로젝트 목록·상태 / List projects and status
   deploy [--project <이름>]    배포 실행 후 완료까지 추적 / Deploy and watch until done
   logs <project> [--tail N]    컨테이너 로그 출력 (기본 200줄) / Print container logs
+       [--grep <text>]         로그 검색 (부분 문자열) / Filter log lines by substring
   rollback <project>           이전 성공 배포로 롤백 / Roll back to a past deployment
   previews <project>           PR 프리뷰 목록 / List PR previews
   previews rm <project> <pr>   PR 프리뷰 삭제 / Delete a PR preview
+  cron <project>               예약 작업 목록 / List cron jobs
+  cron run <project> <name>    예약 작업 즉시 실행 / Run a cron job now
   help [command]               도움말 / Show help
 
 종료 코드 / Exit codes: 0 성공 · 1 API/네트워크 오류 · 2 사용법 오류 · 3 인증 오류
@@ -42,10 +45,14 @@ Prints your projects as a table (name, subdomain, status, type).`,
 --project 생략 시 현재 git 저장소의 origin 주소로 프로젝트를 찾습니다.
 Triggers a deploy and polls status every 3s until success/failed (15 min timeout).
 Without --project, matches the current git repo's origin URL.`,
-    logs: `orbitron logs <project> [--tail N]
+    logs: `orbitron logs <project> [--tail N] [--grep <text>]
 
 컨테이너 로그 마지막 N줄을 출력합니다 (기본 200). 실시간 팔로우(-f)는 v1 미지원.
-Prints the last N container log lines (default 200). No follow mode in v1.`,
+--grep 은 서버 측에서 부분 문자열(대소문자 무시)로 줄을 걸러 '줄번호: 내용'
+형식으로 출력합니다 (정규식 아님, 최대 500건).
+Prints the last N container log lines (default 200). No follow mode in v1.
+--grep filters lines server-side by case-insensitive substring (not a regex,
+max 500 matches), printed as 'line: text'.`,
     rollback: `orbitron rollback <project>
 
 최근 성공 배포 목록에서 번호를 골라 해당 이미지로 롤백하고 완료까지 추적합니다.
@@ -54,6 +61,13 @@ Pick a past successful deployment by number and roll back to its image.`,
 orbitron previews rm <project> <pr>
 
 PR 프리뷰 배포를 조회하거나 삭제합니다. / List or delete PR preview deployments.`,
+    cron: `orbitron cron <project>
+orbitron cron run <project> <name>
+
+프로젝트의 예약 작업(cron)을 조회하거나 이름으로 즉시 실행합니다.
+실행 결과(상태/출력)를 그대로 출력하며, 실패 시 종료 코드 1 입니다.
+List a project's cron jobs, or trigger one by name and print its output
+(exit code 1 if the run failed).`,
 };
 
 function helpText(topic) {

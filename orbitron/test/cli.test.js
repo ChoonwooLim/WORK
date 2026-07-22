@@ -75,6 +75,24 @@ test('args: previews <project> / previews rm <project> <pr>', () => {
     assert.throws(() => parseCliArgs(['previews', 'rm', 'myapp', 'x']), UsageError);  // pr 정수 아님
 });
 
+test('args: logs --grep (Task 3.3) — 지정 시에만 grep 키 생성, 빈 값 거부', () => {
+    assert.deepStrictEqual(parseCliArgs(['logs', 'myapp', '--grep', 'error']),
+        { command: 'logs', project: 'myapp', tail: 200, grep: 'error' });
+    assert.deepStrictEqual(parseCliArgs(['logs', 'myapp', '--tail', '50', '--grep', 'db down']),
+        { command: 'logs', project: 'myapp', tail: 50, grep: 'db down' });
+    assert.throws(() => parseCliArgs(['logs', 'myapp', '--grep', '']), UsageError);
+});
+
+test('args: cron <project> / cron run <project> <name> (Task 3.3)', () => {
+    assert.deepStrictEqual(parseCliArgs(['cron', 'myapp']),
+        { command: 'cron', action: 'list', project: 'myapp' });
+    assert.deepStrictEqual(parseCliArgs(['cron', 'run', 'myapp', 'backup']),
+        { command: 'cron', action: 'run', project: 'myapp', name: 'backup' });
+    assert.throws(() => parseCliArgs(['cron']), UsageError);
+    assert.throws(() => parseCliArgs(['cron', 'run', 'myapp']), UsageError);          // name 누락
+    assert.throws(() => parseCliArgs(['cron', 'myapp', 'extra']), UsageError);
+});
+
 test('args: 알 수 없는 명령/플래그 → UsageError', () => {
     assert.throws(() => parseCliArgs(['destroy-everything']), UsageError);
     assert.throws(() => parseCliArgs(['status', '--bogus']), UsageError);
