@@ -1,0 +1,244 @@
+'use strict';
+
+// 능동 헬스 모니터링 + 제한된 자동 재시작 (Task 2.2)
+//
+// 60초마다 실행 중인 웹 프로젝트를 http://127.0.0.1:<port>/ 로 프로브한다.
+// "살아있음" = 어떤 HTTP 응답이든 5초 안에 오는 것 (500 이어도 프로세스는
+// 떠 있으므로 up) — 프로세스 수준 liveness 만 판단하고 앱 로직 오류엔
+// 개입하지 않는다. "죽음" = 연결 거부/타임아웃 등 네트워크 오류.
+//
+// 프로젝트별 상태 머신 (in-memory, 연속 실패 카운터):
+//   fail 1..2               → 관찰만
+//   fail 3  (일반 컨테이너)  → docker restart 1회 (outage 당 딱 1회)
+//   fail 3  (compose-*)     → 재시작 금지, status='unhealthy' + 알림
+//   fail 6  (일반 컨테이너)  → status='unhealthy' + 마지막 오류 포함 알림
+//   fail 7+                 → unhealthy 유지, 쿨다운(30분) 지나면 재알림
+//   success                 → 카운터 리셋; 우리가 unhealthy 로 내렸었다면
+//                             status='running' 복원 + 복구 알림(outage 당 1회,
+//                             쿨다운 면제)
+//
+// 안전 규칙:
+//   - 배포 중(deployer.isDeploying)인 프로젝트는 건드리지 않는다.
+//   - DB 쓰기는 running↔unhealthy 전이뿐이며 WHERE status IN
+//     ('running','unhealthy') 재가드로 building/stopped 를 절대 덮지 않는다.
+//   - compose-manual-* (수동 등록 스택) 포함 모든 compose-* 는 자동 재시작 금지.
+//   - tick() 은 어떤 경우에도 throw 하지 않는다 (서버 프로세스 보호).
+//
+// 테스트 주입 지점: constructor deps { db, checkHttp, restartContainer,
+// alert, isDeploying, now } — buildQueue.js 의 싱글턴+클래스 export 관례를 따름.
+// 프로덕션 기본값은 lazy require (테스트 환경엔 node_modules 가 없을 수 있음).
+
+const TICK_INTERVAL_MS = 60 * 1000;
+const PROBE_TIMEOUT_MS = 5000;
+const RESTART_THRESHOLD = 3;   // 3번째 연속 실패에 1회 재시작 (compose 는 unhealthy)
+const UNHEALTHY_THRESHOLD = 6; // 6번째 연속 실패에 unhealthy 확정
+const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+
+// 감시 대상: 실행 중(또는 우리가 unhealthy 로 내린) 웹 프로젝트.
+// - DB 프로젝트(type db_postgres/db_redis)는 HTTP 가 없으므로 제외.
+// - pixel_streaming 은 type 컬럼이 아니라 env_vars.PROJECT_TYPE 에 저장되므로
+//   (routes/projects.js 참고) SQL 로 거를 수 없어 JS 쪽에서 제외한다.
+// - building/stopped/failed 등은 SELECT 단계에서 이미 제외.
+const SELECT_TARGETS_SQL =
+    "SELECT id, name, subdomain, port, container_id, status, env_vars FROM projects " +
+    "WHERE status IN ('running', 'unhealthy') " +
+    "AND (type IS NULL OR type NOT IN ('db_postgres', 'db_redis')) " +
+    "AND port IS NOT NULL";
+
+// 기본 프로브 — 응답이 오면 status 반환, 네트워크 오류/타임아웃이면 throw.
+async function defaultCheckHttp(url) {
+    const res = await fetch(url, {
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        redirect: 'manual',
+    });
+    // 응답 본문은 쓰지 않으므로 소켓 누수 방지를 위해 즉시 폐기
+    try { if (res.body) await res.body.cancel(); } catch { /* ignore */ }
+    return { status: res.status };
+}
+
+// 기본 재시작 — docker.js 에는 범용 restart 헬퍼가 없고 배포 경로는 컨테이너를
+// 재생성한다. 여기서는 상태 보존형 최소 개입인 `docker restart` 를 쓴다.
+async function defaultRestartContainer(project) {
+    const { execFile } = require('child_process');
+    const util = require('util');
+    const execFileAsync = util.promisify(execFile);
+    await execFileAsync('docker', ['restart', project.container_id], { timeout: 60000 });
+}
+
+class Monitor {
+    constructor(deps = {}) {
+        // lazy 기본값: 테스트에서 실 DB/deployer/알림을 절대 로드하지 않도록
+        this._deps = deps;
+        this.checkHttp = deps.checkHttp || defaultCheckHttp;
+        this.restartContainer = deps.restartContainer || defaultRestartContainer;
+        this.now = deps.now || Date.now;
+        this.states = new Map(); // projectId → { failures, restartAttempted, markedUnhealthy, lastAlertAt, lastError }
+        this.timer = null;
+    }
+
+    _db() {
+        return this._deps.db || require('../db/db');
+    }
+
+    _alert(title, body) {
+        const alert = this._deps.alert || require('./alerts').sendAlert;
+        return alert(title, body);
+    }
+
+    _isDeploying(projectId) {
+        if (this._deps.isDeploying) return this._deps.isDeploying(projectId);
+        return require('./deployer').isDeploying(projectId);
+    }
+
+    start() {
+        if (this.timer) return;
+        // tick() 은 절대 reject 하지 않으므로 fire-and-forget 안전
+        this.timer = setInterval(() => { this.tick(); }, TICK_INTERVAL_MS);
+        if (this.timer.unref) this.timer.unref(); // 모니터가 프로세스 종료를 막지 않도록
+    }
+
+    stop() {
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+    }
+
+    // pixel_streaming 프로젝트는 HTTP 프로브 대상이 아님 — env_vars 는 DB 에
+    // 통짜 암호화 문자열(jsonb)로 저장되므로 필요할 때만 복호화해서 확인.
+    _isPixelStreaming(project) {
+        let env = project.env_vars;
+        if (env && typeof env === 'string') {
+            try {
+                const { decrypt } = require('../db/crypto');
+                env = JSON.parse(decrypt(env) || '{}');
+            } catch { env = {}; }
+        }
+        return Boolean(env) && env.PROJECT_TYPE === 'pixel_streaming';
+    }
+
+    async tick() {
+        try {
+            const result = await this._db().query(SELECT_TARGETS_SQL);
+            const rows = (result && result.rows) || [];
+            const seen = new Set();
+            for (const project of rows) {
+                if (this._isPixelStreaming(project)) continue;
+                seen.add(project.id);
+                try {
+                    await this._checkProject(project);
+                } catch (e) {
+                    // 개별 프로젝트 점검 실패(DB write 오류 등)가 tick 전체를 죽이면 안 됨
+                    console.error(`[monitor] ${project.name} 점검 오류: ${e && e.message ? e.message : e}`);
+                }
+            }
+            // SELECT 에서 사라진 프로젝트(중지/삭제/배포로 building 전환)의
+            // 상태는 정리 — 다음에 다시 나타나면 새 outage 로 취급한다.
+            for (const id of [...this.states.keys()]) {
+                if (!seen.has(id)) this.states.delete(id);
+            }
+        } catch (e) {
+            console.error(`[monitor] tick 실패: ${e && e.message ? e.message : e}`);
+        }
+    }
+
+    async _checkProject(project) {
+        // 배포/롤백 진행 중엔 컨테이너가 교체되는 중 — 프로브도 재시작도 금지
+        if (this._isDeploying(project.id)) return;
+
+        let alive = false;
+        let lastError = null;
+        try {
+            const res = await this.checkHttp(`http://127.0.0.1:${project.port}/`);
+            // 어떤 HTTP 응답이든 (500 포함) 프로세스는 떠 있는 것 — liveness 만 판단
+            alive = !res || typeof res.status !== 'number' || res.status < 600;
+        } catch (e) {
+            lastError = e && e.message ? e.message : String(e);
+        }
+
+        const state = this.states.get(project.id) || {
+            failures: 0, restartAttempted: false, markedUnhealthy: false,
+            lastAlertAt: null, lastError: null,
+        };
+
+        if (alive) {
+            // markedUnhealthy 는 in-memory 라 서버 재시작 시 소실 — DB 에
+            // 'unhealthy' 로 남아있는 행(row status)도 복원 대상으로 본다.
+            if (state.markedUnhealthy || project.status === 'unhealthy') {
+                await this._setStatus(project.id, 'running');
+                // 복구 알림: 쿨다운 면제, state 삭제 + status 복원으로 outage 당 1회 보장
+                await this._alert(`✅ ${project.name} 복구됨`,
+                    `${this._where(project)}\n헬스체크 정상 응답 — status 를 'running' 으로 복원했습니다.`);
+            }
+            this.states.delete(project.id);
+            return;
+        }
+
+        state.failures += 1;
+        if (lastError) state.lastError = lastError;
+        this.states.set(project.id, state);
+
+        const isCompose = typeof project.container_id === 'string'
+            && project.container_id.startsWith('compose-');
+
+        if (isCompose) {
+            // compose 스택(수동 등록 compose-manual-* 포함)은 절대 자동 재시작 금지
+            if (state.failures >= RESTART_THRESHOLD) {
+                if (!state.markedUnhealthy) await this._setStatus(project.id, 'unhealthy');
+                state.markedUnhealthy = true;
+                await this._maybeAlert(project, state,
+                    `🚨 ${project.name} 응답 없음 (compose)`,
+                    `${this._where(project)}\n연속 ${state.failures}회 헬스체크 실패 — compose 스택은 자동 재시작하지 않습니다. 수동 확인이 필요합니다.\n마지막 오류: ${state.lastError || 'HTTP 응답 없음'}`);
+            }
+            return;
+        }
+
+        if (state.failures === RESTART_THRESHOLD && !state.restartAttempted) {
+            state.restartAttempted = true; // outage 당 재시작은 단 1회
+            console.log(`[monitor] ${project.name}: 연속 ${state.failures}회 실패 → docker restart 시도 (${project.container_id})`);
+            try {
+                await this.restartContainer(project);
+            } catch (e) {
+                console.error(`[monitor] ${project.name} 재시작 실패: ${e && e.message ? e.message : e}`);
+            }
+            return;
+        }
+
+        if (state.failures >= UNHEALTHY_THRESHOLD) {
+            if (!state.markedUnhealthy) await this._setStatus(project.id, 'unhealthy');
+            state.markedUnhealthy = true;
+            await this._maybeAlert(project, state,
+                `🚨 ${project.name} 응답 없음`,
+                `${this._where(project)}\n연속 ${state.failures}회 헬스체크 실패 (자동 재시작 1회 시도 후에도 실패) — status='unhealthy'.\n마지막 오류: ${state.lastError || 'HTTP 응답 없음'}`);
+        }
+    }
+
+    // 알림 본문 공통 헤더 — 어떤 프로젝트/어디를 프로브했는지 한 줄로 식별
+    _where(project) {
+        return `프로젝트: ${project.subdomain || project.name} (port ${project.port})`;
+    }
+
+    // running↔unhealthy 전이만 허용 — building/stopped 등은 재가드로 절대 덮지 않음
+    async _setStatus(projectId, status) {
+        await this._db().query(
+            "UPDATE projects SET status = $1 WHERE id = $2 AND status IN ('running', 'unhealthy')",
+            [status, projectId]
+        );
+    }
+
+    // 장애 알림은 프로젝트당 30분 쿨다운 (알림 폭풍 방지)
+    async _maybeAlert(project, state, title, body) {
+        const nowMs = this.now();
+        if (state.lastAlertAt !== null && nowMs - state.lastAlertAt < ALERT_COOLDOWN_MS) return;
+        state.lastAlertAt = nowMs;
+        await this._alert(title, body);
+    }
+}
+
+const monitor = new Monitor();
+monitor.Monitor = Monitor; // 테스트에서 독립 인스턴스 생성용 (buildQueue.js 관례)
+monitor.TICK_INTERVAL_MS = TICK_INTERVAL_MS;
+monitor.ALERT_COOLDOWN_MS = ALERT_COOLDOWN_MS;
+monitor.RESTART_THRESHOLD = RESTART_THRESHOLD;
+monitor.UNHEALTHY_THRESHOLD = UNHEALTHY_THRESHOLD;
+module.exports = monitor;

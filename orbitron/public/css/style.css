@@ -580,6 +580,13 @@ body {
   color: var(--danger);
 }
 
+/* Task 2.2: health monitor marks a live-but-unresponsive project 'unhealthy' —
+   danger family like failed, but orange to read as "up yet not responding" */
+.badge-unhealthy {
+  background: rgba(240, 136, 62, 0.2);
+  color: #f0883e;
+}
+
 /* ===== LOGS ===== */
 .log-viewer {
   background: #010409;

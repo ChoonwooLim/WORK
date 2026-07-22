@@ -355,7 +355,12 @@ async function start() {
                     console.error('⚠️ Stale queued deployment recovery skipped:', e.message);
                 }
 
-                const result = await db.query("SELECT * FROM projects WHERE status = 'running'");
+                // 'unhealthy' (Task 2.2 헬스 모니터가 내린 상태) 도 복구 대상에 포함 —
+                // 서버 재시작을 넘어 unhealthy 로 남은 프로젝트도 컨테이너/터널을
+                // 되살려야 이후 모니터 프로브가 'running' 으로 복원할 수 있다.
+                // (이 루프는 container_id/tunnel_url 만 갱신하고 status 는 건드리지
+                // 않으므로 두 상태 모두에 안전하다.)
+                const result = await db.query("SELECT * FROM projects WHERE status IN ('running', 'unhealthy')");
                 const runningProjects = result.rows || [];
                 for (const project of runningProjects) {
                     // Containers may use exact name (orbitron-<sub>) for DBs
@@ -443,6 +448,21 @@ async function start() {
             } catch (e) {
                 console.error('⚠️ Project recovery failed:', e.message);
             }
+
+            // Active health monitoring (Task 2.2): probe running web projects every
+            // 60s, one bounded auto-restart per outage, Telegram alerts. Kill-switch:
+            // HEALTH_MONITOR=off (default ON). Started after the recovery sweeps so
+            // the first tick sees settled container state.
+            try {
+                if (String(process.env.HEALTH_MONITOR || '').toLowerCase() === 'off') {
+                    console.log('🩺 Health monitor disabled (HEALTH_MONITOR=off)');
+                } else {
+                    require('./services/monitor').start();
+                    console.log('🩺 Health monitor started (60s interval)');
+                }
+            } catch (e) {
+                console.error('⚠️ Health monitor start failed:', e.message);
+            }
         });
     } catch (error) {
         console.error('❌ Failed to start:', error.message);
@@ -455,6 +475,9 @@ start();
 // Graceful shutdown
 function gracefulShutdown(signal) {
     console.log(`\n🛑 ${signal} received. Shutting down gracefully...`);
+    try {
+        require('./services/monitor').stop(); // Task 2.2: stop the health-check interval
+    } catch (e) { /* ignore — shutdown must proceed */ }
     const { pool } = require('./db/db');
     pool.end().then(() => {
         console.log('✅ Database pool closed');
