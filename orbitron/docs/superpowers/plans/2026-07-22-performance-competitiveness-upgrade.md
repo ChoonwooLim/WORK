@@ -85,7 +85,11 @@ nginx, node:test (신규 도입), BuildKit (신규 활성화)
 빌드 로그 파싱(AI Analyzer 포함)이 깨지지 않도록 `--progress=plain` 고정.
 
 ### Task 1.2: 배포별 이미지 태깅 (Task 2.1 롤백의 전제)
-- [ ] 완료
+- [x] 완료 (2026-07-22 — 이중 태그 orbitron-<sub> + :d<deploymentId>, orbitron.deploy-image
+  라벨로 24h prune 제외, 배포 성공 후 프로젝트별 retention(기본 3, DEPLOY_IMAGE_RETENTION env,
+  숫자 정렬). deployments.image_tag 컬럼 + 첫 마이그레이션 파일(db/migrations/) 도입, 프로덕션
+  적용 완료. compose/db/vps 경로는 image_tag NULL → Task 2.1에서 "롤백 불가"로 처리할 것.
+  Task 2.1 이월: 프로젝트 삭제 시 라벨된 d-태그 잔존 정리 + 빌드 성공 후 실패한 배포의 태그 누적)
 
 **Files:**
 - Modify: `orbitron/services/docker.js:63,149` — `-t orbitron-<sub>` 에 더해
