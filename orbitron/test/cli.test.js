@@ -149,10 +149,24 @@ test('formatTable: ANSI 색이 있어도 열 안 흐트러짐', () => {
     const out = formatTable(['NAME', 'STATUS', 'ZONE'], [['a', colored, 'x'], ['bb', 'stopped', 'y']], { color: true });
     const lines = out.split('\n');
     // 마지막 열('ZONE'/'x'/'y')의 가시 위치가 동일해야 함 — ANSI 제거 후 비교
-    const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, ''); // eslint-disable-line no-control-regex
+    const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
     const pos = [strip(lines[0]).indexOf('ZONE'), strip(lines[1]).indexOf('x'), strip(lines[2]).indexOf('y')];
     assert.strictEqual(new Set(pos).size, 1);
     assert.strictEqual(visibleWidth(colored), 'running'.length);
+});
+
+test('visibleWidth: 한글/전각은 2칸 — 한국어 프로젝트명 테이블 안 흐트러짐', () => {
+    assert.strictEqual(visibleWidth('세계왕립아카데미'), 16);   // 8 syllables × 2
+    assert.strictEqual(visibleWidth('abc'), 3);
+    assert.strictEqual(visibleWidth('한a글b'), 6);              // 2+1+2+1
+    assert.strictEqual(visibleWidth(colorize('한글', 'green', true)), 4); // ANSI 제외 + 전각
+
+    // 한국어 이름이 섞인 테이블에서도 두 번째 열 시작 위치(가시 폭 기준)가 동일해야 한다
+    const out = formatTable(['NAME', 'STATUS'], [['세계왕립아카데미', 'running'], ['abc', 'stopped']]);
+    const lines = out.split('\n');
+    const colStart = (line, word) => visibleWidth(line.slice(0, line.indexOf(word)));
+    const positions = [colStart(lines[0], 'STATUS'), colStart(lines[1], 'running'), colStart(lines[2], 'stopped')];
+    assert.strictEqual(new Set(positions).size, 1, `열 시작 위치 불일치: ${positions}`);
 });
 
 test('colorEnabled: NO_COLOR 존중, TTY 아니면 끔', () => {
@@ -374,6 +388,85 @@ test('previews rm: 기본값(빈 입력)/n 응답 → 삭제 안 함, exit 0', a
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
+    }
+});
+
+// ── 5c. deploy: 트리거 전 기준점 조회 실패 → 추적 생략 (가짜 성공 방지) ──────
+
+// POST /:id/deploy 는 배포 행 insert 전에 응답하므로, 기준점(sinceId) 없이
+// 폴링하면 기존 최신 'success' 행을 붙잡아 즉시 가짜 성공이 된다. 그래서
+// 기준점 조회 실패 시: 1회 재시도 → 그래도 실패면 추적을 건너뛰고 exit 1.
+function deployContext({ deployments, deployCalls, out, err }) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbitrondep-'));
+    const configFile = path.join(dir, '.orbitronrc');
+    writeConfig(configFile, { server: 'http://fake', token: 'opat_' + 'a'.repeat(40) });
+    return {
+        dir,
+        ctx: {
+            parsed: { command: 'deploy', project: 'myapp' },
+            env: { NO_COLOR: '1' },
+            stdout: out,
+            stderr: err,
+            configFile,
+            isTTY: false,
+            makeClient: () => ({
+                projects: async () => [{ id: 1, name: 'My App', subdomain: 'myapp' }],
+                deployments,
+                deployProject: async (id) => { deployCalls.push(id); return { message: 'Deployment started' }; },
+            }),
+            sleep: () => Promise.resolve(),
+            now: Date.now,
+            getGitRemote: () => null,
+            cwd: '/tmp',
+        },
+    };
+}
+
+test('deploy: 기준점 조회 2회 모두 실패 → 배포는 트리거, 추적 생략, exit 1', async () => {
+    const deployCalls = [];
+    let fetches = 0;
+    const out = { buf: '', write(s) { this.buf += s; } };
+    const err = { buf: '', write(s) { this.buf += s; } };
+    const { dir, ctx } = deployContext({
+        deployments: async () => { fetches += 1; throw new Error('ECONNRESET'); },
+        deployCalls, out, err,
+    });
+    try {
+        const code = await HANDLERS.deploy(ctx);
+        assert.strictEqual(code, 1);
+        assert.deepStrictEqual(deployCalls, [1]);          // 배포 자체는 트리거됨
+        assert.strictEqual(fetches, 2);                    // 재시도 1회 포함 정확히 2회
+        assert.match(err.buf, /상태 추적 불가/);
+        assert.match(err.buf, /orbitron status/);
+        assert.doesNotMatch(out.buf, /배포 성공|succeeded/); // 가짜 성공 없음
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('deploy: 1회 실패 후 재시도 성공 → 정상 추적, 옛 success 행은 무시', async () => {
+    const deployCalls = [];
+    let fetches = 0;
+    const out = { buf: '', write(s) { this.buf += s; } };
+    const err = { buf: '', write(s) { this.buf += s; } };
+    const { dir, ctx } = deployContext({
+        deployments: async () => {
+            fetches += 1;
+            if (fetches === 1) throw new Error('ECONNRESET');          // 기준점 1차 실패
+            if (fetches === 2) return [{ id: 40, status: 'success' }]; // 재시도 성공 → sinceId=40
+            if (fetches === 3) return [{ id: 40, status: 'success' }]; // 새 행 아직 없음 — 옛 행 무시
+            return [{ id: 41, status: 'success' }, { id: 40, status: 'success' }];
+        },
+        deployCalls, out, err,
+    });
+    try {
+        const code = await HANDLERS.deploy(ctx);
+        assert.strictEqual(code, 0);
+        assert.deepStrictEqual(deployCalls, [1]);
+        assert.match(out.buf, /배포 성공|succeeded/);
+        assert.strictEqual(err.buf, '');
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
     }
 });
 

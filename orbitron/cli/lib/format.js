@@ -39,10 +39,32 @@ function colorizeStatus(status, enabled) {
     return color ? colorize(status, color, enabled) : String(status ?? '-');
 }
 
-// ANSI 이스케이프를 제외한 표시 폭 (정렬 계산용)
+// East Asian Wide/Fullwidth 코드포인트 — 터미널에서 2칸 차지 (한글 프로젝트명 정렬용)
+function isWideCodePoint(cp) {
+    return (
+        (cp >= 0x1100 && cp <= 0x115F)   // Hangul Jamo
+        || (cp >= 0x2E80 && cp <= 0x303E)  // CJK Radicals, Kangxi, CJK Symbols/Punct
+        || (cp >= 0x3041 && cp <= 0x33FF)  // Hiragana, Katakana, CJK Compat
+        || (cp >= 0x3400 && cp <= 0x4DBF)  // CJK Ext A
+        || (cp >= 0x4E00 && cp <= 0x9FFF)  // CJK Unified
+        || (cp >= 0xA000 && cp <= 0xA4CF)  // Yi
+        || (cp >= 0xAC00 && cp <= 0xD7A3)  // Hangul Syllables
+        || (cp >= 0xF900 && cp <= 0xFAFF)  // CJK Compat Ideographs
+        || (cp >= 0xFE30 && cp <= 0xFE4F)  // CJK Compat Forms
+        || (cp >= 0xFF00 && cp <= 0xFF60)  // Fullwidth Forms
+        || (cp >= 0xFFE0 && cp <= 0xFFE6)  // Fullwidth Signs
+        || (cp >= 0x1F300 && cp <= 0x1F64F) // Emoji (misc symbols/emoticons)
+        || (cp >= 0x1F900 && cp <= 0x1F9FF) // Supplemental symbols
+        || (cp >= 0x20000 && cp <= 0x3FFFD) // CJK Ext B+
+    );
+}
+
+// ANSI 이스케이프를 제외하고, 전각(한글/CJK/일부 이모지)은 2칸으로 센 표시 폭 (정렬 계산용)
 function visibleWidth(text) {
-    // eslint-disable-next-line no-control-regex
-    return String(text).replace(/\x1b\[[0-9;]*m/g, '').length;
+    const stripped = String(text).replace(/\x1b\[[0-9;]*m/g, '');
+    let width = 0;
+    for (const ch of stripped) width += isWideCodePoint(ch.codePointAt(0)) ? 2 : 1;
+    return width;
 }
 
 function padCell(text, width) {
@@ -64,4 +86,4 @@ function formatTable(headers, rows, { color = false } = {}) {
     return [headerLine, ...lines].join('\n');
 }
 
-module.exports = { colorEnabled, colorize, colorizeStatus, visibleWidth, formatTable, ANSI };
+module.exports = { colorEnabled, colorize, colorizeStatus, visibleWidth, isWideCodePoint, formatTable, ANSI };

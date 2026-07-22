@@ -103,7 +103,7 @@ async function watchDeployment(ctx, client, project, { deploymentId = null, sinc
         return EXIT.API;
     }
     if (result.outcome === 'timeout') {
-        ctx.stderr.write('15분 안에 배포가 끝나지 않았습니다 (서버에서는 계속 진행 중일 수 있음). / Timed out after 15 min; the deploy may still be running.\n');
+        ctx.stderr.write('15분 안에 배포가 끝나지 않았습니다 (서버에서는 계속 진행 중일 수 있음) — `orbitron status` 로 확인하세요. / Timed out after 15 min; the deploy may still be running — check with `orbitron status`.\n');
         return EXIT.API;
     }
     ctx.stderr.write(`배포 상태 조회 실패 / Failed to poll deployment status: ${result.error ? result.error.message : 'unknown'}\n`);
@@ -178,15 +178,25 @@ async function cmdDeploy(ctx) {
     const { client } = requireAuth(ctx);
     const project = await findProject(ctx, client, ctx.parsed.project);
 
-    // 트리거 전 최신 배포 id 기록 — 새로 생길 행을 추적하기 위해
-    let sinceId = 0;
-    try {
-        const rows = await client.deployments(project.id);
-        sinceId = rows.reduce((max, r) => (typeof r.id === 'number' && r.id > max ? r.id : max), 0);
-    } catch (e) { /* 조회 실패해도 배포는 진행 */ }
+    // 트리거 전 최신 배포 id 기록 — 새로 생길 행만 추적하기 위한 기준점.
+    // 이 조회가 실패한 채 sinceId=0 으로 폴링하면 서버가 새 행을 만들기 전에
+    // 기존 최신 행('success'일 때가 많음)을 붙잡아 즉시 가짜 성공이 된다 (CI 오염).
+    // → 1회 재시도, 그래도 실패면 배포는 트리거하되 추적은 건너뛰고 exit 1.
+    let sinceId = null;
+    for (let attempt = 0; attempt < 2 && sinceId === null; attempt++) {
+        try {
+            const rows = await client.deployments(project.id);
+            sinceId = rows.reduce((max, r) => (typeof r.id === 'number' && r.id > max ? r.id : max), 0);
+        } catch (e) { /* 재시도 후에도 실패하면 아래에서 추적 생략 */ }
+    }
 
     await client.deployProject(project.id);
     ctx.stdout.write(`배포 시작 / Deploy started: ${project.name} (${project.subdomain})\n`);
+
+    if (sinceId === null) {
+        ctx.stderr.write('상태 추적 불가 — `orbitron status` 로 확인하세요. / Cannot watch deploy status — check with `orbitron status`.\n');
+        return EXIT.API;
+    }
     return watchDeployment(ctx, client, project, { sinceId });
 }
 
@@ -268,7 +278,6 @@ async function cmdHelp(ctx) {
 }
 
 async function cmdVersion(ctx) {
-    // eslint-disable-next-line global-require
     ctx.stdout.write(`orbitron-cli ${require('../package.json').version}\n`);
     return EXIT.OK;
 }

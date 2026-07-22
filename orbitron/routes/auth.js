@@ -99,7 +99,8 @@ const authMiddleware = require('../middleware/auth');
 const patRules = require('../services/patRules');
 
 // POST /api/auth/tokens — PAT 발급. 토큰 원문은 이 응답에서 딱 한 번 노출.
-router.post('/tokens', authMiddleware, async (req, res) => {
+// authLimiter 필수: 탈취된 7일 JWT 로 만료 없는 PAT 를 조용히 무한 발급하는 것을 막는다.
+router.post('/tokens', authLimiter, authMiddleware, async (req, res) => {
     try {
         const name = patRules.sanitizePatName(req.body && req.body.name);
         const token = patRules.generatePatToken();
@@ -129,7 +130,7 @@ router.get('/tokens', authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/auth/tokens/:id — PAT 폐기 (본인 소유만, 행 삭제)
-router.delete('/tokens/:id', authMiddleware, async (req, res) => {
+router.delete('/tokens/:id', authLimiter, authMiddleware, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) {
             return res.status(404).json({ error: '토큰을 찾을 수 없습니다.', success: false });

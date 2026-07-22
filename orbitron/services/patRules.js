@@ -32,7 +32,6 @@ function hashPatToken(token) {
 // 토큰 이름 정리: 문자열 아님/공백 → 'cli', 100자 초과 → 절단, 제어문자 제거
 function sanitizePatName(name) {
     if (typeof name !== 'string') return 'cli';
-    // eslint-disable-next-line no-control-regex
     const cleaned = name.replace(/[\x00-\x1f\x7f]/g, '').trim();
     if (!cleaned) return 'cli';
     return cleaned.slice(0, NAME_MAX_LENGTH);
