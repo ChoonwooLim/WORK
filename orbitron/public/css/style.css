@@ -705,6 +705,11 @@ body {
   color: var(--warning);
 }
 
+.deploy-status.queued {
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--accent);
+}
+
 .deploy-info {
   flex: 1;
 }
