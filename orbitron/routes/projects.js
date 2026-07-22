@@ -415,21 +415,12 @@ router.get('/:id/metrics', async (req, res) => {
         if (!range) return res.status(400).json({ error: 'Invalid range. Use 1h, 24h or 7d.' });
 
         if (range.key === '7d') {
-            const rows = await db.queryAll(
-                'SELECT ts_hour, cpu_avg, cpu_max, mem_avg, mem_max, samples FROM metrics ' +
-                "WHERE project_id = $1 AND ts_hour >= NOW() - INTERVAL '7 days' ORDER BY ts_hour ASC",
-                [project.id]
-            );
-            const aggregates = rows.map((r) => ({
-                ts: r.ts_hour instanceof Date ? r.ts_hour.getTime() : new Date(r.ts_hour).getTime(),
-                cpu_avg: r.cpu_avg, cpu_max: r.cpu_max,
-                mem_avg: r.mem_avg, mem_max: r.mem_max,
-                samples: r.samples,
-            }));
+            // getAggregates 는 ts 를 EXTRACT(EPOCH) 기반 epoch ms 숫자로 반환 —
+            // DB 세션 tz / Node tz / pg 타입 파서 어디에도 의존하지 않음
             return res.json({
                 range: range.key,
                 points: metrics.getUnaggregatedTail(project.subdomain),
-                aggregates,
+                aggregates: await metrics.getAggregates(project.id),
             });
         }
         res.json({ range: range.key, points: metrics.getSeries(project.subdomain, range.ms) });

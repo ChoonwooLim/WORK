@@ -249,9 +249,11 @@ test('시간 경계: avg/max/samples 계산 + INSERT 파라미터 + retention DE
     const [ins, del] = h.writes;
     assert.match(ins.sql, /INSERT INTO metrics \(project_id, ts_hour, cpu_avg, cpu_max, mem_avg, mem_max, samples\)/);
     assert.match(ins.sql, /ON CONFLICT \(project_id, ts_hour\) DO NOTHING/);
+    // tz 불변식: 쓰기는 세션 tz 와 무관하게 UTC 벽시계 naive 로 저장
+    assert.match(ins.sql, /to_timestamp\(\$2 \/ 1000\.0\) AT TIME ZONE 'UTC'/);
     //                              [projectId, hourStartMs, cpuAvg, cpuMax, memAvg, memMax, samples]
     assert.deepStrictEqual(ins.params, [1, BASE, 20, 30, 200, 300, 3]);
-    assert.match(del.sql, /DELETE FROM metrics WHERE ts_hour < NOW\(\) - INTERVAL '30 days'/);
+    assert.match(del.sql, /DELETE FROM metrics WHERE ts_hour < \(NOW\(\) AT TIME ZONE 'UTC'\) - INTERVAL '30 days'/);
     assert.strictEqual(del.params, undefined);
 
     // 집계 후 커서 전진 — 같은 시간대는 재집계하지 않음
@@ -325,6 +327,29 @@ test('getUnaggregatedTail: 마지막 집계 경계 이후의 포인트만', asyn
     await runScriptedHour(h); // 집계 완료, H1 에 샘플 1개 (cpu 5)
     assert.deepStrictEqual(h.collector.getUnaggregatedTail('sodamfn').map((p) => p.cpuPct), [5]);
     assert.deepStrictEqual(h.collector.getUnaggregatedTail('unknown'), []);
+});
+
+test('getAggregates: EXTRACT(EPOCH) SQL 고정 + 숫자 epoch ms 반환 (tz/파서 무의존)', async () => {
+    const captured = [];
+    const c = new MetricsCollector({
+        db: {
+            query: async (sql, params) => {
+                captured.push({ sql, params });
+                // EXTRACT(EPOCH ...) 는 numeric → pg 가 문자열로 반환하는 것을 재현
+                return { rows: [{ ts_ms: String(BASE), cpu_avg: 20, cpu_max: 30, mem_avg: 200, mem_max: 300, samples: 3 }] };
+            },
+        },
+        collectStats: async () => '',
+        now: () => BASE,
+    });
+    const rows = await c.getAggregates(7);
+    assert.strictEqual(captured.length, 1);
+    // 읽기는 naive ts_hour 를 UTC 로 간주하는 epoch 추출 — Date 파싱/세션 tz 미개입
+    assert.match(captured[0].sql, /EXTRACT\(EPOCH FROM ts_hour\) \* 1000 AS ts_ms/);
+    assert.match(captured[0].sql, /INTERVAL '7 days'/);
+    assert.deepStrictEqual(captured[0].params, [7]);
+    assert.deepStrictEqual(rows, [{ ts: BASE, cpu_avg: 20, cpu_max: 30, mem_avg: 200, mem_max: 300, samples: 3 }]);
+    assert.strictEqual(typeof rows[0].ts, 'number');
 });
 
 test('parseRange: 기본 24h, 1h/24h/7d 허용, 그 외 null', () => {

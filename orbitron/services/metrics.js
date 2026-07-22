@@ -41,16 +41,30 @@ const STATS_TIMEOUT_MS = 30 * 1000;
 const SELECT_PROJECTS_SQL =
     'SELECT id, subdomain FROM projects WHERE subdomain IS NOT NULL';
 
-// ts_hour 는 epoch ms 파라미터를 서버에서 timestamp 로 변환 — 재시작/재시도
-// 시 같은 (project_id, ts_hour) 는 ON CONFLICT DO NOTHING 으로 멱등
+// ts_hour 타임존 불변식 (naive TIMESTAMP 컬럼):
+//   쓰기: to_timestamp(ms) 는 timestamptz — `AT TIME ZONE 'UTC'` 로 세션
+//         타임존과 무관하게 "UTC 벽시계" naive 값을 저장한다.
+//   읽기: EXTRACT(EPOCH FROM naive) 는 값을 UTC 로 간주해 epoch 를 돌려주므로
+//         DB 세션 tz / Node tz / pg 타입 파서 어디에도 의존하지 않고 원래
+//         epoch ms 가 정확히 왕복한다. (db/db.js 의 1114 파서가 naive 를
+//         UTC 로 파싱하는 것과도 일치 — 다른 경로로 읽어도 같은 시각.)
+// 재시작/재시도 시 같은 (project_id, ts_hour) 는 ON CONFLICT DO NOTHING 으로 멱등
 const INSERT_AGGREGATE_SQL =
     'INSERT INTO metrics (project_id, ts_hour, cpu_avg, cpu_max, mem_avg, mem_max, samples) ' +
-    'VALUES ($1, to_timestamp($2 / 1000.0), $3, $4, $5, $6, $7) ' +
+    "VALUES ($1, to_timestamp($2 / 1000.0) AT TIME ZONE 'UTC', $3, $4, $5, $6, $7) " +
     'ON CONFLICT (project_id, ts_hour) DO NOTHING';
 
-// 집계와 같은 배치에서 실행 — 테이블은 프로젝트 수 × 24 × 30 행으로 유계
+// 집계와 같은 배치에서 실행 — 테이블은 프로젝트 수 × 24 × 30 행으로 유계.
+// ts_hour 가 UTC 벽시계이므로 비교 기준(NOW())도 UTC naive 로 맞춘다.
 const RETENTION_DELETE_SQL =
-    "DELETE FROM metrics WHERE ts_hour < NOW() - INTERVAL '30 days'";
+    "DELETE FROM metrics WHERE ts_hour < (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'";
+
+// 7d 라우트용 — epoch ms 로 추출해 어떤 tz/파서 의존도 없이 숫자만 반환
+const SELECT_AGGREGATES_SQL =
+    'SELECT EXTRACT(EPOCH FROM ts_hour) * 1000 AS ts_ms, ' +
+    'cpu_avg, cpu_max, mem_avg, mem_max, samples FROM metrics ' +
+    "WHERE project_id = $1 AND ts_hour >= (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days' " +
+    'ORDER BY ts_hour ASC';
 
 // docker stats MemUsage 좌변 단위 → MiB 환산 계수
 const MEM_UNIT_TO_MIB = {
@@ -68,7 +82,9 @@ async function defaultCollectStats() {
     const execFileAsync = util.promisify(execFile);
     const { stdout } = await execFileAsync('docker',
         ['stats', '--no-stream', '--format', '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'],
-        { timeout: STATS_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 });
+        // killSignal SIGKILL: SIGTERM 을 무시하는 docker CLI 가 타임아웃 후에도
+        // 살아남아 수집기를 조용히 잠그는 것을 방지
+        { timeout: STATS_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, killSignal: 'SIGKILL' });
     return stdout;
 }
 
@@ -259,6 +275,19 @@ class MetricsCollector {
         if (!buf) return [];
         const cutoff = this.now() - rangeMs;
         return buf.filter((p) => p.ts >= cutoff);
+    }
+
+    // 7d 라우트용 — DB 시간별 집계를 epoch ms 숫자로 반환 (tz 의존성 없음).
+    // EXTRACT(EPOCH ...) 는 numeric 이라 pg 가 문자열로 주므로 Number() 변환.
+    async getAggregates(projectId) {
+        const result = await this._db().query(SELECT_AGGREGATES_SQL, [projectId]);
+        const rows = (result && result.rows) || [];
+        return rows.map((r) => ({
+            ts: Number(r.ts_ms),
+            cpu_avg: r.cpu_avg, cpu_max: r.cpu_max,
+            mem_avg: r.mem_avg, mem_max: r.mem_max,
+            samples: r.samples,
+        }));
     }
 
     // 7d 라우트용 — 아직 DB 로 집계되지 않은 꼬리 (마지막 집계 경계 이후)

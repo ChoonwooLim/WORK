@@ -109,10 +109,9 @@ CREATE TABLE IF NOT EXISTS metrics (
     mem_avg REAL,
     mem_max REAL,
     samples INTEGER,
+    -- UNIQUE already creates the (project_id, ts_hour) index — no separate index needed
     UNIQUE(project_id, ts_hour)
 );
-
-CREATE INDEX IF NOT EXISTS idx_metrics_project_ts ON metrics(project_id, ts_hour);
 
 -- Error Knowledge table (AI 경험치 축적)
 CREATE TABLE IF NOT EXISTS error_knowledge (
