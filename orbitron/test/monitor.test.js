@@ -3,8 +3,18 @@
 // Tests for services/monitor.js + services/alerts.js — 능동 헬스 모니터링 (Task 2.2)
 //
 // Pins:
+//   0. 프로브는 nginx 경유 실제 서빙 경로: GET http://127.0.0.1:80/ +
+//      Host: <subdomain>.<TUNNEL_DOMAIN> (기본 twinverse.org).
+//      host-mapped 포트 직접 프로브 금지 — PORT env 를 무시하고 내부 포트에
+//      하드코딩된 앱(nginx 리슨 포트 감지로 구제됨)을 죽은 것으로 오판해
+//      멀쩡한 컨테이너를 재시작/unhealthy 처리한 실장애의 회귀 방지
+//      (suit/twinland/joojooland, 2026-07).
 //   1. 건강한 프로젝트 → 완전 no-op (쓰기/재시작/알림 없음)
-//   2. HTTP 500 도 "살아있음" (프로세스 수준 liveness)
+//   2. HTTP 500 도 "살아있음" (nginx 가 앱의 500 을 돌려줌 = 앱이 응답했다);
+//      301 도 "살아있음" (custom-domain 리다이렉트 — nginx 직접 응답);
+//      502/504 는 "죽음" (nginx 가 업스트림에 도달하지 못함);
+//      X-Orbitron-Default 헤더가 붙은 응답도 "죽음" (default.conf 의
+//      catch-all 이 응답 = 프로젝트 conf 유실 — 랜딩 200 은 false alive)
 //   3. 연속 3회 실패 → docker restart 정확히 1회 (outage 당 1회)
 //   4. compose-* (compose-manual-* 포함) → 재시작 금지, unhealthy + 알림
 //   5. 연속 6회 실패 → status='unhealthy' + 마지막 오류 포함 알림
@@ -40,12 +50,22 @@ function harness({ projects = [project()], deployingIds = [] } = {}) {
         projects,
         selects: [],
         updates: [],   // { sql, params }
-        probes: [],    // url
+        probes: [],    // { url, host } — 프로젝트 프로브만 (sentinel 은 sentinelProbes)
+        sentinelProbes: [], // { url, host }
         restarts: [],  // project
         alertCalls: [], // { title, body }
         nowMs: 1_000_000,
-        // 각 프로브의 결과 스크립트: 'ok' | 'err' | number(HTTP status) | function
+        // 각 프로브의 결과 스크립트: 'ok' | 'err' | 'default' | number | function
         httpResult: 'ok',
+        // sentinel 프로브 결과 — 기본 'default' (= 마커 배포된 건강한 nginx)
+        sentinelResult: 'default',
+    };
+    const script = (r) => {
+        if (r === 'ok') return { status: 200, orbitronDefault: false };
+        // 'default' = default server 응답: X-Orbitron-Default 헤더 포함 200
+        if (r === 'default') return { status: 200, orbitronDefault: true };
+        if (typeof r === 'number') return { status: r, orbitronDefault: false };
+        throw new Error('ECONNREFUSED 127.0.0.1');
     };
     const deps = {
         db: {
@@ -58,12 +78,16 @@ function harness({ projects = [project()], deployingIds = [] } = {}) {
                 return { rows: [] };
             },
         },
-        checkHttp: async (url) => {
-            h.probes.push(url);
+        checkHttp: async (url, opts) => {
+            const host = opts && opts.headers && opts.headers.Host;
+            if (host === monitorSingleton.SENTINEL_HOST) {
+                h.sentinelProbes.push({ url, host });
+                const r = typeof h.sentinelResult === 'function' ? h.sentinelResult(url) : h.sentinelResult;
+                return script(r);
+            }
+            h.probes.push({ url, host });
             const r = typeof h.httpResult === 'function' ? h.httpResult(url) : h.httpResult;
-            if (r === 'ok') return { status: 200 };
-            if (typeof r === 'number') return { status: r };
-            throw new Error('ECONNREFUSED 127.0.0.1');
+            return script(r);
         },
         restartContainer: async (p) => { h.restarts.push(p); },
         alert: async (title, body) => { h.alertCalls.push({ title, body }); },
@@ -107,19 +131,152 @@ test('healthy project is a complete no-op (no writes, restarts, alerts)', async 
     await h.monitor.tick();
     await h.monitor.tick();
     assert.strictEqual(h.probes.length, 2);
-    assert.strictEqual(h.probes[0], 'http://127.0.0.1:3100/');
+    // nginx 경유 실제 서빙 경로 핀 — host-mapped 포트 직접 프로브로의 회귀 방지
+    assert.strictEqual(h.probes[0].url, 'http://127.0.0.1:80/');
+    assert.strictEqual(h.probes[0].host, 'webapp-sub.twinverse.org');
     assert.deepStrictEqual(h.updates, []);
     assert.deepStrictEqual(h.restarts, []);
     assert.deepStrictEqual(h.alertCalls, []);
 });
 
-test('HTTP 500 still counts as alive (process-level liveness only)', async () => {
+test('HTTP 500 still counts as alive (nginx relayed the app\'s own 500 — the app answered)', async () => {
     const h = harness();
     h.httpResult = 500;
     for (let i = 0; i < 6; i++) await h.monitor.tick();
     assert.deepStrictEqual(h.restarts, []);
     assert.deepStrictEqual(h.updates, []);
     assert.deepStrictEqual(h.alertCalls, []);
+});
+
+test('HTTP 301 counts as alive (custom-domain redirect projects: nginx 301s the tunnel Host)', async () => {
+    const h = harness();
+    h.httpResult = 301;
+    for (let i = 0; i < 6; i++) await h.monitor.tick();
+    assert.deepStrictEqual(h.restarts, []);
+    assert.deepStrictEqual(h.updates, []);
+    assert.deepStrictEqual(h.alertCalls, []);
+});
+
+test('HTTP 502 counts as dead (nginx cannot reach the upstream) — restart on 3rd failure', async () => {
+    const h = harness();
+    h.httpResult = 502;
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
+    // 알림/unhealthy 단계에서 마지막 오류로 502 가 보고되도록 기록됨
+    assert.match(h.monitor.states.get(1).lastError, /HTTP 502/);
+});
+
+test('HTTP 504 counts as dead (upstream timeout through nginx)', async () => {
+    const h = harness();
+    h.httpResult = 504;
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
+});
+
+test('default-server response (X-Orbitron-Default) counts as dead even with status 200', async () => {
+    // 프로젝트 conf 유실 시 unknown Host 는 default.conf 랜딩 페이지(200)에
+    // 떨어진다 — 외부에서는 실제로 죽은 상태이므로 false alive 금지.
+    const h = harness();
+    h.httpResult = 'default';
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
+    assert.strictEqual(h.monitor.states.get(1).lastError, 'nginx conf missing — default server answered');
+});
+
+test('orbitronDefault absent from an injected checkHttp result → treated as not-default (backward compat)', async () => {
+    const h = harness();
+    h.monitor.checkHttp = async () => ({ status: 200 }); // 옛 형태
+    await h.monitor.tick();
+    assert.deepStrictEqual(h.updates, []);
+    assert.deepStrictEqual(h.restarts, []);
+});
+
+test('numeric status 없는 이상 응답은 fail-closed (죽음) — 3연속이면 재시작', async () => {
+    const h = harness();
+    h.monitor.checkHttp = async (url, opts) => {
+        const host = opts && opts.headers && opts.headers.Host;
+        if (host === monitorSingleton.SENTINEL_HOST) return { status: 200, orbitronDefault: true };
+        return { weird: true }; // status 필드 없음
+    };
+    for (let i = 0; i < 3; i++) await h.monitor.tick();
+    assert.strictEqual(h.restarts.length, 1);
+    assert.match(h.monitor.states.get(1).lastError, /no numeric status/);
+});
+
+// ── nginx 다운 서킷 브레이커 (sentinel) ─────────────────────────────────────
+
+test('sentinel probe: 정상 흐름에서 tick 당 1회, 고정 URL + Host', async () => {
+    const h = harness();
+    await h.monitor.tick();
+    await h.monitor.tick();
+    assert.strictEqual(h.sentinelProbes.length, 2);
+    assert.deepStrictEqual(h.sentinelProbes[0], {
+        url: 'http://127.0.0.1:80/',
+        host: 'orbitron-monitor-sentinel.invalid',
+    });
+    assert.strictEqual(h.probes.length, 2); // per-project 프로브는 정상 진행
+});
+
+test('sentinel network-error → nginx 다운: per-project 프로브/재시작/카운터 없음, 알림 1회(쿨다운)', async () => {
+    const h = harness();
+    h.sentinelResult = 'err';
+    h.httpResult = 'err'; // 설령 프로브가 실행돼도 실패하도록 — 실행 자체가 없어야 함
+    for (let i = 0; i < 5; i++) await h.monitor.tick();
+    assert.deepStrictEqual(h.probes, []);          // 프로젝트 프로브 자체가 없음
+    assert.deepStrictEqual(h.restarts, []);        // 건강한 컨테이너 대량 재시작 금지
+    assert.deepStrictEqual(h.updates, []);         // unhealthy 마킹도 없음
+    assert.strictEqual(h.monitor.states.size, 0);  // per-project 카운터 미접촉
+    assert.strictEqual(h.alertCalls.length, 1);    // 쿨다운으로 1회만
+    assert.match(h.alertCalls[0].title, /nginx down/);
+    h.nowMs += MIN30; // 쿨다운 경과 → 재알림
+    await h.monitor.tick();
+    assert.strictEqual(h.alertCalls.length, 2);
+});
+
+test('sentinel 복구 후 새로운 nginx 장애는 쿨다운 없이 즉시 알림 (outage 당 1회 의미 유지)', async () => {
+    const h = harness();
+    h.sentinelResult = 'err';
+    await h.monitor.tick();
+    assert.strictEqual(h.alertCalls.length, 1);
+    h.sentinelResult = 'default'; // nginx 복구
+    await h.monitor.tick();
+    h.sentinelResult = 'err';     // 새 outage — 쿨다운 안이지만 리셋됐으므로 즉시
+    await h.monitor.tick();
+    assert.strictEqual(h.alertCalls.length, 2);
+});
+
+test('sentinel 이 응답했지만 마커 없음(미배포) → 정상 흐름 + console.warn 1회', async () => {
+    const h = harness();
+    h.sentinelResult = 200; // 응답은 있으나 orbitronDefault=false
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => warns.push(args.join(' '));
+    try {
+        await h.monitor.tick();
+        await h.monitor.tick();
+    } finally {
+        console.warn = origWarn;
+    }
+    assert.strictEqual(h.probes.length, 2); // inert-safe: 정상 진행
+    assert.strictEqual(warns.length, 1);    // 프로세스당 1회만 경고
+    assert.match(warns[0], /X-Orbitron-Default/);
+});
+
+test('tick 겹침 가드: 진행 중인 tick 이 있으면 새 tick 은 즉시 no-op', async () => {
+    const h = harness();
+    let release;
+    let calls = 0;
+    h.monitor.checkHttp = () => {
+        calls += 1;
+        if (calls === 1) return new Promise((resolve) => { release = resolve; }); // sentinel pending
+        return Promise.resolve({ status: 200, orbitronDefault: false });          // 이후 프로브는 즉시
+    };
+    const first = h.monitor.tick();          // sentinel 프로브에서 pending
+    await h.monitor.tick();                  // 겹침 → 즉시 반환
+    assert.strictEqual(h.selects.length, 0); // 두 번째 tick 이 SELECT 를 안 태움
+    release({ status: 200, orbitronDefault: true });
+    await first;
+    assert.strictEqual(h.selects.length, 1); // 첫 tick 만 완주
 });
 
 // ── 3. 3연속 실패 → 1회 재시작 ──────────────────────────────────────────────
@@ -230,7 +387,7 @@ test('projects with an in-flight deployment are not probed at all', async () => 
     await failTicks(h, 3);
     // 프로브는 project 1 에만 (3회), project 2 는 0회
     assert.strictEqual(h.probes.length, 3);
-    assert.ok(h.probes.every(u => u === 'http://127.0.0.1:3100/'));
+    assert.ok(h.probes.every(p => p.url === 'http://127.0.0.1:80/' && p.host === 'webapp-sub.twinverse.org'));
     assert.strictEqual(h.restarts.length, 1);
     assert.strictEqual(h.restarts[0].id, 1);
 });

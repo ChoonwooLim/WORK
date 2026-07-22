@@ -84,6 +84,71 @@ function confPathFor(subdomain) {
     return p;
 }
 
+// ── 컨테이너 리슨 포트 감지 (generateConfig + deployer 스모크 체크 공유) ──────
+// /proc/net/tcp + /proc/net/tcp6 연결 텍스트에서 any-address 에 바인드된
+// LISTEN(state 0A) 포트를 추출.
+//   tcp  (8-hex):  " 0: 00000000:1F40 ... 0A" → 0.0.0.0:8000
+//   tcp6 (32-hex): " 0: 00000000000000000000000000000000:1F90 ... 0A" → [::]:8080
+// tcp6 가 필수인 이유: 기본 Node server.listen(port) 는 :: 에 바인드되어
+// tcp6 에만 나타난다 — tcp 만 보면 이런 앱을 "리슨 없음"으로 오판한다.
+// 루프백 바인딩(127.0.0.1 = 0100007F, ::1 = ...0001, ::ffff:127.0.0.1)은
+// 전부-0 이 아니므로 자동 제외 — 다른 컨테이너(nginx 포함)에서 도달 불가.
+// (pure — 테스트는 smokeCheck.test.js 에서 핀)
+function parseListenPorts(procNetTcpText) {
+    const ports = new Set();
+    for (const line of String(procNetTcpText).split('\n')) {
+        const m = line.match(/^\s*\d+:\s+(?:00000000|00000000000000000000000000000000):([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
+        if (m) {
+            const p = parseInt(m[1], 16);
+            if (p > 0 && p < 65536) ports.add(p);
+        }
+    }
+    return ports;
+}
+
+// 감지된 포트 중 프록시/프로브 대상 선택: 기대 포트가 실제로 열려 있으면 그대로,
+// 아니면 첫 감지 포트 (CMD 가 $PORT 를 무시하고 --port 를 하드코딩한 앱 구제 —
+// 예: CMD ["uvicorn","main:app","--port","8000"]), 아무것도 없으면 null. (pure)
+function selectListenPort(listenPorts, preferredPort) {
+    if (listenPorts.has(preferredPort)) return preferredPort;
+    if (listenPorts.size > 0) return [...listenPorts][0];
+    return null;
+}
+
+// Poll /proc/net/tcp inside the container for up to budgetMs (default 12s).
+// Python/Node apps with heavy imports (SQLAlchemy, large frameworks) can take
+// several seconds to bind their listen socket — without this poll, callers
+// would catch the container before the app is ready and see no listen ports.
+//
+// Reads /proc/net/tcp — always present in Linux containers, no dependency on
+// ss/netstat (often absent in minimal images). Sync (execFileSync + external
+// sleep): generateConfig is called from a sync context. Not unit-tested
+// (docker exec side effect) — parseListenPorts/selectListenPort carry the pins.
+function detectContainerListenPorts(targetContainer, { budgetMs = 12000 } = {}) {
+    const deadline = Date.now() + budgetMs;
+    let listenPorts = new Set();
+    while (Date.now() < deadline) {
+        try {
+            // tcp + tcp6 모두 읽는다 (:: 바인딩 앱은 tcp6 에만 나타남).
+            // sh -c + 2>/dev/null + || true: tcp6 가 없는(IPv6 비활성) 컨테이너
+            // 에서 cat 이 exit 1 로 끝나도 exec 이 throw 하지 않고 이미 출력된
+            // tcp 내용을 그대로 쓴다 (|| true 없이는 execFileSync 가 throw 해
+            // stdout 을 버린다).
+            const out = execFileSync('docker', [
+                'exec', targetContainer, 'sh', '-c',
+                'cat /proc/net/tcp /proc/net/tcp6 2>/dev/null || true',
+            ], {
+                encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+            });
+            listenPorts = parseListenPorts(out);
+            if (listenPorts.size > 0) break;  // app has started listening
+        } catch { /* container not exec-able yet */ }
+        // Sleep 500ms before retry — external sleep (sync, no CPU spin).
+        try { execFileSync('sleep', ['0.5'], { stdio: 'ignore' }); } catch { /* keep going */ }
+    }
+    return listenPorts;
+}
+
 class NginxService {
     // Build the proxy_pass block shared by both HTTP and HTTPS server blocks.
     //
@@ -201,45 +266,16 @@ ${this._proxyPassBlock(upstreamHost, upstreamPort)}
         // This rescues common user error: CMD ["uvicorn", "main:app", "--port", "8000"]
         // (hardcoded) — Orbitron injects PORT=3576 but app ignores it.
         if (targetContainer && !project.container_id?.startsWith('compose-')) {
-            // Poll /proc/net/tcp inside the container for up to 12s. Python/Node
-            // apps with heavy imports (SQLAlchemy, large frameworks) can take
-            // several seconds to bind their listen socket — without this poll,
-            // deployer would catch the container before the app is ready,
-            // see no listen ports, and fall back to project.port (which may
-            // be the wrong port if the app hardcodes --port).
-            //
-            // Reads /proc/net/tcp — always present in Linux containers, no
-            // dependency on ss/netstat (often absent in minimal images).
-            const deadline = Date.now() + 12000;
-            let listenPorts = new Set();
-            while (Date.now() < deadline) {
-                try {
-                    const out = execFileSync('docker', ['exec', targetContainer, 'cat', '/proc/net/tcp'], {
-                        encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
-                    });
-                    listenPorts = new Set();
-                    for (const line of out.split('\n')) {
-                        // " 0: 00000000:1F40 00000000:0000 0A ..."
-                        // Match LISTEN (state 0A) AND bound to 0.0.0.0 (00000000).
-                        // Bindings to 127.0.0.1 (0100007F) etc. are not reachable
-                        // from another container — skip them.
-                        const m = line.match(/^\s*\d+:\s+00000000:([0-9A-F]+)\s+[0-9A-F]+:[0-9A-F]+\s+0A\s/);
-                        if (m) {
-                            const p = parseInt(m[1], 16);
-                            if (p > 0 && p < 65536) listenPorts.add(p);
-                        }
-                    }
-                    if (listenPorts.size > 0) break;  // app has started listening
-                } catch (e) { /* container not exec-able yet */ }
-                // Sleep 500ms before retry — use external sleep (sync, no CPU spin).
-                // generateConfig is called from sync context so we cannot use async/await here.
-                try { execFileSync('sleep', ['0.5'], { stdio: 'ignore' }); } catch { /* keep going */ }
-            }
-            if (listenPorts.size > 0 && !listenPorts.has(upstreamPort)) {
+            // Detection extracted to detectContainerListenPorts (shared with the
+            // deployer's pre-switch smoke check so both look at the same target).
+            // Behavior unchanged: poll up to 12s, then keep project.port when the
+            // app listens on it, otherwise route to the first detected port.
+            const listenPorts = detectContainerListenPorts(targetContainer);
+            const chosen = selectListenPort(listenPorts, upstreamPort);
+            if (chosen !== null && chosen !== upstreamPort) {
                 // App is NOT listening on project.port — pick first actual listen port
-                const detected = [...listenPorts][0];
-                console.log(`[nginx] ${project.subdomain}: app not listening on project.port=${upstreamPort}; detected actual listen on ${detected} (likely hardcoded CMD ignoring $PORT)`);
-                upstreamPort = detected;
+                console.log(`[nginx] ${project.subdomain}: app not listening on project.port=${upstreamPort}; detected actual listen on ${chosen} (likely hardcoded CMD ignoring $PORT)`);
+                upstreamPort = chosen;
             }
         }
 
@@ -428,3 +464,6 @@ module.exports.isProjectConfProtected = isProjectConfProtected;
 module.exports.ManualConfProtectedError = ManualConfProtectedError;
 module.exports.STATIC_ASSET_EXT_REGEX = STATIC_ASSET_EXT_REGEX;
 module.exports.STATIC_CACHE_VAR = STATIC_CACHE_VAR;
+module.exports.parseListenPorts = parseListenPorts;
+module.exports.selectListenPort = selectListenPort;
+module.exports.detectContainerListenPorts = detectContainerListenPorts;

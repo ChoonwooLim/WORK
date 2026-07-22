@@ -20,6 +20,7 @@ const notifier = require('./notifier');
 const { managedDatabaseUrl } = require('./envUtils');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
 const { assessRollbackEligibility, formatRollbackCommitMessage, buildKeepTagList } = require('./rollbackRules');
+const { smokeStep, resolveHealthPath, SMOKE_DEFAULTS } = require('./smokeCheck');
 const yaml = require('js-yaml');
 
 const DEPLOYMENTS_DIR = path.join(__dirname, '..', 'deployments');
@@ -699,6 +700,114 @@ class Deployer extends EventEmitter {
                     }
 
                     this.emitProgress(project.id, 'container', '컨테이너 시작 완료');
+
+                    // ── Task 4.2: HTTP 스모크 체크 — nginx 전환 전 앱-레벨 생존 확인 ──
+                    // 컨테이너 running + 포트 LISTEN(프로세스 준비)만으로는 부족하다:
+                    // 포트는 열었지만 모든 요청에 5xx 를 뱉는 앱이 nginx 로 전환되면
+                    // 즉시 장애가 된다. 여기서 실패하면 throw 로 기존 실패 경로를 타고,
+                    // addProject 를 호출하지 않으므로 nginx conf 는 그대로 유지된다.
+                    //
+                    // 대상: 단일 웹 컨테이너 경로만 (compose 는 단일 포트가 없어 제외;
+                    // VPS/DB/worker/pixel-streaming 은 이 분기에 도달하지 않음).
+                    // 롤백 배포(rollbackImageTag)도 같은 경로를 지나므로 동일하게 검사된다.
+                    //
+                    // 프로브 타깃 = nginx 가 프록시할 대상과 '정확히 동일': 컨테이너 IP
+                    // + /proc/net/tcp 감지(nginx.js 와 같은 헬퍼)로 찾은 실제 리슨 포트.
+                    // host-mapped 포트(127.0.0.1:<actualPort>)는 쓰지 않는다 — PORT env
+                    // 를 무시하고 내부 포트에 하드코딩된 앱은 host 포트로 도달 불가지만
+                    // nginx 감지가 구제하므로, host 포트 프로브는 멀쩡한 배포를 실패시킨다
+                    // (monitor.js 를 같은 이유로 nginx 경유 프로브로 고친 실장애 참고).
+                    if (!isCompose) {
+                        // health_path: orbitron.yaml 오버라이드 (기본 '/').
+                        // 롤백 모드에서도 projectDir 의 yaml 을 읽는다 — 소스와 이미지가
+                        // 어긋나 옛 이미지에 경로가 없어도 404 는 PASS 라 무해하다.
+                        let healthPath = '/';
+                        const smokeYamlPath = findOrbitronYaml(projectDir);
+                        if (smokeYamlPath) {
+                            try {
+                                const resolved = resolveHealthPath(yaml.load(fs.readFileSync(smokeYamlPath, 'utf8')));
+                                if (resolved.warning) logs += `\n${resolved.warning}\n`;
+                                healthPath = resolved.path;
+                            } catch (e) {
+                                logs += `\n⚠️ 스모크 체크용 orbitron.yaml 파싱 실패 — 기본 경로 '/' 사용: ${e.message}\n`;
+                            }
+                        }
+
+                        // 1) 실제 리슨 포트 감지 (nginx generateConfig 와 동일 헬퍼/예산 12초)
+                        this.emitProgress(project.id, 'container', '🩺 스모크 체크: 리슨 포트 감지 중...');
+                        const listenPorts = nginxService.detectContainerListenPorts(containerName);
+                        const smokePort = nginxService.selectListenPort(listenPorts, actualPort);
+                        if (smokePort === null) {
+                            // 하드 게이트 금지: 12초보다 늦게 바인딩하는 앱(무거운 모델
+                            // 로딩 등)은 사전-스모크 시절에도 배포됐다. 기대 포트로
+                            // 폴백 프로브 (smokeCheck 의 5×2초 재시도 예산이 추가 유예).
+                            logs += `\n  ⚠️ 리슨 포트 미감지 (12초): 기대 포트 ${actualPort} 로 폴백 프로브합니다 (늦은 바인딩 앱 보호)\n`;
+                        } else if (smokePort !== actualPort) {
+                            logs += `\n  ℹ️ 리슨 포트 감지: 기대 포트 ${actualPort} 대신 ${smokePort} 에서 LISTEN 중 (하드코딩 CMD 가능성 — nginx 도 같은 포트로 프록시합니다)\n`;
+                        }
+
+                        // 2) 컨테이너 IP (Linux 호스트는 docker bridge IP 로 직접 라우팅 가능)
+                        let containerIp = '';
+                        try {
+                            const { stdout: ipOut } = await execFileAsync('docker', [
+                                'inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', containerName,
+                            ]);
+                            containerIp = ipOut.trim();
+                        } catch { /* 아래 공통 실패 처리 */ }
+                        if (!containerIp) {
+                            logs += `\n❌ 스모크 체크 실패: 컨테이너 IP 를 확인할 수 없습니다 (네트워크 미연결?) — nginx 도 도달할 수 없는 상태입니다.\n`;
+                            await saveLogs();
+                            throw new Error(
+                                '스모크 체크 실패: 컨테이너 IP 조회 실패 — nginx 전환을 중단했습니다. ' +
+                                '/ Smoke check failed: could not resolve the container IP — nginx switch aborted.'
+                            );
+                        }
+
+                        // 3) HTTP 프로브 (5xx/무응답 = 실패, 4xx = 통과) — 감지 실패 시
+                        //    폴백 정책 포함 판정은 smokeStep (pure, 테스트 핀) 이 담당
+                        this.emitProgress(project.id, 'container', `🩺 스모크 체크 중 (GET ${healthPath})...`);
+                        const probePort = smokePort !== null ? smokePort : actualPort;
+                        logs += `\n🩺 스모크 체크: http://${containerIp}:${probePort}${healthPath} (5xx/무응답 = 실패, 4xx = 통과)\n`;
+                        const step = await smokeStep({
+                            detectedPort: smokePort,
+                            fallbackPort: actualPort,
+                            host: containerIp,
+                            path: healthPath,
+                            options: {
+                                onAttempt: ({ attempt, total, status, error }) => {
+                                    logs += `🩺 스모크 체크: GET ${healthPath} → ${status !== null ? `HTTP ${status}` : error} (시도 ${attempt}/${total})\n`;
+                                },
+                            },
+                        });
+                        const smokeResult = step.result;
+
+                        if (!step.ok) {
+                            const detail = smokeResult.lastStatus !== null
+                                ? `HTTP ${smokeResult.lastStatus}`
+                                : (smokeResult.lastError || '응답 없음');
+                            logs += `❌ 스모크 체크 실패 (${detail}) — nginx 전환을 중단합니다 (기존 프록시 설정 유지).\n`;
+                            // Diagnosis aid: capture the failing container's recent logs
+                            try {
+                                const { stdout: cLogs } = await execAsync(`docker logs ${containerName} --tail 30 2>&1`);
+                                logs += `\n--- 컨테이너 로그 (마지막 30줄) ---\n${cLogs}\n`;
+                            } catch { }
+                            await saveLogs();
+                            throw new Error(step.usedFallback
+                                ? `스모크 체크 실패: 리슨 포트 감지(12초)와 폴백 프로브(${smokeResult.attempts}회, ${detail}) 모두 실패했습니다 — nginx 전환을 중단했습니다. ` +
+                                  `/ Smoke check failed: both listen-port detection (12s) and fallback probing (${smokeResult.attempts} attempts, ${detail}) failed — nginx switch aborted.`
+                                : `스모크 체크 실패: 새 컨테이너가 ${smokeResult.attempts}회 시도 동안 정상 응답하지 않았습니다 (${detail}) — nginx 전환을 중단했습니다. ` +
+                                  `/ Smoke check failed: new container did not return a healthy response after ${smokeResult.attempts} attempts (${detail}) — nginx switch aborted.`
+                            );
+                        }
+                        if (smokeResult.ok) {
+                            logs += `✅ 스모크 체크 통과 (HTTP ${smokeResult.lastStatus}, 시도 ${smokeResult.attempts}/${SMOKE_DEFAULTS.retries})\n`;
+                        } else {
+                            // 폴백 경로에서 5xx 응답 — 응답 자체가 리슨의 증거라 소프트
+                            // 통과 (감지 불가 상태에서 오탐 중단 방지 — 사전 분기 패리티)
+                            logs += `⚠️ 스모크 체크 소프트 통과: 폴백 프로브가 HTTP ${smokeResult.lastStatus} 응답 — 리슨 감지 불가 상태라 배포는 진행하나 앱 오류 가능성이 있습니다.\n`;
+                        }
+                        await saveLogs();
+                    }
 
                     // Step 4: Update nginx config (Blue-Green Swap)
                     this.emitProgress(project.id, 'nginx', '프록시 설정(Blue-Green Swap) 중...');
