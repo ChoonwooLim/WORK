@@ -2161,15 +2161,19 @@ async function loadResourceStats(projectId) {
 // 인라인 SVG 스파크라인(CPU%, RAM MiB) 2개를 그린다. 라이브러리 없음 — 값은
 // 전부 숫자라 이스케이프 불필요.
 let metricsRange = '24h';
+let metricsFetchSeq = 0; // stale-fetch 가드 — 최신 요청만 렌더링
 
 async function loadMetricsSparklines(projectId, range) {
     if (range) metricsRange = range;
+    const seq = ++metricsFetchSeq;
     const el = document.getElementById('metrics-section');
     if (!el) return;
     try {
         const res = await fetch(`${API}/projects/${projectId}/metrics?range=${metricsRange}`);
+        if (seq !== metricsFetchSeq) return; // 더 최신 요청이 대체 — 느린 응답 폐기
         if (!res.ok) { el.innerHTML = ''; return; }
         const data = await res.json();
+        if (seq !== metricsFetchSeq) return;
 
         // 7d: 시간별 집계(avg)를 포인트로 변환한 뒤 미집계 tail 과 병합
         const cpuPts = [], memPts = [];
@@ -2208,10 +2212,11 @@ function sparklineSvg(pts, opts) {
     const vals = pts.map((p) => p.v);
     const min = Math.min(...vals), max = Math.max(...vals), cur = vals[vals.length - 1];
     const t0 = pts[0].ts, spanT = Math.max(1, pts[pts.length - 1].ts - t0);
-    const spanV = Math.max(1e-6, max - min);
+    const spanV = max - min;
     const d = pts.map((p, i) => {
         const x = PAD + ((p.ts - t0) / spanT) * (W - PAD * 2);
-        const y = H - PAD - ((p.v - min) / spanV) * (H - PAD * 2);
+        // 평탄 시리즈(max === min)는 바닥이 아니라 중앙에 수평선으로
+        const y = spanV === 0 ? H / 2 : H - PAD - ((p.v - min) / spanV) * (H - PAD * 2);
         return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
     const fmt = (v) => (opts.unit === '%' ? `${v.toFixed(1)}%` : `${Math.round(v)} MiB`);
