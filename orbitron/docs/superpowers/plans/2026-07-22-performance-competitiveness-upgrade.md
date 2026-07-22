@@ -312,7 +312,21 @@ PR 머지/클로즈 → 컨테이너·conf·DNS 정리 확인.
 **검증:** 마커 있는 프로젝트에 배포 시도 → conf 원본 유지 + 에러 메시지 확인.
 
 ### Task 4.2: 배포 전 자동 스모크 체크 강화
-- [ ] 완료
+- [x] 완료 (2026-07-22 — nginx 스위치 전 신규 컨테이너에 HTTP 스모크 체크: 실제 리슨 포트
+  감지(tcp+tcp6) 후 컨테이너IP 직접 프로브, <500 통과, health_path orbitron.yaml 재정의,
+  감지 실패 시 project.port 소프트 폴백. 리뷰 3라운드에서 치명 결함 연쇄 적발·수정:
+  ① fetch의 Host 헤더 강제 제거(undici forbidden header) → node:http 프로브로 교체,
+  ② /proc/net/tcp6 미탐지로 IPv6(::) 바인딩 앱 배포 차단 → tcp6 병합 파싱,
+  ③ conf 유실 시 default 랜딩 페이지 200 오판 → X-Orbitron-Default 마커 헤더 + 감지,
+  ④ nginx 단일 장애점 → 센티널 서킷브레이커(nginx 다운 시 프로브 전면 보류+단일 알림).
+  테스트 44개 추가(총 183). 운영 반영·실측 검증 완료)
+
+### 🔴 사고 기록 (2026-07-22 13:06): 모니터 프로브 대상 오판
+- Task 2.2의 모니터가 호스트 매핑 포트를 프로브했으나 suit/twinland/joojooland는 내부
+  8000 포트만 리슨(nginx는 d136d57 감지로 container:8000 프록시) → 정상 컨테이너 3개
+  오판·재시작·unhealthy 마킹. 즉시 수습(상태 복원) 후 Task 4.2에서 근본 수정: 모니터는
+  실제 서빙 경로(nginx 경유 + Host 헤더) 프로브로 전환. 교훈: **헬스 프로브는 사용자
+  트래픽과 동일한 경로를 통과해야 한다.**
 
 **Files:**
 - Modify: `orbitron/services/deployer.js` — nginx 스위치 전 신규 컨테이너에
