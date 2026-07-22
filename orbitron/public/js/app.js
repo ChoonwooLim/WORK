@@ -3271,7 +3271,7 @@ function extractRepoName(url) {
 }
 
 function statusLabel(status) {
-    const labels = { running: '실행 중', stopped: '중지됨', building: '빌드 중', failed: '실패', pending: '대기' };
+    const labels = { running: '실행 중', stopped: '중지됨', building: '빌드 중', queued: '빌드 대기', failed: '실패', pending: '대기' };
     return labels[status] || status;
 }
 
