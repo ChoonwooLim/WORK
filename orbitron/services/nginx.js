@@ -34,6 +34,13 @@ function isManuallyManaged(configPath) {
     }
 }
 
+// 라우트 초입에서 쓰는 사전 검사: 이 프로젝트의 conf가 수동 관리인가?
+// cert 발급/폐기, DB 변경 같은 되돌릴 수 없는 부수효과가 생기기 전에 호출해야 한다.
+// (addProject 내부 가드는 심층 방어로 계속 유지된다)
+function isProjectConfProtected(subdomain) {
+    return isManuallyManaged(confPathFor(subdomain));
+}
+
 class ManualConfProtectedError extends Error {
     constructor(subdomain) {
         super(
@@ -381,4 +388,5 @@ ${httpsBlock}`;
 
 module.exports = new NginxService();
 module.exports.isManuallyManaged = isManuallyManaged;
+module.exports.isProjectConfProtected = isProjectConfProtected;
 module.exports.ManualConfProtectedError = ManualConfProtectedError;

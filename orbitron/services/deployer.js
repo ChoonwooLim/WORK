@@ -969,10 +969,13 @@ class Deployer extends EventEmitter {
             }
 
             // Fallback: normal AI error analysis
-            this.emitProgress(project.id, 'done', '오류 원인 분석 중...', 'running');
-            const aiAnalysis = await aiAnalyzer.analyzeError(logs, project.ai_model, project.env_vars || {});
-            if (aiAnalysis) {
-                logs += `\n\n🤖 [AI Error Analysis]\n${aiAnalysis}\n`;
+            // (MANUAL_CONF_PROTECTED는 의도된 가드 에러 — LLM 분석 호출도 건너뛴다)
+            if (error.code !== 'MANUAL_CONF_PROTECTED') {
+                this.emitProgress(project.id, 'done', '오류 원인 분석 중...', 'running');
+                const aiAnalysis = await aiAnalyzer.analyzeError(logs, project.ai_model, project.env_vars || {});
+                if (aiAnalysis) {
+                    logs += `\n\n🤖 [AI Error Analysis]\n${aiAnalysis}\n`;
+                }
             }
 
             await db.query(`UPDATE projects SET status = 'failed' WHERE id = $1`, [project.id]);

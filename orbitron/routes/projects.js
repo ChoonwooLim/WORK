@@ -185,6 +185,17 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
 
+        // 수동 관리 conf 사전 검사: custom_domain을 바꾸려는 경우, DB UPDATE라는
+        // 부수효과가 생기기 전에 라우트 초입에서 409로 거부한다.
+        // (아래 addProject 내부 가드는 심층 방어로 계속 동작)
+        if (custom_domain !== undefined) {
+            const existing = await db.queryOne('SELECT subdomain FROM projects WHERE id = $1', [req.params.id]);
+            const targetSub = subdomain || (existing && existing.subdomain);
+            if (targetSub && nginxService.isProjectConfProtected(targetSub)) {
+                return res.status(409).json({ error: new nginxService.ManualConfProtectedError(targetSub).message });
+            }
+        }
+
         const encryptedEnvVars = env_vars ? encryptForJsonb(env_vars) : null;
 
         const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';

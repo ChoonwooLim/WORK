@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test 'test/*.test.js'",
+    "test": "node --test test/*.test.js",
     "lint": "eslint services/ routes/ db/ server.js",
     "lint:fix": "eslint services/ routes/ db/ server.js --fix",
     "preflight": "npm run lint -- --quiet"
