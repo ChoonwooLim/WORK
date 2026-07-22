@@ -43,6 +43,8 @@
 // alert, isDeploying, now } — buildQueue.js 의 싱글턴+클래스 export 관례를 따름.
 // 프로덕션 기본값은 lazy require (테스트 환경엔 node_modules 가 없을 수 있음).
 
+const http = require('http');
+
 const TICK_INTERVAL_MS = 60 * 1000;
 const PROBE_TIMEOUT_MS = 5000;
 // nginx 경유 프로브 대상 — Host 헤더로 프로젝트를 구분한다 (위 헤더 주석 참고).
@@ -69,17 +71,29 @@ const SELECT_TARGETS_SQL =
     "AND (type IS NULL OR type NOT IN ('db_postgres', 'db_redis')) " +
     "AND port IS NOT NULL";
 
-// 기본 프로브 — 응답이 오면 status 반환, 네트워크 오류/타임아웃이면 throw.
-// headers 로 Host 를 전달해 nginx 의 server_name 라우팅을 태운다.
-async function defaultCheckHttp(url, { headers } = {}) {
-    const res = await fetch(url, {
-        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-        redirect: 'manual',
-        headers,
+// 기본 프로브 — node:http 직접 사용. 응답이 오면 { status } resolve,
+// 네트워크 오류/타임아웃이면 reject.
+//
+// ⚠️ fetch 를 쓰면 안 되는 이유: WHATWG fetch(undici)는 Host 를 forbidden
+// header 로 취급해 "조용히 제거"한다. Host 없이 127.0.0.1:80 을 치면 모든
+// 프로브가 nginx 의 첫 매칭 server 블록(default server)으로 붕괴 — 프로젝트
+// 구분이 사라져 함대 전체를 죽은 것으로 오판하고 대량 재시작을 일으킨다.
+// node:http 는 headers 의 Host 를 그대로 전송하고, 리다이렉트도 따라가지
+// 않으므로(redirect:'manual' 과 동일 의미) 301 이 응답으로 관찰된다.
+function defaultCheckHttp(url, { headers } = {}) {
+    return new Promise((resolve, reject) => {
+        const req = http.request(url, { method: 'GET', headers }, (res) => {
+            const status = res.statusCode;
+            res.resume(); // 본문은 쓰지 않음 — 소켓 회수를 위해 즉시 소진
+            resolve({ status });
+        });
+        req.setTimeout(PROBE_TIMEOUT_MS, () => {
+            // destroy(err) → 'error' 이벤트로 전파 → 아래 reject
+            req.destroy(new Error(`probe timeout after ${PROBE_TIMEOUT_MS}ms`));
+        });
+        req.on('error', reject);
+        req.end();
     });
-    // 응답 본문은 쓰지 않으므로 소켓 누수 방지를 위해 즉시 폐기
-    try { if (res.body) await res.body.cancel(); } catch { /* ignore */ }
-    return { status: res.status };
 }
 
 // 기본 재시작 — docker.js 에는 범용 restart 헬퍼가 없고 배포 경로는 컨테이너를
