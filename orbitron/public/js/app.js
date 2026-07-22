@@ -722,6 +722,7 @@ function renderProjectOverview() {
     </div>`}
     <div id="resource-monitor"></div>
     <div id="metrics-section"></div>
+    <div id="cron-section"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">상태</div>
@@ -819,9 +820,145 @@ function renderProjectOverview() {
     </div>` : ''}`;
     if (p.status === 'running') loadResourceStats(p.id);
     loadMetricsSparklines(p.id);
+    loadCronJobs(p.id);
     loadMediaBackupStatus(p.id);
     loadProjectBackupStatus(p.id);
     if (p.type === 'db_postgres' || (p.env_vars && p.env_vars.DATABASE_URL)) loadDbBackupStatus(p.id);
+}
+
+// ── 예약 작업 (Cron, Task 3.3) ──────────────────────────────────────────────
+// 프로젝트 개요의 cron 섹션 — 목록/추가/토글/삭제/즉시 실행. 서버 응답의
+// 모든 사용자 유래 문자열은 escapeHtml 을 거친다.
+
+const CRON_STATUS_COLORS = { success: 'var(--success)', failed: 'var(--danger)', skipped: '#f59e0b' };
+
+async function loadCronJobs(projectId) {
+    const el = document.getElementById('cron-section');
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/cron`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'load failed');
+        renderCronSection(projectId, data.jobs || []);
+    } catch (e) {
+        el.innerHTML = '';
+    }
+}
+
+function renderCronSection(projectId, jobs) {
+    const el = document.getElementById('cron-section');
+    if (!el) return;
+    const rows = jobs.map(j => {
+        const statusColor = CRON_STATUS_COLORS[j.last_status] || 'var(--text-muted)';
+        const nextRun = j.next_run_at ? new Date(j.next_run_at).toLocaleString('ko-KR') : '-';
+        const lastRun = j.last_run_at ? new Date(j.last_run_at).toLocaleString('ko-KR') : '-';
+        return `
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px;${j.enabled ? '' : 'opacity:0.55;'}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+              <strong style="font-size:14px;">${escapeHtml(j.name)}</strong>
+              <code style="font-size:12px;background:var(--surface);padding:2px 6px;border-radius:4px;">${escapeHtml(j.schedule)}</code>
+              <span style="font-size:12px;color:${statusColor};">${j.last_status ? '● ' + escapeHtml(j.last_status) : ''}</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-ghost" onclick="runCronJobNow(${projectId}, ${j.id})" title="지금 실행">▶ 실행</button>
+              <button class="btn btn-sm btn-ghost" onclick="toggleCronJob(${projectId}, ${j.id}, ${j.enabled ? 'false' : 'true'})">${j.enabled ? '⏸ 비활성' : '▶ 활성'}</button>
+              <button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteCronJob(${projectId}, ${j.id}, '${escapeHtml(j.name)}')">🗑</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px;display:flex;gap:16px;flex-wrap:wrap;">
+            <span>다음 실행: ${escapeHtml(nextRun)}</span>
+            <span>마지막 실행: ${escapeHtml(lastRun)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;font-family:var(--font-mono);word-break:break-all;">$ ${escapeHtml(j.command)}</div>
+          ${j.last_output ? `
+          <details style="margin-top:6px;">
+            <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;">마지막 출력 보기</summary>
+            <pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin:6px 0 0;max-height:200px;overflow:auto;">${escapeHtml(j.last_output)}</pre>
+          </details>` : ''}
+          <div id="cron-run-output-${j.id}"></div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = `
+    <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;margin-bottom:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">⏰ 예약 작업 (Cron) <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(최대 10개 · 컨테이너 안에서 실행)</span></div>
+      </div>
+      ${rows || '<div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">등록된 예약 작업이 없습니다.</div>'}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <input type="text" id="cron-new-name" placeholder="이름 (예: db-backup)" style="flex:1;min-width:130px;padding:6px 10px;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);">
+        <input type="text" id="cron-new-schedule" placeholder="스케줄 (예: */15 * * * *)" style="flex:1;min-width:150px;padding:6px 10px;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:var(--font-mono);">
+        <input type="text" id="cron-new-command" placeholder="명령 (컨테이너 sh -c 로 실행)" style="flex:2;min-width:200px;padding:6px 10px;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:var(--font-mono);">
+        <button class="btn btn-sm btn-primary" onclick="addCronJob(${projectId})">+ 추가</button>
+      </div>
+    </div>`;
+}
+
+async function addCronJob(projectId) {
+    const name = document.getElementById('cron-new-name').value.trim();
+    const schedule = document.getElementById('cron-new-schedule').value.trim();
+    const command = document.getElementById('cron-new-command').value;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/cron`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, schedule, command }),
+        });
+        const data = await res.json();
+        if (!res.ok) { toast(data.error || '추가 실패', 'error'); return; }
+        toast(`예약 작업 추가됨: ${name}`, 'success');
+        loadCronJobs(projectId);
+    } catch (e) { toast('예약 작업 추가 실패', 'error'); }
+}
+
+async function toggleCronJob(projectId, jobId, enable) {
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/cron/${jobId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable === true || enable === 'true' }),
+        });
+        const data = await res.json();
+        if (!res.ok) { toast(data.error || '변경 실패', 'error'); return; }
+        loadCronJobs(projectId);
+    } catch (e) { toast('변경 실패', 'error'); }
+}
+
+async function deleteCronJob(projectId, jobId, name) {
+    if (!confirm(`예약 작업 '${name}' 을(를) 삭제할까요?`)) return;
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/cron/${jobId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) { toast(data.error || '삭제 실패', 'error'); return; }
+        toast('예약 작업 삭제됨', 'success');
+        loadCronJobs(projectId);
+    } catch (e) { toast('삭제 실패', 'error'); }
+}
+
+async function runCronJobNow(projectId, jobId) {
+    const outEl = document.getElementById(`cron-run-output-${jobId}`);
+    if (outEl) outEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">실행 중... (최대 60초)</div>';
+    try {
+        const res = await fetch(`${API}/projects/${projectId}/cron/${jobId}/run`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+            if (outEl) outEl.innerHTML = '';
+            toast(data.error || '실행 실패', 'error');
+            return;
+        }
+        const color = CRON_STATUS_COLORS[data.status] || 'var(--text-muted)';
+        if (outEl) {
+            outEl.innerHTML = `
+            <div style="margin-top:6px;">
+              <span style="font-size:12px;color:${color};">● ${escapeHtml(data.status)}</span>
+              <pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin:6px 0 0;max-height:200px;overflow:auto;">${escapeHtml(data.output || '(출력 없음)')}</pre>
+            </div>`;
+        }
+    } catch (e) {
+        if (outEl) outEl.innerHTML = '';
+        toast('실행 실패', 'error');
+    }
 }
 
 function renderSettings() {
@@ -1787,6 +1924,12 @@ async function refreshLogs() {
         document.getElementById('log-content').textContent = '프로젝트를 먼저 선택하세요.';
         return;
     }
+    // 검색어가 입력돼 있으면 새로고침도 검색 결과를 갱신한다 (Task 3.3)
+    const searchInput = document.getElementById('log-search-input');
+    if (searchInput && searchInput.value.trim()) {
+        runLogSearch();
+        return;
+    }
     try {
         const res = await fetch(`${API}/deployments/${currentProject.id}/logs`);
         const data = await res.json();
@@ -1830,6 +1973,71 @@ async function refreshLogs() {
         }
     } catch (error) {
         document.getElementById('log-content').textContent = '로그를 불러올 수 없습니다.';
+    }
+}
+
+// ── 로그 검색 (Task 3.3) ────────────────────────────────────────────────────
+
+let logSearchTimer = null;
+
+function onLogSearchInput() {
+    clearTimeout(logSearchTimer);
+    logSearchTimer = setTimeout(() => {
+        const q = document.getElementById('log-search-input').value;
+        if (!q.trim()) {
+            document.getElementById('log-search-count').textContent = '';
+            refreshLogs();
+            return;
+        }
+        runLogSearch();
+    }, 350); // 디바운스 350ms
+}
+
+// XSS-safe 하이라이트: 원본 텍스트를 매치 경계로 쪼갠 뒤 각 조각을 먼저
+// escapeHtml 하고, 매치 조각만 <mark> 로 감싼다 (이스케이프가 항상 먼저).
+function highlightLogMatch(text, q) {
+    const lower = text.toLowerCase();
+    const needle = q.toLowerCase();
+    let html = '';
+    let pos = 0;
+    while (true) {
+        const idx = lower.indexOf(needle, pos);
+        if (idx === -1) {
+            html += escapeHtml(text.slice(pos));
+            break;
+        }
+        html += escapeHtml(text.slice(pos, idx));
+        html += `<mark style="background:rgba(210,153,34,0.45);color:inherit;border-radius:2px;">${escapeHtml(text.slice(idx, idx + needle.length))}</mark>`;
+        pos = idx + needle.length;
+    }
+    return html;
+}
+
+async function runLogSearch() {
+    if (!currentProject) return;
+    const q = document.getElementById('log-search-input').value;
+    const countEl = document.getElementById('log-search-count');
+    const logEl = document.getElementById('log-content');
+    if (!q.trim()) return;
+    try {
+        const res = await fetch(`${API}/projects/${currentProject.id}/logs/search?q=${encodeURIComponent(q)}&lines=2000`);
+        const data = await res.json();
+        if (!res.ok) {
+            countEl.textContent = '';
+            logEl.textContent = `❌ ${data.error || '검색 실패'}`;
+            return;
+        }
+        countEl.textContent = `${data.matches.length}건${data.truncated ? '+ (500개 초과 잘림)' : ''}`;
+        if (data.matches.length === 0) {
+            logEl.textContent = `'${q}' 와 일치하는 로그가 없습니다.`;
+            return;
+        }
+        logEl.innerHTML = data.matches.map(m =>
+            `<div style="display:flex;gap:10px;"><span style="color:var(--text-muted);min-width:44px;text-align:right;user-select:none;">${m.line}</span><span style="white-space:pre-wrap;word-break:break-all;">${highlightLogMatch(m.text, q)}</span></div>`
+        ).join('');
+    } catch (err) {
+        countEl.textContent = '';
+        logEl.textContent = '로그 검색에 실패했습니다.';
     }
 }
 
