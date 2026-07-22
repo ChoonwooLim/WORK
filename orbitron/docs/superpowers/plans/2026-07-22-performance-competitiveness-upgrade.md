@@ -239,7 +239,14 @@ API 응답 < 50ms, 차트 표시 확인.
 ## Phase 3: DX 경쟁력 (Vercel/Render급 개발자 경험)
 
 ### Task 3.1: PR 프리뷰 배포
-- [ ] 완료
+- [x] 완료 (2026-07-22 v1 — pull_request webhook(opened/sync/reopened/closed), pr-<n>-<sub>
+  서브도메인(63자 안전, 네임스페이스 예약), preview_deployments 테이블, 프로젝트당 최대 3개,
+  7일 TTL 스윕, 같은 저장소 브랜치만(포크 차단 + 브랜치/해시 셸 화이트리스트), GitHub 코멘트
+  best-effort, 대시보드 토글+목록. 리뷰 3라운드 수정: 형제 프리뷰 컨테이너 보호, destroy-중-
+  deploy 보상 teardown, PORT 주입을 충돌 해소 후로 이동(일반 배포의 기존 결함까지 해소).
+  ⚠️ v1 제약: 프리뷰 URL은 내부 전용(와일드카드 터널 없음 — *.twinverse.org DNS 라우트 추가
+  시 즉시 외부 공개되는 구조), 프리뷰가 부모 DB 공유(문서화됨), compose 프로젝트 미지원.
+  마이그레이션 프로덕션 적용. 테스트 44개 추가(총 227). 후속 칩: webhook 서명 헤더 필수화)
 
 **Files:**
 - Modify: `orbitron/routes/webhooks.js` — GitHub `pull_request` 이벤트
