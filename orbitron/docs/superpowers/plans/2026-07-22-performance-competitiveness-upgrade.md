@@ -187,7 +187,13 @@ deployer의 기동/스위치/정리 로직을 그대로 재사용해야 blue-gre
 (롤백 중 1초 간격 curl 무실패), projects.container_id 정합.
 
 ### Task 2.2: 능동 헬스체크 + 텔레그램 알림
-- [ ] 완료
+- [x] 완료 (2026-07-22 — services/monitor.js(주입 가능 의존성 클래스, 60s tick, 프로세스 생존
+  프로브 5s, redirect manual) + services/alerts.js(Telegram, 4000자 절단, 미설정 시 콘솔 폴백).
+  3연속 실패→outage당 1회 docker restart, 6연속→'unhealthy'+알림(30분 쿨다운), 복구 시 알림+상태
+  복원(재시작 후 영속 unhealthy도 복구). compose-* 는 재시작 금지·알림만. 부팅 스윕이 unhealthy도
+  복구 대상에 포함. HEALTH_MONITOR=off 킬스위치. 대시보드 7개 상태 맵에 '응답 없음' 추가.
+  테스트 22개 추가(총 112). 🩺 운영 반영·기동 확인. 활성화하려면 .env에 TELEGRAM_BOT_TOKEN/
+  TELEGRAM_CHAT_ID 설정(미설정 시 콘솔 폴백). 후속 칩: 대시보드 상태 맵 7중복 정리)
 
 **Files:**
 - Create: `orbitron/services/monitor.js` —
