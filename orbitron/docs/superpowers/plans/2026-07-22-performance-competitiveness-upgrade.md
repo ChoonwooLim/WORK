@@ -159,7 +159,13 @@ HTML은 절대 캐시하지 않는다 (SPA 배포 직후 구버전 고착 방지
 ## Phase 2: 신뢰성 (Render와의 실질 격차 해소)
 
 ### Task 2.1: 원클릭 롤백
-- [ ] 완료
+- [x] 완료 (2026-07-22 — deployer options seam({rollbackImageTag,...})으로 clone/build만 대체
+  (retag :d<id>→latest), 나머지 기동/스위치/실패 경로 전부 재사용. POST /api/deployments/:id/rollback
+  (소유권+구분된 에러 코드, DEPLOY_IN_PROGRESS 안정 계약 — 2.2 자동 롤백이 의존). keep-list prune:
+  최신 N개 '고유' 성공 태그 + 방금 실행 태그 보호, DB 실패 시 prune 스킵. 프로젝트 삭제 시 전체
+  d-태그 정리 + 실패 배포 태그 누적 해소(이월분). 대시보드 ⏪ 버튼. 신규 rollbackRules.js 순수 모듈,
+  테스트 17개 추가(총 90). ⚠️ 플랫폼 후속 발견: 배포 흐름이 구 컨테이너를 먼저 정지 후 신규 기동
+  (호스트 포트 재사용) — 실패 시 무서빙 창. 진정한 blue-green 포트 스왑은 별도 태스크 후보)
 
 **전제:** Task 1.2 (배포별 이미지 태그)
 
