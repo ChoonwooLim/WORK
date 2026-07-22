@@ -212,12 +212,17 @@ router.put('/:id', async (req, res) => {
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // If custom_domain changed, update nginx config
+        // (await: 수동 관리 conf 보호 등 nginx 오류가 응답에 드러나야 한다)
         if (custom_domain !== undefined) {
-            nginxService.addProject(project);
+            await nginxService.addProject(project);
         }
 
         res.json(project);
     } catch (error) {
+        // 수동 관리 conf 충돌은 서버 결함이 아니라 클라이언트가 해소할 충돌 → 409
+        if (error.code === 'MANUAL_CONF_PROTECTED') {
+            return res.status(409).json({ error: error.message });
+        }
         res.status(500).json({ error: error.message });
     }
 });

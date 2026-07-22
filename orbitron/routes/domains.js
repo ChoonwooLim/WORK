@@ -30,6 +30,12 @@ const publicIp = require('../services/publicIp');
 //   - publicIp.get()     → async, will retry fresh if cache is empty
 //   - publicIp.getSync() → sync, returns cached-or-null immediately (fine for responses)
 
+// nginx conf가 수동 관리(# orbitron:manual)라서 거부된 경우는 서버 결함이 아니라
+// 클라이언트가 해소할 충돌 → 409. 그 외 오류는 기존대로 500.
+function sendRouteError(res, e) {
+    res.status(e.code === 'MANUAL_CONF_PROTECTED' ? 409 : 500).json({ error: e.message });
+}
+
 async function getProjectForUser(projectId, user) {
     if (user.role === 'admin' || user.role === 'superadmin') {
         return db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
@@ -235,7 +241,7 @@ router.post('/:id/domain/connect', async (req, res) => {
             urls: list.map(d => `https://${d}`),
             cert,
         });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // GET /api/projects/:id/domain/status  — DNS + cert summary (supports multi-domain)
@@ -297,7 +303,7 @@ router.delete('/:id/domain', async (req, res) => {
         await nginxService.addProject(updated, targetContainer);
 
         res.json({ success: true, message: `연결 해제 완료 (${list.join(', ')})`, status: 'none' });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // PATCH /api/projects/:id/domain/redirect  — toggle canonical-hostname redirect without
@@ -324,7 +330,7 @@ router.patch('/:id/domain/redirect', async (req, res) => {
                 ? `✅ 공식 도메인 리다이렉트 활성 — ${project.subdomain}.twinverse.org 방문 시 https://${parseDomainList(project.custom_domain)[0]}로 자동 이동`
                 : '공식 도메인 리다이렉트 비활성 — 두 주소 독립 동작',
         });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // POST /api/projects/:id/domain/renew  — re-issue the SAN cert for all current domains.
@@ -343,7 +349,7 @@ router.post('/:id/domain/renew', async (req, res) => {
         await nginxService.addProject(fresh, targetContainer);
 
         res.json({ success: true, domains: list, cert: result.cert });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // NOTE: /public-ip endpoints moved to routes/system.js (mounted at /api/system) because
