@@ -185,6 +185,27 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
 
+        // 수동 관리 conf 사전 검사: custom_domain을 바꾸려는 경우, DB UPDATE라는
+        // 부수효과가 생기기 전에 라우트 초입에서 409로 거부한다.
+        // (아래 addProject 내부 가드는 심층 방어로 계속 동작)
+        // SELECT는 UPDATE와 동일한 소유권 스코프를 적용한다 — 비소유자는 기존처럼
+        // 404 경로로 떨어져야 하며, 409로 존재/보호 여부가 누출되면 안 된다.
+        if (custom_domain !== undefined) {
+            const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+            const existing = await db.queryOne(
+                isAdmin
+                    ? 'SELECT subdomain FROM projects WHERE id = $1'
+                    : 'SELECT subdomain FROM projects WHERE id = $1 AND user_id = $2',
+                isAdmin ? [req.params.id] : [req.params.id, req.user.userId]
+            );
+            if (existing) {
+                const targetSub = subdomain || existing.subdomain;
+                if (targetSub && nginxService.isProjectConfProtected(targetSub)) {
+                    return res.status(409).json({ error: new nginxService.ManualConfProtectedError(targetSub).message });
+                }
+            }
+        }
+
         const encryptedEnvVars = env_vars ? encryptForJsonb(env_vars) : null;
 
         const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $13' : 'WHERE id = $13 AND user_id = $14';
@@ -212,12 +233,17 @@ router.put('/:id', async (req, res) => {
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
 
         // If custom_domain changed, update nginx config
+        // (await: 수동 관리 conf 보호 등 nginx 오류가 응답에 드러나야 한다)
         if (custom_domain !== undefined) {
-            nginxService.addProject(project);
+            await nginxService.addProject(project);
         }
 
         res.json(project);
     } catch (error) {
+        // 수동 관리 conf 충돌은 서버 결함이 아니라 클라이언트가 해소할 충돌 → 409
+        if (error.code === 'MANUAL_CONF_PROTECTED') {
+            return res.status(409).json({ error: error.message });
+        }
         res.status(500).json({ error: error.message });
     }
 });

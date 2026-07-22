@@ -5,8 +5,52 @@ const { exec, execFileSync } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 
-const NGINX_CONF_DIR = path.resolve(path.join(__dirname, '..', '..', 'infrastructure', 'nginx', 'conf.d'));
+// NGINX_CONF_DIR env override는 테스트 격리용 — 미설정 시 기존 하드코딩 경로 사용.
+const NGINX_CONF_DIR = path.resolve(process.env.NGINX_CONF_DIR || path.join(__dirname, '..', '..', 'infrastructure', 'nginx', 'conf.d'));
 const TUNNEL_DOMAIN = process.env.TUNNEL_DOMAIN || 'twinverse.org';
+
+// ── 수동 관리 conf 보호 ──────────────────────────────────────────────
+// 손으로 작성한 conf(TLS passthrough 등)를 Orbitron이 덮어쓰면 서비스가 502로
+// 죽는다. 파일의 "첫 512바이트" 안에 `# orbitron:manual` 문자열이 있으면
+// 수동 관리 파일로 간주하고 절대 덮어쓰기/삭제하지 않는다.
+// (512바이트 이후의 마커는 인정하지 않는다 — 검사를 싸게 유지하는 명문화된 계약)
+const MANUAL_MARKER = '# orbitron:manual';
+const MANUAL_MARKER_SCAN_BYTES = 512;
+
+function isManuallyManaged(configPath) {
+    let fd;
+    try {
+        fd = fs.openSync(configPath, 'r');
+    } catch (e) {
+        if (e.code === 'ENOENT') return false; // 파일 없음 → 보호 대상 아님
+        throw e; // 그 외 read 오류는 전파 (권한 문제 등을 조용히 삼키지 않는다)
+    }
+    try {
+        const buf = Buffer.alloc(MANUAL_MARKER_SCAN_BYTES);
+        const bytesRead = fs.readSync(fd, buf, 0, MANUAL_MARKER_SCAN_BYTES, 0);
+        return buf.toString('utf-8', 0, bytesRead).includes(MANUAL_MARKER);
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+
+// 라우트 초입에서 쓰는 사전 검사: 이 프로젝트의 conf가 수동 관리인가?
+// cert 발급/폐기, DB 변경 같은 되돌릴 수 없는 부수효과가 생기기 전에 호출해야 한다.
+// (addProject 내부 가드는 심층 방어로 계속 유지된다)
+function isProjectConfProtected(subdomain) {
+    return isManuallyManaged(confPathFor(subdomain));
+}
+
+class ManualConfProtectedError extends Error {
+    constructor(subdomain) {
+        super(
+            `nginx config for "${subdomain}" is manually managed (${MANUAL_MARKER}) — refusing to overwrite. ` +
+            `이 프로젝트의 nginx 설정은 수동 관리 중입니다.`
+        );
+        this.name = 'ManualConfProtectedError';
+        this.code = 'MANUAL_CONF_PROTECTED';
+    }
+}
 
 // Subdomain must be DNS-label-safe: used as filename + Docker name + shell cwd.
 // Anything outside [a-z0-9-] could enable path traversal or shell metachars.
@@ -281,6 +325,13 @@ ${httpsBlock}`;
     // Add nginx config for a project
     async addProject(project, targetContainer) {
         const configPath = confPathFor(project.subdomain);
+
+        // 수동 관리 conf 보호: config 생성(도커 포트 감지 등 부수효과 포함) 전에
+        // 가장 먼저 검사한다. 마커가 있으면 어떤 경우에도 파일을 건드리지 않는다.
+        if (isManuallyManaged(configPath)) {
+            throw new ManualConfProtectedError(project.subdomain);
+        }
+
         const config = this.generateConfig(project, targetContainer);
 
         // Regression guard: generated config must use resolver+variable pattern.
@@ -308,6 +359,14 @@ ${httpsBlock}`;
     // Remove nginx config for a project
     async removeProject(subdomain) {
         const configPath = confPathFor(subdomain);
+
+        // 수동 관리 conf는 프로젝트 삭제 후에도 살아남아야 한다.
+        // 대시보드의 프로젝트 삭제 자체는 성공해야 하므로 throw하지 않고 경고만 남긴다.
+        if (isManuallyManaged(configPath)) {
+            console.warn(`⚠️ nginx conf for "${subdomain}" is manually managed — leaving file in place`);
+            return;
+        }
+
         try {
             await fsp.unlink(configPath);
             await this.reload(subdomain);
@@ -328,3 +387,6 @@ ${httpsBlock}`;
 }
 
 module.exports = new NginxService();
+module.exports.isManuallyManaged = isManuallyManaged;
+module.exports.isProjectConfProtected = isProjectConfProtected;
+module.exports.ManualConfProtectedError = ManualConfProtectedError;

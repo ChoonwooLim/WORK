@@ -856,7 +856,9 @@ class Deployer extends EventEmitter {
             const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
             const isAutoRepairRetry = project._autoRepairAttempted;
 
-            if (!isAutoRepairRetry && fs.existsSync(projectDir)) {
+            // MANUAL_CONF_PROTECTED는 코드 결함이 아니라 의도된 보호 — AI가 고칠 수
+            // 없는 에러이므로 자동 복구 재시도를 건너뛰고 바로 실패 처리한다.
+            if (!isAutoRepairRetry && error.code !== 'MANUAL_CONF_PROTECTED' && fs.existsSync(projectDir)) {
                 this.emitProgress(project.id, 'done', '🤖 AI 자동 복구 시도 중...', 'running');
                 logs += '\n🤖 [AI Auto-Repair] 자동 복구를 시도합니다...\n';
 
@@ -967,10 +969,13 @@ class Deployer extends EventEmitter {
             }
 
             // Fallback: normal AI error analysis
-            this.emitProgress(project.id, 'done', '오류 원인 분석 중...', 'running');
-            const aiAnalysis = await aiAnalyzer.analyzeError(logs, project.ai_model, project.env_vars || {});
-            if (aiAnalysis) {
-                logs += `\n\n🤖 [AI Error Analysis]\n${aiAnalysis}\n`;
+            // (MANUAL_CONF_PROTECTED는 의도된 가드 에러 — LLM 분석 호출도 건너뛴다)
+            if (error.code !== 'MANUAL_CONF_PROTECTED') {
+                this.emitProgress(project.id, 'done', '오류 원인 분석 중...', 'running');
+                const aiAnalysis = await aiAnalyzer.analyzeError(logs, project.ai_model, project.env_vars || {});
+                if (aiAnalysis) {
+                    logs += `\n\n🤖 [AI Error Analysis]\n${aiAnalysis}\n`;
+                }
             }
 
             await db.query(`UPDATE projects SET status = 'failed' WHERE id = $1`, [project.id]);

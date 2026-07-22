@@ -30,6 +30,24 @@ const publicIp = require('../services/publicIp');
 //   - publicIp.get()     → async, will retry fresh if cache is empty
 //   - publicIp.getSync() → sync, returns cached-or-null immediately (fine for responses)
 
+// nginx conf가 수동 관리(# orbitron:manual)라서 거부된 경우는 서버 결함이 아니라
+// 클라이언트가 해소할 충돌 → 409. 그 외 오류는 기존대로 500.
+function sendRouteError(res, e) {
+    res.status(e.code === 'MANUAL_CONF_PROTECTED' ? 409 : 500).json({ error: e.message });
+}
+
+// 수동 관리 conf 프로젝트는 도메인/인증서를 운영자가 전적으로 직접 관리한다.
+// cert 발급·폐기, DB 변경 같은 되돌릴 수 없는 부수효과가 생기기 전에 라우트
+// 초입에서 전체 작업을 409로 거부한다 (addProject 내부 가드는 심층 방어).
+// 응답을 보냈으면 true를 반환한다 → 호출부는 `if (...) return;` 패턴.
+function rejectIfConfProtected(res, subdomain) {
+    if (nginxService.isProjectConfProtected(subdomain)) {
+        res.status(409).json({ error: new nginxService.ManualConfProtectedError(subdomain).message });
+        return true;
+    }
+    return false;
+}
+
 async function getProjectForUser(projectId, user) {
     if (user.role === 'admin' || user.role === 'superadmin') {
         return db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
@@ -174,6 +192,7 @@ router.post('/:id/domain/connect', async (req, res) => {
     try {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        if (rejectIfConfProtected(res, project.subdomain)) return; // cert 발급 전에 거부
 
         const { domain, skipVerify, staging, redirect } = req.body || {};
         const list = parseDomainList(domain);
@@ -235,7 +254,7 @@ router.post('/:id/domain/connect', async (req, res) => {
             urls: list.map(d => `https://${d}`),
             cert,
         });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // GET /api/projects/:id/domain/status  — DNS + cert summary (supports multi-domain)
@@ -277,6 +296,7 @@ router.delete('/:id/domain', async (req, res) => {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
+        if (rejectIfConfProtected(res, project.subdomain)) return; // cert 폐기 전에 거부
 
         const list = parseDomainList(project.custom_domain);
         const primary = list[0];
@@ -297,7 +317,7 @@ router.delete('/:id/domain', async (req, res) => {
         await nginxService.addProject(updated, targetContainer);
 
         res.json({ success: true, message: `연결 해제 완료 (${list.join(', ')})`, status: 'none' });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // PATCH /api/projects/:id/domain/redirect  — toggle canonical-hostname redirect without
@@ -307,6 +327,7 @@ router.patch('/:id/domain/redirect', async (req, res) => {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
+        if (rejectIfConfProtected(res, project.subdomain)) return; // DB 변경 전에 거부
 
         const enabled = !!(req.body && req.body.enabled);
         const updated = await db.queryOne(
@@ -324,7 +345,7 @@ router.patch('/:id/domain/redirect', async (req, res) => {
                 ? `✅ 공식 도메인 리다이렉트 활성 — ${project.subdomain}.twinverse.org 방문 시 https://${parseDomainList(project.custom_domain)[0]}로 자동 이동`
                 : '공식 도메인 리다이렉트 비활성 — 두 주소 독립 동작',
         });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // POST /api/projects/:id/domain/renew  — re-issue the SAN cert for all current domains.
@@ -334,6 +355,7 @@ router.post('/:id/domain/renew', async (req, res) => {
         const project = await getProjectForUser(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
         if (!project.custom_domain) return res.status(400).json({ error: '연결된 도메인이 없습니다.' });
+        if (rejectIfConfProtected(res, project.subdomain)) return; // cert 재발급 전에 거부
 
         const list = parseDomainList(project.custom_domain);
         const result = await letsencrypt.issueCert(list); // keep-until-expiring
@@ -343,7 +365,7 @@ router.post('/:id/domain/renew', async (req, res) => {
         await nginxService.addProject(fresh, targetContainer);
 
         res.json({ success: true, domains: list, cert: result.cert });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { sendRouteError(res, e); }
 });
 
 // NOTE: /public-ip endpoints moved to routes/system.js (mounted at /api/system) because
