@@ -958,11 +958,21 @@ EXPOSE ${port}
         const isWorker = project.type === 'worker';
         const originalPort = port;
         if (!isWorker) {
+            // Zero-downtime 배포(구 컨테이너가 project.port 를 점유한 채로 새
+            // 컨테이너를 나란히 시작)의 전제 조건: 이 루프가 반드시 충돌을
+            // 감지해 포트를 올려야 한다. lsof 만으로는 부족하다 — Orbitron 이
+            // 비루트(systemd User=)로 돌 때 lsof 는 root 소유 docker-proxy 의
+            // 리슨 소켓을 보지 못한다 (실측: published 포트에 lsof -i -t → 빈
+            // 출력, ss -tln → LISTEN). ss(iproute2) 는 소유자와 무관하게 커널
+            // 소켓 테이블을 읽으므로 docker 가 점유한 호스트 포트도 잡는다.
+            // 둘 중 하나라도 리슨을 보고하면 사용 중으로 판정 (과잉 감지는
+            // 무해 — 포트만 +1 되고, nginx 는 컨테이너명:내부포트로 라우팅).
             let attempts = 0;
             while (attempts < 20) {
                 try {
-                    const { stdout } = await execAsync(`lsof -i :${port} -t 2>/dev/null || true`);
-                    if (!stdout.trim()) break;
+                    const { stdout: lsofOut } = await execAsync(`lsof -i :${port} -t 2>/dev/null || true`);
+                    const { stdout: ssOut } = await execAsync(`ss -H -tln "sport = :${port}" 2>/dev/null || true`);
+                    if (!lsofOut.trim() && !ssOut.trim()) break;
                     port++;
                     attempts++;
                 } catch { break; }
@@ -1373,8 +1383,10 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
                 // Force-remove to handle stuck Created/Restarting states
                 await execAsync(`docker rm -f ${name} 2>/dev/null || true`);
             }
+            return true; // 스윕 완주 (제거 대상 0개여도 true)
         } catch (e) {
             console.error(`Failed to cleanup old containers for ${subdomain}:`, e);
+            return false; // 내부 실패 — 호출부는 non-fatal 로 취급, 다음 배포가 재시도
         }
     }
 
