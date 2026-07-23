@@ -21,6 +21,7 @@ const { managedDatabaseUrl } = require('./envUtils');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
 const { assessRollbackEligibility, formatRollbackCommitMessage, buildKeepTagList } = require('./rollbackRules');
 const { smokeStep, resolveHealthPath, SMOKE_DEFAULTS } = require('./smokeCheck');
+const { shouldRemoveFailedNewContainer } = require('./deployRules');
 const previewRules = require('./previewRules');
 const yaml = require('js-yaml');
 
@@ -141,6 +142,14 @@ class Deployer extends EventEmitter {
                 );
             } catch (e) { /* log save failure is non-critical */ }
         };
+
+        // ── Zero-downtime 실패 경로 추적 (catch 에서 참조 — try 밖에 선언) ──
+        // newWebContainerName: 단일 웹 컨테이너 경로에서 방금 시작한 새 컨테이너.
+        //   실패 시 이 이름"만" best-effort 로 제거한다 (구 컨테이너는 절대 불가침).
+        // nginxSwitchedToNew: addProject 성공(=트래픽이 새 컨테이너로 전환) 이후
+        //   에는 실패해도 새 컨테이너를 제거하지 않는다 — 제거하면 장애가 된다.
+        let newWebContainerName = null;
+        let nginxSwitchedToNew = false;
 
         try {
             // Create deployment record (롤백은 rollbackTo() 가 202 응답용으로 미리 생성한 행 재사용)
@@ -607,7 +616,41 @@ class Deployer extends EventEmitter {
                     this.emitProgress(project.id, 'nginx', '프록시 설정 건너뜀 (백그라운드 워커)');
                     this.emitProgress(project.id, 'tunnel', '외부 접속 터널 생성 건너뜀 (백그라운드 워커)');
                 } else {
-                    // Step 3: Stop old containers to free up port before starting a new one
+                    // ═══════════════════════════════════════════════════════
+                    // ⚡ Zero-downtime 배포 (start-new-first, stop-old-last)
+                    //
+                    // 단일 웹 컨테이너 경로는 구(舊) 컨테이너를 먼저 내리지
+                    // 않는다. 새 컨테이너를 옆에 나란히 띄우고 → running 검증
+                    // → 스모크 체크 → nginx 전환(addProject 가 conf 재작성 +
+                    // reload) 이 성공한 "뒤에야" 구 컨테이너를 정리한다
+                    // (성공 경로 하단의 cleanupOldContainers).
+                    //
+                    // 호스트 포트: 구 컨테이너가 project.port 를 점유 중이므로
+                    // startContainer 의 충돌 자동 증가 루프(lsof+ss)가 새
+                    // 컨테이너를 +1 포트로 올린다. 이 드리프트는 무해하다 —
+                    // nginx 는 컨테이너명:감지된 내부 포트로 라우팅하고, 헬스
+                    // 모니터도 nginx 경유로 프로브하므로 호스트 포트는 라우팅에
+                    // 관여하지 않는다 (PORT env 는 충돌 해소 후 주입 = 정합).
+                    //
+                    // 실패 시(시작/running 검증/스모크): 구 컨테이너가 그대로
+                    // 서빙 중이고 nginx conf 도 구 컨테이너를 가리키므로
+                    // 사이트는 계속 살아있다. 실패한 새 컨테이너는 catch 에서
+                    // 이름 가드(shouldRemoveFailedNewContainer)를 거쳐
+                    // best-effort 제거된다.
+                    //
+                    // ⚠️ 트레이드오프 (볼륨 공유 창): 자동 마운트 영속 볼륨을
+                    // 쓰는 프로젝트는 전환 구간 몇 초 동안 구+신 컨테이너가
+                    // 같은 볼륨을 동시에 연다. 파일 서빙/업로드 워크로드에는
+                    // 무해하지만, SQLite 같은 단일-writer 임베디드 DB 는 이
+                    // 짧은 창에서 이론상 잠금 충돌이 날 수 있다. (의도된 수용
+                    // — 옵트아웃은 이번 라운드에 만들지 않는다)
+                    //
+                    // compose 경로만 기존 stop-first 유지: 단일 컨테이너가
+                    // 아니라서 스모크 체크가 없고, startCompose 자체가
+                    // down→up 을 수행하므로 나란히 띄우기가 성립하지 않는다.
+                    // ═══════════════════════════════════════════════════════
+                    if (isCompose) {
+                    // Step 3 (compose 전용): Stop old containers to free up port before starting a new one
                     this.emitProgress(project.id, 'container', '이전 컨테이너 정리 중...');
                     logs += '\nCleaning up old containers...\n';
                     try {
@@ -639,6 +682,9 @@ class Deployer extends EventEmitter {
                         logs += 'Old containers cleaned up.\n';
                     } catch (e) {
                         logs += `Warning: cleanup error: ${e.message}\n`;
+                    }
+                    } else {
+                        logs += '\n⚡ Zero-downtime: 구 컨테이너를 유지한 채 새 컨테이너를 시작합니다 (전환 성공 후 정리).\n';
                     }
 
                     // Start container (or Compose stack)
@@ -674,6 +720,9 @@ class Deployer extends EventEmitter {
                     containerName = startRes.containerName;
                     actualPort = startRes.port || project.port || 3000;
                     logs += `Container started: ${containerId} (${containerName})\n`;
+                    // 실패 시 catch 의 이름 가드 정리 대상 (compose 는 startCompose 가
+                    // down→up 으로 자체 관리하므로 제외 — 여기 이름은 compose 소유)
+                    if (!isCompose) newWebContainerName = containerName;
 
                     // Post-deploy verification: ensure container is actually in Running state
                     // Not just "started" — verify it hasn't immediately crashed/exited
@@ -816,6 +865,10 @@ class Deployer extends EventEmitter {
                     this.emitProgress(project.id, 'nginx', '프록시 설정(Blue-Green Swap) 중...');
                     logs += '\nUpdating nginx config for new container target...\n';
                     await nginxService.addProject(project, containerName);
+                    // 이 시점부터 트래픽은 새 컨테이너로 흐른다 (addProject 가 conf
+                    // 재작성 + nginx reload 까지 수행; resolver+변수 패턴이라 재해석
+                    // 즉시 반영). 이후 실패해도 새 컨테이너를 제거하면 안 된다.
+                    nginxSwitchedToNew = true;
                     logs += 'nginx reloaded to point to new container.\n';
                     this.emitProgress(project.id, 'nginx', '프록시 설정 완료');
 
@@ -1014,9 +1067,21 @@ class Deployer extends EventEmitter {
             );
 
             // Clean up old Blue-Green containers AFTER successful routing
+            // (Zero-downtime: 여기가 구 컨테이너가 "처음으로" 정리되는 지점 —
+            //  nginx 는 이미 새 컨테이너로 전환됐으므로 다운타임 없음.
+            //  best-effort: cleanupOldContainers 는 내부에서 오류를 삼키고,
+            //  혹시 실패해도 다음 배포의 이 정리가 다시 쓸어담는다)
             if (containerName && !isWorker) {
                 logs += '\n🧹 이전 버전 컨테이너 정리 중...\n';
-                await dockerService.cleanupOldContainers(project.subdomain, containerName);
+                await dockerService.cleanupOldContainers(project.subdomain, containerName).catch(() => { });
+                if (newWebContainerName) {
+                    // legacy bare name(해시 없는 구식 orbitron-<sub>)은
+                    // cleanupOldContainers 의 'orbitron-<sub>-' grep 에 안 걸리므로
+                    // 별도 정리 (기존 Step 3 의 legacy stop 을 성공-후 시점으로 이동;
+                    // newWebContainerName 은 항상 -<hash> 접미사가 있어 자기 자신과
+                    // 충돌하지 않는다)
+                    await dockerService.stopContainer(`orbitron-${project.subdomain}`).catch(() => { });
+                }
                 logs += '  ✅ 이전 컨테이너 정리 완료\n';
             }
 
@@ -1045,6 +1110,17 @@ class Deployer extends EventEmitter {
 
         } catch (error) {
             logs += `\n❌ Error: ${error.message}\n`;
+
+            // ── Zero-downtime 실패 경로: 실패한 "새" 웹 컨테이너만 best-effort 제거 ──
+            // 구 컨테이너는 여기서 절대 건드리지 않는다 — nginx conf 도 그대로라
+            // 사이트는 구 컨테이너로 계속 서빙 중이다 (이 catch 는 nginx 를 일절
+            // 만지지 않는다). nginx 전환이 이미 끝난 뒤의 실패라면 새 컨테이너가
+            // 트래픽을 받고 있으므로 제거하지 않는다 (가드가 판정 — 순수 함수,
+            // test/deployRules.test.js 핀).
+            if (shouldRemoveFailedNewContainer(newWebContainerName, project.container_id, nginxSwitchedToNew)) {
+                logs += `🧹 실패한 새 컨테이너 정리: ${newWebContainerName} (구 컨테이너는 유지 — 서비스 계속)\n`;
+                await dockerService.stopContainer(newWebContainerName).catch(() => { });
+            }
 
             // ── AI Auto-Repair Pipeline ──
             const projectDir = path.join(DEPLOYMENTS_DIR, project.subdomain);
