@@ -650,39 +650,39 @@ class Deployer extends EventEmitter {
                     // down→up 을 수행하므로 나란히 띄우기가 성립하지 않는다.
                     // ═══════════════════════════════════════════════════════
                     if (isCompose) {
-                    // Step 3 (compose 전용): Stop old containers to free up port before starting a new one
-                    this.emitProgress(project.id, 'container', '이전 컨테이너 정리 중...');
-                    logs += '\nCleaning up old containers...\n';
-                    try {
-                        // Stop all existing containers for this project (Blue-Green cleanup)
-                        if (project.container_id && !project.container_id.startsWith('compose-')) {
-                            await dockerService.stopContainer(project.container_id).catch(() => { });
-                        }
-                        await dockerService.cleanupOldContainers(project.subdomain, '__none__');
-                        // Also try the legacy name just in case
-                        await dockerService.stopContainer(`orbitron-${project.subdomain}`).catch(() => { });
+                        // Step 3 (compose 전용): Stop old containers to free up port before starting a new one
+                        this.emitProgress(project.id, 'container', '이전 컨테이너 정리 중...');
+                        logs += '\nCleaning up old containers...\n';
+                        try {
+                            // Stop all existing containers for this project (Blue-Green cleanup)
+                            if (project.container_id && !project.container_id.startsWith('compose-')) {
+                                await dockerService.stopContainer(project.container_id).catch(() => { });
+                            }
+                            await dockerService.cleanupOldContainers(project.subdomain, '__none__');
+                            // Also try the legacy name just in case
+                            await dockerService.stopContainer(`orbitron-${project.subdomain}`).catch(() => { });
 
-                        // CRITICAL: Force-kill any container still using the target port
-                        // Prevents "port already allocated" errors on redeploy
-                        if (project.port && project.type !== 'worker') {
-                            try {
-                                const { stdout: portOut } = await execAsync(
-                                    `docker ps -a --format '{{.Names}}' --filter "publish=${project.port}" 2>/dev/null || true`
-                                );
-                                const stuckContainers = portOut.trim().split('\n').filter(Boolean);
-                                for (const stuck of stuckContainers) {
-                                    if (stuck.startsWith(`orbitron-${project.subdomain}`)) {
-                                        logs += `🧹 Force-removing container holding port ${project.port}: ${stuck}\n`;
-                                        await execAsync(`docker rm -f ${stuck} 2>/dev/null || true`);
+                            // CRITICAL: Force-kill any container still using the target port
+                            // Prevents "port already allocated" errors on redeploy
+                            if (project.port && project.type !== 'worker') {
+                                try {
+                                    const { stdout: portOut } = await execAsync(
+                                        `docker ps -a --format '{{.Names}}' --filter "publish=${project.port}" 2>/dev/null || true`
+                                    );
+                                    const stuckContainers = portOut.trim().split('\n').filter(Boolean);
+                                    for (const stuck of stuckContainers) {
+                                        if (stuck.startsWith(`orbitron-${project.subdomain}`)) {
+                                            logs += `🧹 Force-removing container holding port ${project.port}: ${stuck}\n`;
+                                            await execAsync(`docker rm -f ${stuck} 2>/dev/null || true`);
+                                        }
                                     }
-                                }
-                            } catch { }
-                        }
+                                } catch { }
+                            }
 
-                        logs += 'Old containers cleaned up.\n';
-                    } catch (e) {
-                        logs += `Warning: cleanup error: ${e.message}\n`;
-                    }
+                            logs += 'Old containers cleaned up.\n';
+                        } catch (e) {
+                            logs += `Warning: cleanup error: ${e.message}\n`;
+                        }
                     } else {
                         logs += '\n⚡ Zero-downtime: 구 컨테이너를 유지한 채 새 컨테이너를 시작합니다 (전환 성공 후 정리).\n';
                     }
@@ -1073,7 +1073,11 @@ class Deployer extends EventEmitter {
             //  혹시 실패해도 다음 배포의 이 정리가 다시 쓸어담는다)
             if (containerName && !isWorker) {
                 logs += '\n🧹 이전 버전 컨테이너 정리 중...\n';
-                await dockerService.cleanupOldContainers(project.subdomain, containerName).catch(() => { });
+                const sweepOk = await dockerService.cleanupOldContainers(project.subdomain, containerName)
+                    .catch(e => {
+                        console.warn(`⚠️ Old-container cleanup failed for ${project.subdomain}: ${e.message}`);
+                        return false;
+                    });
                 if (newWebContainerName) {
                     // legacy bare name(해시 없는 구식 orbitron-<sub>)은
                     // cleanupOldContainers 의 'orbitron-<sub>-' grep 에 안 걸리므로
@@ -1082,7 +1086,9 @@ class Deployer extends EventEmitter {
                     // 충돌하지 않는다)
                     await dockerService.stopContainer(`orbitron-${project.subdomain}`).catch(() => { });
                 }
-                logs += '  ✅ 이전 컨테이너 정리 완료\n';
+                logs += sweepOk
+                    ? '  ✅ 이전 컨테이너 정리 완료\n'
+                    : '  ⚠️ 정리 실패 — 다음 배포에서 재시도\n';
             }
 
             // Per-project deploy-tag retention (Task 1.2 → 2.1 keep-list 강화):

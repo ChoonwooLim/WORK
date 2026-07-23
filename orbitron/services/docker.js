@@ -1383,8 +1383,10 @@ CMD ${sshEnabled ? '[\"/usr/sbin/sshd\", \"-D\"]' : '[\"tail\", \"-f\", \"/dev/n
                 // Force-remove to handle stuck Created/Restarting states
                 await execAsync(`docker rm -f ${name} 2>/dev/null || true`);
             }
+            return true; // 스윕 완주 (제거 대상 0개여도 true)
         } catch (e) {
             console.error(`Failed to cleanup old containers for ${subdomain}:`, e);
+            return false; // 내부 실패 — 호출부는 non-fatal 로 취급, 다음 배포가 재시도
         }
     }
 

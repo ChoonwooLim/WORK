@@ -35,6 +35,9 @@ test('guard: NEVER removes once nginx has switched to the new container', () => 
         shouldRemoveFailedNewContainer('orbitron-myapp-m2abc1', 'orbitron-myapp-m1old9', true),
         false
     );
+    // 첫 배포(구 컨테이너 없음)라도 전환 후에는 마찬가지로 제거 금지 —
+    // 유일하게 트래픽을 받는 컨테이너를 죽이면 그대로 장애다
+    assert.strictEqual(shouldRemoveFailedNewContainer('x', null, true), false);
 });
 
 test('guard: no-op when the new container never started', () => {
