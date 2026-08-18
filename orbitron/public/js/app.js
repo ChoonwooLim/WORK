@@ -721,12 +721,12 @@ function renderProjectOverview() {
       ${p.custom_domain ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">터널: ${p.tunnel_url || 'N/A'}</div>` : ''}
       <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;">
         <a class="btn btn-primary" href="${siteUrl}" target="_blank" style="text-decoration:none;">${isPixelStreaming ? '🎮 게임 시작' : '🌐 사이트 열기'}</a>
-        <button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 재배포</button>
+        ${p.source_type === 'external' ? '' : `<button class="btn btn-outline" onclick="openDeployOptions(${p.id})" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">🔄 재배포</button>`}
       </div>`}
     </div>` : `
     <div style="background:rgba(139,148,158,0.1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;text-align:center;">
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">⏹ 중지됨</div>
-      <button class="btn btn-success" onclick="openDeployOptions(${p.id})">▶ 배포/시작</button>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">${p.source_type === 'external' ? '🔗 외부 관리 스택' : '⏹ 중지됨'}</div>
+      ${p.source_type === 'external' ? `<div style="font-size:13px;color:var(--text-muted);">Orbitron 밖에서 운영됩니다. 배포·중지는 해당 시스템에서 수행하세요.</div>` : `<button class="btn btn-success" onclick="openDeployOptions(${p.id})">▶ 배포/시작</button>`}
     </div>`}
     <div id="resource-monitor"></div>
     <div id="metrics-section"></div>
@@ -749,7 +749,10 @@ function renderProjectOverview() {
       `}
       <div>
         <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">소스</div>
-        ${p.source_type === 'upload' ? `
+        ${p.source_type === 'external' ? `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:var(--text-muted);">🔗 외부 관리 (Orbitron 미관리)</span>
+        </div>` : p.source_type === 'upload' ? `
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="color:var(--accent);">📁 직접 업로드</span>
           <button class="btn-clone-backup" onclick="triggerReupload(${p.id})" title="새 ZIP 파일로 업데이트">
