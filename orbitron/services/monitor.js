@@ -89,6 +89,9 @@ const SELECT_TARGETS_SQL =
     "SELECT id, name, subdomain, port, container_id, status, env_vars FROM projects " +
     "WHERE status IN ('running', 'unhealthy') " +
     "AND (type IS NULL OR type NOT IN ('db_postgres', 'db_redis')) " +
+    // source_type='external' = Orbitron 밖에서 관리되는 스택(읽기 전용 등록).
+    // 프로브/재시작/unhealthy 마킹/알림 어디에도 올리지 않는다.
+    "AND (source_type IS NULL OR source_type <> 'external') " +
     "AND port IS NOT NULL";
 
 // 기본 프로브 — node:http 직접 사용. 응답이 오면 { status } resolve,

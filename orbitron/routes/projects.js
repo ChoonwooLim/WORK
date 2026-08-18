@@ -50,6 +50,25 @@ async function getProjectForUser(projectId, user) {
     return await db.queryOne('SELECT * FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.userId]);
 }
 
+// 외부 관리 프로젝트(source_type='external') 변경 차단.
+// Orbitron 밖에서 운영되는 스택을 "읽기 전용"으로만 등록하기 위한 단일 가드 —
+// 배포/중지/롤백/삭제/수정/exec/백업복구 등 모든 mutation 라우트가 여기서 걸린다.
+// 조회(GET/HEAD)는 그대로 통과시켜 대시보드 표시에는 영향이 없다.
+router.use('/:id', async (req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') return next();
+    try {
+        const row = await db.queryOne('SELECT source_type FROM projects WHERE id = $1', [req.params.id]);
+        if (row && row.source_type === 'external') {
+            return res.status(403).json({
+                error: '외부에서 관리되는 프로젝트입니다. Orbitron에서 배포·중지·수정할 수 없습니다.'
+            });
+        }
+    } catch (e) {
+        // 조회 실패는 여기서 판단하지 않는다 — 기존 라우트의 404/권한 처리에 맡긴다.
+    }
+    next();
+});
+
 // GET /api/projects - List all projects for current user (admin sees all, supports ?owner_id= filter)
 router.get('/', async (req, res) => {
     try {

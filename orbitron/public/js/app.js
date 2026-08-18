@@ -522,8 +522,9 @@ function renderProjects(projects) {
             const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
             const statusGlow = p.status === 'running' ? `box-shadow: 0 0 20px ${statusColors.running}22, inset 0 1px 0 rgba(255,255,255,0.05);` : '';
             const updatedAt = p.updated_at ? timeAgo(p.updated_at) : timeAgo(p.created_at);
-            const sourceIcon = p.source_type === 'upload' ? '📁' : '🔗';
-            const sourceLabel = p.source_type === 'upload' ? '직접 업로드' : extractRepoName(p.github_url);
+            const sourceIcon = p.source_type === 'upload' ? '📁' : '🔗';  // external 도 🔗
+            const sourceLabel = p.source_type === 'external' ? '외부 관리 (Orbitron 미관리)'
+                : (p.source_type === 'upload' ? '직접 업로드' : extractRepoName(p.github_url));
             return `
         <div class="selector-card" onclick="openProject(${p.id})" style="${statusGlow}">
           <div class="selector-card-top">
@@ -552,7 +553,9 @@ function renderProjects(projects) {
     if (dashList) {
         dashList.innerHTML = projects.map(p => {
             const statusColors = { running: '#3fb950', stopped: '#484f58', building: '#d29922', failed: '#f85149', unhealthy: '#f0883e' };
-            const sourceLabel = p.source_type === 'upload' ? '📁 업로드' : `${extractRepoName(p.github_url)} · ${p.branch}`;
+            const isExternal = p.source_type === 'external';
+            const sourceLabel = isExternal ? '🔗 외부 관리 (Orbitron 미관리)'
+                : (p.source_type === 'upload' ? '📁 업로드' : `${extractRepoName(p.github_url)} · ${p.branch}`);
 
             const isPixelStreaming = p.env_vars && p.env_vars.PROJECT_TYPE === 'pixel_streaming';
             let siteUrl = p.custom_domain ? `http://${p.custom_domain}` : (p.tunnel_url || `http://${serverHost}:${p.port}`);
@@ -596,12 +599,17 @@ function renderProjects(projects) {
             </div>
             
             <div style="display:flex; gap:6px;">
-              <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openDeployOptions(${p.id})">🔄 재배포</button>
-              ${p.status === 'running' ? `
-                <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹ 중지</button>
+              ${isExternal ? `
+                <span class="badge" style="font-size:11px; background:rgba(255,255,255,0.06); color:var(--text-muted);" title="Orbitron 밖에서 운영되는 스택입니다. 배포·중지는 해당 시스템에서 수행합니다.">🔗 외부 관리</span>
                 ${openSiteButtonHtml}
               ` : `
-                ${openSiteButtonHtml}
+                <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openDeployOptions(${p.id})">🔄 재배포</button>
+                ${p.status === 'running' ? `
+                  <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); stopProject(${p.id})">⏹ 중지</button>
+                  ${openSiteButtonHtml}
+                ` : `
+                  ${openSiteButtonHtml}
+                `}
               `}
             </div>
           </div>
