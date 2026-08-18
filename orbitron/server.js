@@ -197,10 +197,37 @@ app.get('/api/server-info', async (req, res) => {
     }
 });
 
+// app.html 은 /js/app.js 를 무버전으로 참조한다. Cloudflare 가 .js 에 브라우저 캐시
+// 4시간(max-age=14400)을 붙이므로, 배포 후에도 사용자가 옛 JS 를 계속 쓰는 문제가 있었다.
+// HTML 자체는 CDN 캐시 대상이 아니므로(cf-cache-status: DYNAMIC) 여기서 app.js 의
+// mtime 을 쿼리로 주입하면 파일이 바뀔 때마다 URL 이 바뀌어 즉시 반영된다.
+// 결과는 mtime 기준으로 메모리 캐시하므로 요청마다 디스크를 읽지 않는다.
+const APP_HTML_PATH = path.join(__dirname, 'public', 'app.html');
+const APP_JS_PATH = path.join(__dirname, 'public', 'js', 'app.js');
+let appHtmlCache = { htmlMtime: 0, jsMtime: 0, body: null };
+
+function renderAppHtml() {
+    const htmlMtime = fs.statSync(APP_HTML_PATH).mtimeMs;
+    const jsMtime = fs.statSync(APP_JS_PATH).mtimeMs;
+    if (appHtmlCache.body && appHtmlCache.htmlMtime === htmlMtime && appHtmlCache.jsMtime === jsMtime) {
+        return appHtmlCache.body;
+    }
+    const version = Math.floor(jsMtime);
+    const body = fs.readFileSync(APP_HTML_PATH, 'utf8')
+        .replace('src="/js/app.js"', 'src="/js/app.js?v=' + version + '"');
+    appHtmlCache = { htmlMtime, jsMtime, body };
+    return body;
+}
+
 // SPA fallback - serve app.html for any non-API route (app routing)
 app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api')) {
-        res.sendFile(path.join(__dirname, 'public', 'app.html'));
+        try {
+            res.set('Cache-Control', 'no-store').type('html').send(renderAppHtml());
+        } catch (e) {
+            // 주입 실패 시 기존 동작으로 폴백 — 대시보드가 뜨지 않는 상황은 만들지 않는다.
+            res.sendFile(APP_HTML_PATH);
+        }
     } else {
         next();
     }
