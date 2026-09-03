@@ -1062,8 +1062,8 @@ class Deployer extends EventEmitter {
 
             // Final log save with 'success' status (+ 배포별 이미지 태그 기록 — 롤백용, Task 1.2)
             await db.query(
-                `UPDATE deployments SET status = 'success', logs = $1, image_tag = $2, finished_at = NOW() WHERE id = $3`,
-                [this._truncateLogs(logs), deployImageTag, deploymentId]
+                `UPDATE deployments SET status = 'success', logs = $1, image_tag = $2, container_id = $4, finished_at = NOW() WHERE id = $3`,
+                [this._truncateLogs(logs), deployImageTag, deploymentId, containerId || null]
             );
 
             // Clean up old Blue-Green containers AFTER successful routing

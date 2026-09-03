@@ -17,7 +17,7 @@ async function getProjectForUser(projectId, user) {
 router.get('/:projectId', async (req, res) => {
     try {
         const deployments = await db.queryAll(
-            'SELECT id, project_id, commit_hash, commit_message, status, image_tag, started_at, finished_at, LENGTH(logs) as log_size FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT 20',
+            'SELECT id, project_id, commit_hash, commit_message, status, image_tag, container_id, started_at, finished_at, LENGTH(logs) as log_size FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT 20',
             [req.params.projectId]
         );
         res.json(deployments);

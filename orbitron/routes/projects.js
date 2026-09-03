@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { decrypt, encryptForJsonb } = require('../db/crypto');
 const previewRules = require('../services/previewRules');
+const configVersionRules = require('../services/configVersionRules');
 
 // Multer config for ZIP upload (max 500MB)
 const upload = multer({
@@ -205,7 +206,13 @@ router.post('/', async (req, res) => {
 // PUT /api/projects/:id - Update a project
 router.put('/:id', async (req, res) => {
     try {
-        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url, preview_deploys } = req.body;
+        const { name, github_url, branch, build_command, start_command, port, subdomain, env_vars, auto_deploy, custom_domain, ai_model, webhook_url, preview_deploys, expected_config_version } = req.body;
+        // 낙관적 잠금 (optional): 프로비저너처럼 GET→병합→PUT 하는 호출자가 그 사이의 변경을 덮어쓰지 않게 한다.
+        const expectedVersion = configVersionRules.parseExpectedConfigVersion(expected_config_version);
+        if (expectedVersion.kind === 'invalid') {
+            return res.status(400).json({ error: 'expected_config_version must be a positive integer', code: 'INVALID_CONFIG_VERSION' });
+        }
+        const isAdminUser = req.user.role === 'admin' || req.user.role === 'superadmin';
         if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
             return res.status(400).json({ error: '서브도메인은 영문 소문자, 숫자, 하이픈(-)만 포함해야 합니다.' });
         }
@@ -237,9 +244,14 @@ router.put('/:id', async (req, res) => {
 
         const encryptedEnvVars = env_vars ? encryptForJsonb(env_vars) : null;
 
-        const whereClause = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 'WHERE id = $14' : 'WHERE id = $14 AND user_id = $15';
+        let whereClause = isAdminUser ? 'WHERE id = $14' : 'WHERE id = $14 AND user_id = $15';
         const queryParams = [name, github_url, branch, build_command, start_command, port, subdomain, encryptedEnvVars, auto_deploy !== undefined ? auto_deploy : null, custom_domain !== undefined ? custom_domain : null, ai_model !== undefined ? ai_model : null, webhook_url !== undefined ? webhook_url : null, preview_deploys !== undefined ? preview_deploys : null, req.params.id];
-        if (req.user.role !== 'admin' && req.user.role !== 'superadmin') queryParams.push(req.user.userId);
+        if (!isAdminUser) queryParams.push(req.user.userId);
+        // 검사와 쓰기를 한 문장으로: 버전이 어긋나면 UPDATE 가 0행이 되고 아래에서 404/409 를 가른다.
+        if (expectedVersion.kind === 'expected') {
+            queryParams.push(expectedVersion.value);
+            whereClause += ` AND config_version = $${queryParams.length}`;
+        }
 
         const project = await db.queryOne(
             `UPDATE projects SET
@@ -256,11 +268,30 @@ router.put('/:id', async (req, res) => {
         ai_model = COALESCE($11, ai_model),
         webhook_url = COALESCE($12, webhook_url),
         preview_deploys = COALESCE($13, preview_deploys),
+        config_version = config_version + 1,
         updated_at = NOW()
        ${whereClause} RETURNING *`,
             queryParams
         );
-        if (!project) return res.status(404).json({ error: 'Project not found or unauthorized' });
+        if (!project) {
+            // 존재/소유권은 404 로만 답한다(누출 금지). 버전 요청이 있었고 프로젝트가 보이는 경우에만 409.
+            const current = expectedVersion.kind === 'expected'
+                ? await db.queryOne(
+                    isAdminUser ? 'SELECT config_version FROM projects WHERE id = $1' : 'SELECT config_version FROM projects WHERE id = $1 AND user_id = $2',
+                    isAdminUser ? [req.params.id] : [req.params.id, req.user.userId]
+                )
+                : null;
+            const outcome = configVersionRules.classifyNoRowUpdate({
+                expected: expectedVersion, exists: !!current, currentVersion: current ? current.config_version : null,
+            });
+            if (outcome.status === 409) {
+                return res.status(409).json({
+                    error: '프로젝트 설정이 그 사이에 바뀌었습니다. 다시 읽어 병합한 뒤 재시도하세요. / Project config changed since you read it; re-read, merge and retry.',
+                    code: outcome.code, current_config_version: outcome.currentConfigVersion,
+                });
+            }
+            return res.status(404).json({ error: 'Project not found or unauthorized' });
+        }
 
         // If custom_domain changed, update nginx config
         // (await: 수동 관리 conf 보호 등 nginx 오류가 응답에 드러나야 한다)

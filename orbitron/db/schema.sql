@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS projects (
     webhook_url VARCHAR(500),
     auto_deploy BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    config_version INTEGER NOT NULL DEFAULT 1
 );
 
 -- Project Groups table (Render.com "Project" concept) — must be created before projects.group_id FK
@@ -96,6 +97,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     status VARCHAR(20) DEFAULT 'pending',
     logs TEXT DEFAULT '',
     image_tag VARCHAR(200),
+    container_id VARCHAR(100),
     started_at TIMESTAMP DEFAULT NOW(),
     finished_at TIMESTAMP
 );
